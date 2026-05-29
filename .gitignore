@@ -5,3 +5,6 @@ data.db
 uploads/
 .venv/
 venv/
+set_github_secrets.py
+check_deploy.py
+*.json.key

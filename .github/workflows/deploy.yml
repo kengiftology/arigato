@@ -21,6 +21,27 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
+      - name: Setup GCP Resources (idempotent)
+        run: |
+          PROJECT=${{ secrets.GCP_PROJECT_ID }}
+
+          # API有効化
+          gcloud services enable \
+            run.googleapis.com \
+            firestore.googleapis.com \
+            storage.googleapis.com \
+            cloudbuild.googleapis.com \
+            --project $PROJECT
+
+          # Firestore作成（既存の場合はスキップ）
+          gcloud firestore databases create \
+            --location=asia-northeast1 \
+            --project $PROJECT 2>/dev/null || true
+
+          # Cloud Storageバケット作成（既存の場合はスキップ）
+          gsutil mb -l asia-northeast1 gs://arigato-photos 2>/dev/null || true
+          gsutil iam ch allUsers:objectViewer gs://arigato-photos 2>/dev/null || true
+
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy arigato \
