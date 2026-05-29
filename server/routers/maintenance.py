@@ -46,10 +46,13 @@ async def create_maintenance(
 
     before_url = None
     after_url  = None
-    if before_photo and before_photo.filename:
-        before_url = upload_photo(await before_photo.read(), before_photo.filename)
-    if after_photo and after_photo.filename:
-        after_url = upload_photo(await after_photo.read(), after_photo.filename)
+    try:
+        if before_photo and before_photo.filename:
+            before_url = upload_photo(await before_photo.read(), before_photo.filename)
+        if after_photo and after_photo.filename:
+            after_url = upload_photo(await after_photo.read(), after_photo.filename)
+    except Exception as e:
+        print(f"[warn] photo upload failed (record will be saved without photo): {e}")
 
     record_id = str(uuid.uuid4())
     now = datetime.now(JST).isoformat()

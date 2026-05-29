@@ -18,7 +18,7 @@ def upload_photo(file_bytes: bytes, filename: str) -> str:
     bucket = get_client().bucket(BUCKET_NAME)
     blob = bucket.blob(name)
     blob.upload_from_string(file_bytes, content_type=f"image/{ext.lstrip('.')}")
-    blob.make_public()
+    # bucket is already public via allUsers:objectViewer IAM — no make_public() needed
     return blob.public_url
 
 def photo_url(name: str) -> str:
