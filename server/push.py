@@ -1,17 +1,13 @@
-import json
-import os
+import json, os
 from server.database import get_db
 
 def send_push_to(person_name: str, title: str, body: str):
     db = get_db()
-    subscriptions = db.execute(
-        "SELECT subscription FROM push_subscriptions WHERE person_name = ?",
-        (person_name,)
-    ).fetchall()
-    db.close()
-
-    for row in subscriptions:
-        _send(json.loads(row["subscription"]), title, body)
+    docs = (db.collection("push_subscriptions")
+              .where("person_name", "==", person_name)
+              .stream())
+    for doc in docs:
+        _send(doc.to_dict()["subscription"], title, body)
 
 def _send(subscription: dict, title: str, body: str):
     try:

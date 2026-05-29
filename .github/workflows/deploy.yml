@@ -1,0 +1,32 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - 'pwa/**'
+      - 'requirements.txt'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy arigato \
+            --source . \
+            --region asia-northeast1 \
+            --allow-unauthenticated \
+            --min-instances 1 \
+            --project ${{ secrets.GCP_PROJECT_ID }} \
+            --set-env-vars "GCS_BUCKET=arigato-photos,VAPID_EMAIL=${{ secrets.VAPID_EMAIL }},VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }},VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}"

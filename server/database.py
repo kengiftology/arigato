@@ -1,45 +1,26 @@
-import sqlite3
-from pathlib import Path
+from google.cloud import firestore as _fs
+import os
 
-DB_PATH = Path(__file__).parent.parent / "data.db"
+_db = None
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def get_db() -> _fs.Client:
+    global _db
+    if _db is None:
+        _db = _fs.Client()
+    return _db
+
+DEFAULT_ZONES = [
+    {"id": "kitchen",  "name": "キッチン"},
+    {"id": "bathroom", "name": "バスルーム"},
+    {"id": "common",   "name": "共有スペース"},
+    {"id": "entrance", "name": "入り口"},
+    {"id": "trash",    "name": "ゴミ捨て場"},
+]
 
 def init_db():
-    conn = get_db()
-    conn.executescript("""
-        CREATE TABLE IF NOT EXISTS zones (
-            id   TEXT PRIMARY KEY,
-            name TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS maintenance (
-            id           TEXT PRIMARY KEY,
-            zone_id      TEXT NOT NULL,
-            person_name  TEXT NOT NULL,
-            content      TEXT NOT NULL,
-            before_photo TEXT,
-            after_photo  TEXT,
-            created_at   TEXT NOT NULL,
-            FOREIGN KEY (zone_id) REFERENCES zones(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS thanks (
-            id             TEXT PRIMARY KEY,
-            maintenance_id TEXT NOT NULL,
-            created_at     TEXT NOT NULL,
-            source         TEXT NOT NULL DEFAULT 'user',
-            FOREIGN KEY (maintenance_id) REFERENCES maintenance(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS push_subscriptions (
-            id           TEXT PRIMARY KEY,
-            person_name  TEXT NOT NULL,
-            subscription TEXT NOT NULL
-        );
-    """)
-    conn.commit()
-    conn.close()
+    db = get_db()
+    zones_col = db.collection("zones")
+    for z in DEFAULT_ZONES:
+        doc = zones_col.document(z["id"]).get()
+        if not doc.exists:
+            zones_col.document(z["id"]).set({"name": z["name"]})

@@ -1,0 +1,29 @@
+from google.cloud import storage as gcs
+import uuid, os
+from pathlib import Path
+
+BUCKET_NAME = os.environ.get("GCS_BUCKET", "arigato-photos")
+
+_client = None
+
+def get_client():
+    global _client
+    if _client is None:
+        _client = gcs.Client()
+    return _client
+
+def upload_photo(file_bytes: bytes, filename: str) -> str:
+    ext = Path(filename).suffix
+    name = f"{uuid.uuid4()}{ext}"
+    bucket = get_client().bucket(BUCKET_NAME)
+    blob = bucket.blob(name)
+    blob.upload_from_string(file_bytes, content_type=f"image/{ext.lstrip('.')}")
+    blob.make_public()
+    return blob.public_url
+
+def photo_url(name: str) -> str:
+    if not name:
+        return None
+    if name.startswith("http"):
+        return name
+    return f"https://storage.googleapis.com/{BUCKET_NAME}/{name}"
