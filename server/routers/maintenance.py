@@ -26,11 +26,13 @@ def list_maintenance():
 @router.get("/zone/{zone_id}")
 def list_by_zone(zone_id: str):
     db = get_db()
+    # order_by + where requires a composite index; sort client-side instead
     docs = (db.collection("maintenance")
               .where("zone_id", "==", zone_id)
-              .order_by("created_at", direction=firestore.Query.DESCENDING)
               .stream())
-    return [_fmt(d) for d in docs]
+    results = [_fmt(d) for d in docs]
+    results.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return results
 
 @router.post("")
 async def create_maintenance(
