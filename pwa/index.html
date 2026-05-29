@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>arigato</title>
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f8faf8; color: #222; }
+
+    header {
+      background: #4caf82; color: white;
+      padding: 16px 20px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    header h1 { font-size: 1.2rem; letter-spacing: 0.05em; }
+    header span { font-size: 0.85rem; opacity: 0.85; }
+
+    main { max-width: 600px; margin: 0 auto; padding: 16px; }
+
+    /* フィード */
+    .card {
+      background: white; border-radius: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+    .card-meta {
+      padding: 12px 16px 8px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .person { font-weight: bold; color: #4caf82; }
+    .zone-tag {
+      background: #e8f5ee; color: #4caf82;
+      padding: 2px 10px; border-radius: 20px; font-size: 0.8rem;
+    }
+    .time { font-size: 0.75rem; color: #999; padding: 0 16px 8px; }
+    .card-photo { width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover; background: #eee; }
+    .before-after { display: flex; }
+    .before-after img { width: 50%; aspect-ratio: 4/3; object-fit: cover; }
+    .before-after .label {
+      position: absolute; background: rgba(0,0,0,0.4); color: white;
+      font-size: 0.7rem; padding: 2px 6px; border-radius: 0 0 4px 0;
+    }
+    .photo-wrap { position: relative; flex: 1; }
+
+    .thanks-area { padding: 8px 16px 16px; }
+    .thanks-btn {
+      width: 100%; padding: 10px;
+      background: #f0faf5; border: 1px solid #4caf82;
+      border-radius: 8px; color: #4caf82; font-size: 0.95rem;
+      cursor: pointer;
+    }
+    .thanks-btn:active { background: #e0f5ea; }
+    .thanks-count { font-size: 0.8rem; color: #999; text-align: center; margin-top: 6px; }
+
+    /* 投稿ボタン（FAB） */
+    .fab {
+      position: fixed; bottom: 24px; right: 24px;
+      width: 64px; height: 64px; border-radius: 50%;
+      background: #4caf82; color: white; border: none;
+      font-size: 1.6rem; cursor: pointer;
+      box-shadow: 0 4px 14px rgba(76,175,130,0.5);
+    }
+
+    /* 投稿モーダル */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      display: flex; align-items: flex-end; justify-content: center;
+      z-index: 100;
+    }
+    .modal {
+      background: white; width: 100%; max-width: 600px;
+      border-radius: 20px 20px 0 0; padding: 24px;
+    }
+    .modal h2 { font-size: 1rem; margin-bottom: 16px; color: #444; }
+    .zone-name { color: #4caf82; font-weight: bold; }
+
+    .photo-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    .photo-box {
+      flex: 1; border: 2px dashed #ccc; border-radius: 10px;
+      aspect-ratio: 4/3; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      cursor: pointer; overflow: hidden; position: relative;
+    }
+    .photo-box input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .photo-box img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-box span { font-size: 0.8rem; color: #aaa; margin-top: 4px; }
+    .photo-box .icon { font-size: 1.8rem; }
+
+    .post-btn {
+      width: 100%; padding: 14px; background: #4caf82;
+      color: white; border: none; border-radius: 10px;
+      font-size: 1rem; cursor: pointer; font-weight: bold;
+    }
+    .post-btn:disabled { background: #ccc; }
+    .cancel-btn {
+      width: 100%; padding: 10px; background: none; border: none;
+      color: #999; font-size: 0.9rem; cursor: pointer; margin-top: 8px;
+    }
+
+    /* 名前登録 */
+    .name-screen {
+      position: fixed; inset: 0; background: white;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 40px;
+    }
+    .name-screen .logo { font-size: 3rem; margin-bottom: 12px; }
+    .name-screen h2 { margin-bottom: 6px; }
+    .name-screen p { color: #888; margin-bottom: 28px; font-size: 0.9rem; }
+    .name-screen input {
+      width: 100%; padding: 12px; border: 1px solid #ddd;
+      border-radius: 10px; font-size: 1rem; margin-bottom: 12px;
+    }
+    .name-screen button {
+      width: 100%; padding: 14px; background: #4caf82;
+      color: white; border: none; border-radius: 10px;
+      font-size: 1rem; cursor: pointer; font-weight: bold;
+    }
+
+    .zone-header {
+      background: white; padding: 12px 20px; margin-bottom: 4px;
+      border-bottom: 1px solid #eee; font-size: 0.9rem; color: #666;
+    }
+    .zone-header strong { color: #4caf82; }
+
+    .hidden { display: none; }
+    .empty { text-align: center; color: #bbb; padding: 48px 0; }
+  </style>
+</head>
+<body>
+
+<!-- 名前登録 -->
+<div class="name-screen" id="nameScreen">
+  <div class="logo">🌱</div>
+  <h2>arigato</h2>
+  <p>あなたのお名前を教えてください</p>
+  <input type="text" id="nameInput" placeholder="名前を入力" maxlength="20">
+  <button onclick="saveName()">はじめる</button>
+</div>
+
+<!-- ヘッダー -->
+<header>
+  <h1>🌱 arigato</h1>
+  <span id="headerName"></span>
+</header>
+
+<!-- ゾーンヘッダー（QRアクセス時） -->
+<div class="zone-header hidden" id="zoneHeader"></div>
+
+<!-- フィード -->
+<main id="feedList"></main>
+
+<!-- 投稿ボタン -->
+<button class="fab" onclick="openModal()">📷</button>
+
+<!-- 投稿モーダル -->
+<div class="modal-overlay hidden" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">📍 を良くしました</h2>
+    <div class="form-group" id="zoneSelectWrap" style="margin-bottom:14px;display:none">
+      <select id="modalZoneSelect" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.95rem"></select>
+    </div>
+    <div class="photo-row">
+      <div class="photo-box" id="beforeBox">
+        <input type="file" accept="image/*" capture="environment" id="beforePhoto" onchange="previewPhoto(this,'beforeBox','beforeImg')">
+        <div class="icon">📷</div>
+        <span>Before（任意）</span>
+        <img id="beforeImg" class="hidden">
+      </div>
+      <div class="photo-box" id="afterBox">
+        <input type="file" accept="image/*" capture="environment" id="afterPhoto" onchange="previewPhoto(this,'afterBox','afterImg')">
+        <div class="icon">✨</div>
+        <span>After</span>
+        <img id="afterImg" class="hidden">
+      </div>
+    </div>
+    <button class="post-btn" id="postBtn" onclick="submitPost()">記録する</button>
+    <button class="cancel-btn" onclick="closeModal()">キャンセル</button>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
