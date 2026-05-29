@@ -63,16 +63,16 @@ function photoHtml(r) {
       <div class="before-after">
         <div class="photo-wrap">
           <span class="label">Before</span>
-          <img src="${API}/maintenance/photo/${r.before_photo}">
+          <img src="${r.before_photo}">
         </div>
         <div class="photo-wrap">
           <span class="label">After</span>
-          <img src="${API}/maintenance/photo/${r.after_photo}">
+          <img src="${r.after_photo}">
         </div>
       </div>`;
   }
   const src = r.after_photo || r.before_photo;
-  return `<img class="card-photo" src="${API}/maintenance/photo/${src}">`;
+  return `<img class="card-photo" src="${src}">`;
 }
 
 // ── ありがとう（手動） ─────────────────────

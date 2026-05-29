@@ -8,6 +8,14 @@ from google.cloud import firestore
 router = APIRouter(prefix="/thanks", tags=["thanks"])
 JST = timezone(timedelta(hours=9))
 
+@router.post("/welcome")
+def send_welcome_thanks(body: dict = Body(...)):
+    """投稿直後にアプリからありがとうを届ける"""
+    name = body.get("person_name", "")
+    if name:
+        send_push_to(name, "整備してくれてありがとう 🌱", "あなたの整備が記録されました")
+    return {"ok": True}
+
 @router.post("/{maintenance_id}")
 def send_thanks(maintenance_id: str):
     """人からのありがとう"""
@@ -47,14 +55,6 @@ def send_auto_thanks(maintenance_id: str):
         data = doc.to_dict()
         send_push_to(data["person_name"], "ありがとう 🌱", "あなたの整備が使われています")
 
-    return {"ok": True}
-
-@router.post("/welcome")
-def send_welcome_thanks(body: dict = Body(...)):
-    """投稿直後にアプリからありがとうを届ける"""
-    name = body.get("person_name", "")
-    if name:
-        send_push_to(name, "整備してくれてありがとう 🌱", "あなたの整備が記録されました")
     return {"ok": True}
 
 def _record_thanks(db, maintenance_id: str, source: str = "user"):
