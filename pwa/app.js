@@ -90,24 +90,61 @@ async function sendThanks(id, btn) {
   el.textContent = `${n + 1}件のありがとう`;
 }
 
-// ── モーダル ──────────────────────────────
+// ── モード選択 ────────────────────────────
 let currentZoneId = null;
 let currentZoneName = "";
+let currentMode = "after"; // "before" | "after"
 
-async function openModal() {
+function openModeSelect() {
+  const zoneId = getZoneFromUrl();
+  // in_progressの記録があればAFTERモードを促す
+  const pending = zoneId ? localStorage.getItem(`pending_${zoneId}`) : null;
+  if (pending) {
+    // 未完了があれば直接AFTERへ
+    startAfter();
+    return;
+  }
+  document.getElementById("modeOverlay").classList.remove("hidden");
+}
+
+function closeModeSelect(e) {
+  if (e.target === document.getElementById("modeOverlay")) {
+    document.getElementById("modeOverlay").classList.add("hidden");
+  }
+}
+
+function startBefore() {
+  document.getElementById("modeOverlay").classList.add("hidden");
+  currentMode = "before";
+  _openModal("before");
+}
+
+function startAfter() {
+  document.getElementById("modeOverlay").classList.add("hidden");
+  currentMode = "after";
+  _openModal("after");
+}
+
+async function _openModal(mode) {
   const zoneId = getZoneFromUrl();
 
   if (zoneId) {
-    // QRからのアクセス → ゾーン固定
     currentZoneId = zoneId;
-    document.getElementById("modalTitle").textContent = `📍 ${currentZoneName} を良くしました`;
     document.getElementById("zoneSelectWrap").style.display = "none";
   } else {
-    // 直接アクセス → ゾーン選択を表示
     currentZoneId = null;
-    document.getElementById("modalTitle").textContent = "📍 どこを良くしましたか？";
     document.getElementById("zoneSelectWrap").style.display = "block";
     await populateZoneSelect();
+  }
+
+  if (mode === "before") {
+    document.getElementById("modalTitle").textContent = "📍 整備前の様子を記録";
+    document.getElementById("beforeBox").style.display = "flex";
+    document.getElementById("afterBox").style.display = "none";
+  } else {
+    document.getElementById("modalTitle").textContent = "📍 整備後の様子を記録";
+    document.getElementById("beforeBox").style.display = "none";
+    document.getElementById("afterBox").style.display = "flex";
   }
 
   document.getElementById("modalOverlay").classList.remove("hidden");
@@ -146,11 +183,12 @@ function previewPhoto(input, boxId, imgId) {
 // ── 投稿 ──────────────────────────────────
 async function submitPost() {
   const name = getName();
-  const afterFile = document.getElementById("afterPhoto").files[0];
+  const afterFile  = document.getElementById("afterPhoto").files[0];
   const beforeFile = document.getElementById("beforePhoto").files[0];
+  const photoFile  = currentMode === "before" ? beforeFile : afterFile;
 
-  if (!afterFile && !beforeFile) {
-    alert("写真を1枚以上撮ってください");
+  if (!photoFile) {
+    alert("写真を撮ってください");
     return;
   }
 
@@ -158,7 +196,6 @@ async function submitPost() {
   btn.disabled = true;
   btn.textContent = "送信中…";
 
-  // ゾーン選択（QRなしの場合）
   if (!currentZoneId) {
     currentZoneId = document.getElementById("modalZoneSelect").value;
   }
@@ -169,21 +206,43 @@ async function submitPost() {
     return;
   }
 
-  const form = new FormData();
-  form.append("zone_id", currentZoneId);
-  form.append("person_name", name);
-  form.append("content", "");  // テキストなし
-  if (beforeFile) form.append("before_photo", beforeFile);
-  if (afterFile)  form.append("after_photo",  afterFile);
+  const pendingKey = `pending_${currentZoneId}`;
+  const pendingId  = localStorage.getItem(pendingKey);
 
-  await fetch(`${API}/maintenance`, { method: "POST", body: form });
+  if (currentMode === "after" && pendingId) {
+    // 既存のin_progressレコードを完了させる
+    const form = new FormData();
+    form.append("after_photo", afterFile);
+    await fetch(`${API}/maintenance/${pendingId}/complete`, { method: "PATCH", body: form });
+    localStorage.removeItem(pendingKey);
+  } else {
+    // 新規レコード作成
+    const form = new FormData();
+    form.append("zone_id",     currentZoneId);
+    form.append("person_name", name);
+    form.append("content",     "");
+    if (currentMode === "before") {
+      form.append("before_photo", beforeFile);
+    } else {
+      form.append("after_photo", afterFile);
+    }
+    const res  = await fetch(`${API}/maintenance`, { method: "POST", body: form });
+    const data = await res.json();
 
-  // 投稿直後にアプリからありがとうを送る
-  fetch(`${API}/thanks/welcome`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ person_name: name })
-  }).catch(() => {});
+    // BEFOREのrecord_idをlocalStorageに保存
+    if (currentMode === "before" && data.id) {
+      localStorage.setItem(pendingKey, data.id);
+    }
+  }
+
+  // AFTER完了時だけwelcomeありがとうを送る
+  if (currentMode === "after") {
+    fetch(`${API}/thanks/welcome`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ person_name: name })
+    }).catch(() => {});
+  }
 
   closeModal();
   btn.disabled = false;

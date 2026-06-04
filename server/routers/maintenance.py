@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, UploadFile, File, Form
 from server.database import get_db
 from server.storage import upload_photo, photo_url
+from server.push import send_push_to
 from google.cloud import firestore
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
@@ -26,7 +27,6 @@ def list_maintenance():
 @router.get("/zone/{zone_id}")
 def list_by_zone(zone_id: str):
     db = get_db()
-    # order_by + where requires a composite index; sort client-side instead
     docs = (db.collection("maintenance")
               .where("zone_id", "==", zone_id)
               .stream())
@@ -54,7 +54,19 @@ async def create_maintenance(
         if after_photo and after_photo.filename:
             after_url = upload_photo(await after_photo.read(), after_photo.filename)
     except Exception as e:
-        print(f"[warn] photo upload failed (record will be saved without photo): {e}")
+        print(f"[warn] photo upload failed: {e}")
+
+    # statusを写真の有無で決定
+    if before_url and not after_url:
+        status = "in_progress"
+    elif after_url and not before_url:
+        status = "after_only"
+    else:
+        status = "completed"
+
+    # 同じユーザー+ゾーンのin_progressレコードをabandoned に
+    if status == "in_progress":
+        _abandon_previous(db, zone_id, person_name)
 
     record_id = str(uuid.uuid4())
     now = datetime.now(JST).isoformat()
@@ -67,5 +79,47 @@ async def create_maintenance(
         "after_photo":  after_url,
         "created_at":   now,
         "thanks_count": 0,
+        "status":       status,
     })
-    return {"id": record_id}
+
+    # BEFORE投稿時は「頑張って！」を本人に
+    if status == "in_progress":
+        send_push_to(person_name, "頑張って！ 🌱", "始めようとしてくれてありがとう")
+
+    return {"id": record_id, "status": status}
+
+
+@router.patch("/{record_id}/complete")
+async def complete_maintenance(
+    record_id: str,
+    after_photo: UploadFile = File(...),
+):
+    db = get_db()
+    ref = db.collection("maintenance").document(record_id)
+    doc = ref.get()
+    if not doc.exists:
+        return {"error": "not found"}
+
+    after_url = None
+    try:
+        after_url = upload_photo(await after_photo.read(), after_photo.filename)
+    except Exception as e:
+        print(f"[warn] after photo upload failed: {e}")
+
+    ref.update({
+        "after_photo":  after_url,
+        "status":       "completed",
+        "completed_at": datetime.now(JST).isoformat(),
+    })
+
+    return {"ok": True, "status": "completed"}
+
+
+def _abandon_previous(db, zone_id: str, person_name: str):
+    docs = (db.collection("maintenance")
+              .where("zone_id", "==", zone_id)
+              .where("person_name", "==", person_name)
+              .where("status", "==", "in_progress")
+              .stream())
+    for doc in docs:
+        doc.reference.update({"status": "abandoned"})
