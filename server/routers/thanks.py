@@ -17,7 +17,7 @@ def send_welcome_thanks(body: dict = Body(...)):
     return {"ok": True}
 
 @router.post("/{maintenance_id}")
-def send_thanks(maintenance_id: str):
+def send_thanks(maintenance_id: str, body: dict = Body(default={})):
     """人からのありがとう"""
     db = get_db()
     ref = db.collection("maintenance").document(maintenance_id)
@@ -25,11 +25,13 @@ def send_thanks(maintenance_id: str):
     if not doc.exists:
         return {"error": "not found"}
 
+    sender_name = body.get("sender_name", "")
     data = doc.to_dict()
-    _record_thanks(db, maintenance_id, source="user")
+    _record_thanks(db, maintenance_id, source="user", sender_name=sender_name)
     ref.update({"thanks_count": firestore.Increment(1)})
 
-    send_push_to(data["person_name"], "ありがとうが届きました 🙏", "あなたの整備に感謝が届きました")
+    msg = f"{sender_name}さんがありがとうと言っています 🙏" if sender_name else "ありがとうが届きました 🙏"
+    send_push_to(data["person_name"], msg, "あなたの整備に感謝が届きました")
     return {"ok": True}
 
 @router.post("/{maintenance_id}/auto")
@@ -57,10 +59,11 @@ def send_auto_thanks(maintenance_id: str):
 
     return {"ok": True}
 
-def _record_thanks(db, maintenance_id: str, source: str = "user"):
+def _record_thanks(db, maintenance_id: str, source: str = "user", sender_name: str = ""):
     now = datetime.now(JST).isoformat()
     db.collection("thanks").add({
         "maintenance_id": maintenance_id,
         "source": source,
+        "sender_name": sender_name,
         "created_at": now,
     })

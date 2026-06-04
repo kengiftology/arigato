@@ -80,7 +80,11 @@ async function sendThanks(id, btn) {
   btn.disabled = true;
   btn.textContent = "ありがとう ✓";
   btn.style.background = "#e0f5ea";
-  await fetch(`${API}/thanks/${id}`, { method: "POST" });
+  await fetch(`${API}/thanks/${id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sender_name: getName() || "" })
+  });
   const el = document.getElementById(`count-${id}`);
   const n = parseInt(el.textContent) || 0;
   el.textContent = `${n + 1}件のありがとう`;
