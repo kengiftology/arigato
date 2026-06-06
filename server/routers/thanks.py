@@ -13,7 +13,7 @@ def send_welcome_thanks(body: dict = Body(...)):
     """投稿直後にアプリからありがとうを届ける"""
     name = body.get("person_name", "")
     if name:
-        send_push_to(name, "整備してくれてありがとう 🌱", "あなたの整備が記録されました")
+        send_push_to(name, "この場所を手伝ってくれてありがとう 🌱", "あなたのお手伝いが記録されました")
     return {"ok": True}
 
 @router.post("/{maintenance_id}")
@@ -60,7 +60,7 @@ def send_auto_thanks(maintenance_id: str):
         _record_thanks(db, maintenance_id, source="auto")
         ref.update({"thanks_count": firestore.Increment(1)})
         data = doc.to_dict()
-        send_push_to(data["person_name"], "ありがとう 🌱", "あなたの整備が使われています")
+        send_push_to(data["person_name"], "ありがとう 🌱", "あなたのお手伝いが使われています")
 
     return {"ok": True}
 

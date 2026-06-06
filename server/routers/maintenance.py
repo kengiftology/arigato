@@ -84,7 +84,7 @@ async def create_maintenance(
 
     # BEFORE投稿時は「頑張って！」を本人に
     if status == "in_progress":
-        send_push_to(person_name, "頑張って！ 🌱", "始めようとしてくれてありがとう")
+        send_push_to(person_name, "頑張って！ 🌱", "手伝おうとしてくれてありがとう")
 
     return {"id": record_id, "status": status}
 

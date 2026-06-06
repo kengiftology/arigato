@@ -32,7 +32,7 @@ async function loadFeed() {
 
   const list = document.getElementById("feedList");
   if (records.length === 0) {
-    list.innerHTML = `<div class="empty">📷<br>まだ記録がありません<br>QRを読んで整備を記録しよう</div>`;
+    list.innerHTML = `<div class="empty">📷<br>手伝いの記録はまだありません</div>`;
     return;
   }
 
@@ -138,11 +138,11 @@ async function _openModal(mode) {
   }
 
   if (mode === "before") {
-    document.getElementById("modalTitle").textContent = "📍 整備前の様子を記録";
+    document.getElementById("modalTitle").textContent = "📍 手伝う前の様子";
     document.getElementById("beforeBox").style.display = "flex";
     document.getElementById("afterBox").style.display = "none";
   } else {
-    document.getElementById("modalTitle").textContent = "📍 整備後の様子を記録";
+    document.getElementById("modalTitle").textContent = "📍 手伝った後の様子";
     document.getElementById("beforeBox").style.display = "none";
     document.getElementById("afterBox").style.display = "flex";
   }
