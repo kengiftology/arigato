@@ -30,8 +30,13 @@ def send_thanks(maintenance_id: str, body: dict = Body(default={})):
     _record_thanks(db, maintenance_id, source="user", sender_name=sender_name)
     ref.update({"thanks_count": firestore.Increment(1)})
 
-    msg = f"{sender_name}さんがありがとうと言っています 🙏" if sender_name else "ありがとうが届きました 🙏"
-    send_push_to(data["person_name"], msg, "あなたの整備に感謝が届きました")
+    if sender_name:
+        title = f"{sender_name}さんより"
+        body  = "ありがとう 🙏"
+    else:
+        title = "ありがとう 🙏"
+        body  = "あなたの整備に感謝が届きました"
+    send_push_to(data["person_name"], title, body)
     return {"ok": True}
 
 @router.post("/{maintenance_id}/auto")
