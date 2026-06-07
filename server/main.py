@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pathlib import Path
 
 from server.database import init_db
@@ -22,6 +23,11 @@ app.include_router(push.router)
 app.include_router(users.router)
 
 PWA_DIR = Path(__file__).parent.parent / "pwa"
+
+@app.get("/zone/{zone_id}")
+async def serve_zone(zone_id: str):
+    return FileResponse(PWA_DIR / "index.html")
+
 app.mount("/", StaticFiles(directory=PWA_DIR, html=True), name="pwa")
 
 @app.on_event("startup")
