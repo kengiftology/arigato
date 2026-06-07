@@ -1,15 +1,131 @@
 const API = "";
 
-// ── 名前管理 ──────────────────────────────
-function getName() { return localStorage.getItem("arigato_name"); }
+// ── ユーザー管理 ──────────────────────────
+function getCurrentUser() {
+  const s = localStorage.getItem("arigato_user");
+  return s ? JSON.parse(s) : null;
+}
+function getName() {
+  const u = getCurrentUser();
+  return u ? `${u.last_name} ${u.first_name}` : "";
+}
+function saveUser(user) {
+  localStorage.setItem("arigato_user", JSON.stringify(user));
+}
 
-function saveName() {
-  const name = document.getElementById("nameInput").value.trim();
-  if (!name) return;
-  localStorage.setItem("arigato_name", name);
-  document.getElementById("nameScreen").style.display = "none";
-  document.getElementById("headerName").textContent = name;
-  init();
+// ── 認証フロー ────────────────────────────
+let pendingAction = null;
+let authType = "thanks";
+let selectedUserId = null;
+
+function requireAuth(action, type = "thanks") {
+  if (getCurrentUser()) { action(); return; }
+  pendingAction = action;
+  authType = type;
+  showChoice();
+}
+
+function showChoice() {
+  const title = authType === "post" ? "はじめてのお手伝いですか？" : "はじめてのありがとうですか？";
+  document.getElementById("authChoiceTitle").textContent = title;
+  document.getElementById("authChoice").classList.remove("hidden");
+  document.getElementById("authRegister").classList.add("hidden");
+  document.getElementById("authSelect").classList.add("hidden");
+}
+
+function showRegister() {
+  document.getElementById("authChoice").classList.add("hidden");
+  document.getElementById("authRegister").classList.remove("hidden");
+}
+
+async function showSelect() {
+  document.getElementById("authChoice").classList.add("hidden");
+  document.getElementById("authSelect").classList.remove("hidden");
+  selectedUserId = null;
+  document.getElementById("confirmBtn").disabled = true;
+  document.getElementById("confirmBtn").classList.remove("primary");
+  await renderUserGrid();
+}
+
+async function renderUserGrid() {
+  const grid = document.getElementById("authUserGrid");
+  grid.innerHTML = "<div style='color:#bbb;font-size:0.85rem'>読み込み中…</div>";
+  try {
+    const res = await fetch(`${API}/users`);
+    const users = await res.json();
+    if (users.length === 0) {
+      grid.innerHTML = "<div style='color:#bbb;font-size:0.85rem'>登録済みのユーザーがいません</div>";
+      return;
+    }
+    grid.innerHTML = users.map(u => `
+      <div class="auth-user-card" id="ucard-${u.id}" onclick="selectUser('${u.id}')">
+        <div class="auth-user-photo">
+          ${u.photo_url ? `<img src="${u.photo_url}" alt="">` : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:1.2rem">👤</div>`}
+        </div>
+        <div class="auth-user-name">${u.last_name}<br>${u.first_name}</div>
+      </div>
+    `).join("");
+  } catch(e) {
+    grid.innerHTML = "<div style='color:#f66;font-size:0.85rem'>読み込みに失敗しました</div>";
+  }
+}
+
+function selectUser(id) {
+  selectedUserId = id;
+  document.querySelectorAll(".auth-user-card").forEach(c => c.classList.remove("selected"));
+  document.getElementById("ucard-" + id).classList.add("selected");
+  const btn = document.getElementById("confirmBtn");
+  btn.disabled = false;
+  btn.classList.add("primary");
+}
+
+async function confirmSelect() {
+  if (!selectedUserId) return;
+  const res = await fetch(`${API}/users`);
+  const users = await res.json();
+  const u = users.find(u => u.id === selectedUserId);
+  if (!u) return;
+  finishAuth(u);
+}
+
+async function completeRegister() {
+  const last  = document.getElementById("inputLastName").value.trim();
+  const first = document.getElementById("inputFirstName").value.trim();
+  if (!last || !first) { alert("姓と名を入力してください"); return; }
+
+  const form = new FormData();
+  form.append("last_name", last);
+  form.append("first_name", first);
+  const fileInput = document.getElementById("authSelfieFile");
+  if (fileInput.files[0]) {
+    form.append("photo", fileInput.files[0]);
+  }
+
+  try {
+    const res = await fetch(`${API}/users/register`, { method: "POST", body: form });
+    const user = await res.json();
+    finishAuth(user);
+  } catch(e) {
+    alert("登録に失敗しました。もう一度お試しください。");
+  }
+}
+
+function previewAuthSelfie(input) {
+  if (!input.files[0]) return;
+  const img = document.getElementById("authSelfieImg");
+  img.src = URL.createObjectURL(input.files[0]);
+  img.style.display = "block";
+  document.getElementById("authSelfieIcon").style.display = "none";
+}
+
+function finishAuth(user) {
+  saveUser(user);
+  document.getElementById("authChoice").classList.add("hidden");
+  document.getElementById("authRegister").classList.add("hidden");
+  document.getElementById("authSelect").classList.add("hidden");
+  document.getElementById("headerName").textContent = getName();
+  registerPush();
+  if (pendingAction) { const fn = pendingAction; pendingAction = null; fn(); }
 }
 
 // ── URL からゾーンIDを取得 ─────────────────
@@ -76,7 +192,10 @@ function photoHtml(r) {
 }
 
 // ── ありがとう（手動） ─────────────────────
-async function sendThanks(id, btn) {
+function sendThanks(id, btn) {
+  requireAuth(() => _sendThanks(id, btn), "thanks");
+}
+async function _sendThanks(id, btn) {
   btn.disabled = true;
   btn.textContent = "ありがとう ✓";
   btn.style.background = "#e0f5ea";
@@ -96,8 +215,10 @@ let currentZoneName = "";
 let currentMode = "after"; // "before" | "after"
 
 function openModeSelect() {
+  requireAuth(() => _openModeSelect(), "post");
+}
+function _openModeSelect() {
   const zoneId = getZoneFromUrl();
-  // in_progressの記録があればAFTERモードを促す
   const pending = zoneId ? localStorage.getItem(`pending_${zoneId}`) : null;
   if (pending) {
     // 未完了があれば直接AFTERへ
@@ -311,12 +432,9 @@ async function init() {
 
 // ── 起動 ──────────────────────────────────
 window.addEventListener("DOMContentLoaded", () => {
-  const name = getName();
-  if (!name) {
-    document.getElementById("nameScreen").style.display = "flex";
-  } else {
-    document.getElementById("nameScreen").style.display = "none";
-    document.getElementById("headerName").textContent = name;
-    init();
+  const user = getCurrentUser();
+  if (user) {
+    document.getElementById("headerName").textContent = getName();
   }
+  init();
 });
