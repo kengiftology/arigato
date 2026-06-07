@@ -172,8 +172,8 @@ function cardHtml(r) {
   const initial = r.person_name ? r.person_name[0] : "？";
   const photoSrc = r.after_photo || r.before_photo || "";
   const label = r.after_photo ? "AFTER" : "BEFORE";
-  const thanksLabel = r.thanks_count > 0 ? `${r.thanks_count}` : "ありがとう";
-  const btnClass = r.thanks_count > 0 ? "btn-thanks first" : "btn-thanks";
+  const thanksLabel = "ありがとう";
+  const btnClass = r.thanks_count === 0 ? "btn-thanks first" : "btn-thanks";
 
   return `
     <div class="card" id="card-${r.id}">
