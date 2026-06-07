@@ -42,8 +42,9 @@ async function showSelect() {
   document.getElementById("authChoice").classList.add("hidden");
   document.getElementById("authSelect").classList.remove("hidden");
   selectedUserId = null;
-  document.getElementById("confirmBtn").disabled = true;
-  document.getElementById("confirmBtn").classList.remove("primary");
+  const btn = document.getElementById("confirmBtn");
+  btn.disabled = true;
+  btn.classList.remove("primary");
   await renderUserGrid();
 }
 
@@ -60,7 +61,10 @@ async function renderUserGrid() {
     grid.innerHTML = users.map(u => `
       <div class="auth-user-card" id="ucard-${u.id}" onclick="selectUser('${u.id}')">
         <div class="auth-user-photo">
-          ${u.photo_url ? `<img src="${u.photo_url}" alt="">` : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:1.2rem">👤</div>`}
+          ${u.photo_url
+            ? `<img src="${u.photo_url}" alt="">`
+            : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:700;color:#999">${u.last_name[0]}</div>`
+          }
         </div>
         <div class="auth-user-name">${u.last_name}<br>${u.first_name}</div>
       </div>
@@ -123,9 +127,18 @@ function finishAuth(user) {
   document.getElementById("authChoice").classList.add("hidden");
   document.getElementById("authRegister").classList.add("hidden");
   document.getElementById("authSelect").classList.add("hidden");
-  document.getElementById("headerName").textContent = getName();
+  updateHeaderAvatar(user);
   registerPush();
   if (pendingAction) { const fn = pendingAction; pendingAction = null; fn(); }
+}
+
+function updateHeaderAvatar(user) {
+  if (!user) return;
+  const img = document.getElementById("myAvatarImg");
+  if (user.photo_url) {
+    img.src = user.photo_url;
+    img.style.display = "block";
+  }
 }
 
 // ── URL からゾーンIDを取得 ─────────────────
@@ -141,78 +154,136 @@ async function loadFeed() {
   const res = await fetch(url);
   const records = await res.json();
 
-  // アプリからの自動ありがとう（フィードを見た = 整備された場所を使った）
+  // 自動ありがとう（フィードを見た = その場所を使った）
   records.slice(0, 5).forEach(r =>
     fetch(`${API}/thanks/${r.id}/auto`, { method: "POST" }).catch(() => {})
   );
 
   const list = document.getElementById("feedList");
   if (records.length === 0) {
-    list.innerHTML = `<div class="empty">📷<br>手伝いの記録はまだありません</div>`;
+    list.innerHTML = `<div class="empty">手伝いの記録はまだありません</div>`;
     return;
   }
 
-  list.innerHTML = records.map(r => `
-    <div class="card">
-      <div class="card-meta">
-        <span class="person">🌱 ${r.person_name}</span>
-        <span class="zone-tag">${r.zone_name}</span>
-      </div>
-      <div class="time">${formatTime(r.created_at)}</div>
-      ${photoHtml(r)}
-      <div class="thanks-area">
-        <button class="thanks-btn" onclick="sendThanks('${r.id}', this)">
-          ありがとう 🙏
-        </button>
-        <div class="thanks-count" id="count-${r.id}">
-          ${r.thanks_count > 0 ? `${r.thanks_count}件のありがとう` : ""}
+  list.innerHTML = records.map(r => cardHtml(r)).join("");
+}
+
+function cardHtml(r) {
+  const initial = r.person_name ? r.person_name[0] : "？";
+  const photoSrc = r.after_photo || r.before_photo || "";
+  const label = r.after_photo ? "AFTER" : "BEFORE";
+  const thanksLabel = r.thanks_count > 0 ? `${r.thanks_count}` : "ありがとう";
+  const btnClass = r.thanks_count > 0 ? "btn-thanks first" : "btn-thanks";
+
+  return `
+    <div class="card" id="card-${r.id}">
+      <div class="card-header">
+        <div class="avatar">
+          <span>${initial}</span>
         </div>
+        <div>
+          <div class="card-person">${r.person_name}</div>
+          <div class="card-time">${formatTime(r.created_at)}</div>
+        </div>
+      </div>
+      ${photoSrc ? `
+      <div class="photo-wrap" id="photowrap-${r.id}">
+        <img class="card-photo" src="${photoSrc}" alt="">
+        <div class="photo-label">${label}</div>
+        <div class="arigato-overlay" id="overlay-${r.id}"></div>
+      </div>` : ""}
+      <div class="thanks-row">
+        <div class="thanks-senders" id="senders-${r.id}"></div>
+        <button class="${btnClass}" id="btn-${r.id}" onclick="openThanksModal('${r.id}', '${encodeURIComponent(r.person_name || "")}')">
+          ${thanksLabel}
+        </button>
       </div>
     </div>
-  `).join("");
+  `;
 }
 
-function photoHtml(r) {
-  if (!r.before_photo && !r.after_photo) return "";
-  if (r.before_photo && r.after_photo) {
-    return `
-      <div class="before-after">
-        <div class="photo-wrap">
-          <span class="label">Before</span>
-          <img src="${r.before_photo}">
-        </div>
-        <div class="photo-wrap">
-          <span class="label">After</span>
-          <img src="${r.after_photo}">
-        </div>
-      </div>`;
+// ── ありがとうモーダル ─────────────────────
+let pendingThanksId = null;
+
+function openThanksModal(id, encodedName) {
+  requireAuth(() => _openThanksModal(id, encodedName), "thanks");
+}
+
+function _openThanksModal(id, encodedName) {
+  pendingThanksId = id;
+  const btn = document.getElementById(`btn-${id}`);
+  if (btn && btn.classList.contains("sent")) return;
+
+  const name = decodeURIComponent(encodedName || "");
+  const initial = name ? name[0] : "？";
+
+  const photoEl = document.getElementById("modalPersonPhoto");
+  photoEl.innerHTML = `<span style="font-size:1.4rem;font-weight:700;color:#999">${initial}</span>`;
+
+  document.getElementById("modalHint").textContent = name ? `${name} さんにありがとうを届ける` : "ありがとうを届ける";
+  document.getElementById("thanksText").value = "";
+  document.getElementById("modalOverlay").classList.remove("hidden");
+}
+
+async function sendThanks() {
+  const id = pendingThanksId;
+  if (!id) return;
+  const msg = document.getElementById("thanksText").value.trim();
+  const btn = document.getElementById(`btn-${id}`);
+
+  closeModal();
+
+  if (btn) {
+    btn.classList.remove("first");
+    btn.classList.add("sent");
+    btn.textContent = "ありがとう";
   }
-  const src = r.after_photo || r.before_photo;
-  return `<img class="card-photo" src="${src}">`;
-}
 
-// ── ありがとう（手動） ─────────────────────
-function sendThanks(id, btn) {
-  requireAuth(() => _sendThanks(id, btn), "thanks");
-}
-async function _sendThanks(id, btn) {
-  btn.disabled = true;
-  btn.textContent = "ありがとう ✓";
-  btn.style.background = "#e0f5ea";
+  // フロートアニメーション
+  triggerFloat(id);
+
   await fetch(`${API}/thanks/${id}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sender_name: getName() || "" })
+    body: JSON.stringify({ sender_name: getName() || "", message: msg })
   });
-  const el = document.getElementById(`count-${id}`);
-  const n = parseInt(el.textContent) || 0;
-  el.textContent = `${n + 1}件のありがとう`;
+}
+
+function closeModal() {
+  document.getElementById("modalOverlay").classList.add("hidden");
+  pendingThanksId = null;
+}
+
+// ── ありがとうフロートアニメーション ─────────
+function triggerFloat(recordId) {
+  const overlay = document.getElementById(`overlay-${recordId}`);
+  if (!overlay) return;
+  const user = getCurrentUser();
+  const photoUrl = user ? user.photo_url : null;
+  const initial = user ? user.last_name[0] : "？";
+
+  for (let i = 0; i < 3; i++) {
+    setTimeout(() => {
+      const pill = document.createElement("div");
+      pill.className = "af";
+      pill.style.left = `${15 + Math.random() * 55}%`;
+      pill.style.animationDelay = "0s";
+      pill.innerHTML = `
+        <div class="af-face">
+          ${photoUrl ? `<img src="${photoUrl}" alt="">` : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700">${initial}</div>`}
+        </div>
+        <span class="af-text">ありがとう</span>
+      `;
+      overlay.appendChild(pill);
+      setTimeout(() => pill.remove(), 5100);
+    }, i * 600);
+  }
 }
 
 // ── モード選択 ────────────────────────────
 let currentZoneId = null;
 let currentZoneName = "";
-let currentMode = "after"; // "before" | "after"
+let currentMode = "after";
 
 function openModeSelect() {
   requireAuth(() => _openModeSelect(), "post");
@@ -221,7 +292,6 @@ function _openModeSelect() {
   const zoneId = getZoneFromUrl();
   const pending = zoneId ? localStorage.getItem(`pending_${zoneId}`) : null;
   if (pending) {
-    // 未完了があれば直接AFTERへ
     startAfter();
     return;
   }
@@ -237,16 +307,16 @@ function closeModeSelect(e) {
 function startBefore() {
   document.getElementById("modeOverlay").classList.add("hidden");
   currentMode = "before";
-  _openModal("before");
+  openPostModal("before");
 }
 
 function startAfter() {
   document.getElementById("modeOverlay").classList.add("hidden");
   currentMode = "after";
-  _openModal("after");
+  openPostModal("after");
 }
 
-async function _openModal(mode) {
+async function openPostModal(mode) {
   const zoneId = getZoneFromUrl();
 
   if (zoneId) {
@@ -258,17 +328,15 @@ async function _openModal(mode) {
     await populateZoneSelect();
   }
 
-  if (mode === "before") {
-    document.getElementById("modalTitle").textContent = "📍 手伝う前の様子";
-    document.getElementById("beforeBox").style.display = "flex";
-    document.getElementById("afterBox").style.display = "none";
-  } else {
-    document.getElementById("modalTitle").textContent = "📍 手伝った後の様子";
-    document.getElementById("beforeBox").style.display = "none";
-    document.getElementById("afterBox").style.display = "flex";
-  }
+  const title = mode === "before" ? "手伝う前の様子を記録する" : "手伝った後の様子を記録する";
+  document.getElementById("postModalTitle").textContent = title;
 
-  document.getElementById("modalOverlay").classList.remove("hidden");
+  // 写真プレビューリセット
+  document.getElementById("photoPreview").style.display = "none";
+  document.getElementById("photoIcon").style.display = "block";
+  document.getElementById("photoInput").value = "";
+
+  document.getElementById("postModalOverlay").classList.remove("hidden");
 }
 
 async function populateZoneSelect() {
@@ -279,39 +347,25 @@ async function populateZoneSelect() {
     zones.map(z => `<option value="${z.id}">${z.name}</option>`).join("");
 }
 
-function closeModal() {
-  document.getElementById("modalOverlay").classList.add("hidden");
-  // リセット
-  ["beforePhoto","afterPhoto"].forEach(id => document.getElementById(id).value = "");
-  ["beforeImg","afterImg"].forEach(id => {
-    const el = document.getElementById(id);
-    el.classList.add("hidden");
-    el.src = "";
-  });
-  document.getElementById("beforeBox").querySelector("span").style.display = "";
-  document.getElementById("afterBox").querySelector("span").style.display = "";
+function closePostModal() {
+  document.getElementById("postModalOverlay").classList.add("hidden");
+  document.getElementById("photoPreview").style.display = "none";
+  document.getElementById("photoIcon").style.display = "block";
+  document.getElementById("photoInput").value = "";
 }
 
-function previewPhoto(input, boxId, imgId) {
-  if (!input.files || !input.files[0]) return;
-  const img = document.getElementById(imgId);
+function previewPostPhoto(input) {
+  if (!input.files[0]) return;
+  const img = document.getElementById("photoPreview");
   img.src = URL.createObjectURL(input.files[0]);
-  img.classList.remove("hidden");
-  document.querySelector(`#${boxId} span`).style.display = "none";
-  document.querySelector(`#${boxId} .icon`).style.display = "none";
+  img.style.display = "block";
+  document.getElementById("photoIcon").style.display = "none";
 }
 
 // ── 投稿 ──────────────────────────────────
 async function submitPost() {
-  const name = getName();
-  const afterFile  = document.getElementById("afterPhoto").files[0];
-  const beforeFile = document.getElementById("beforePhoto").files[0];
-  const photoFile  = currentMode === "before" ? beforeFile : afterFile;
-
-  if (!photoFile) {
-    alert("写真を撮ってください");
-    return;
-  }
+  const photoFile = document.getElementById("photoInput").files[0];
+  if (!photoFile) { alert("写真を撮ってください"); return; }
 
   const btn = document.getElementById("postBtn");
   btn.disabled = true;
@@ -327,48 +381,49 @@ async function submitPost() {
     return;
   }
 
+  const name = getName();
   const pendingKey = `pending_${currentZoneId}`;
   const pendingId  = localStorage.getItem(pendingKey);
 
-  if (currentMode === "after" && pendingId) {
-    // 既存のin_progressレコードを完了させる
-    const form = new FormData();
-    form.append("after_photo", afterFile);
-    await fetch(`${API}/maintenance/${pendingId}/complete`, { method: "PATCH", body: form });
-    localStorage.removeItem(pendingKey);
-  } else {
-    // 新規レコード作成
-    const form = new FormData();
-    form.append("zone_id",     currentZoneId);
-    form.append("person_name", name);
-    form.append("content",     "");
-    if (currentMode === "before") {
-      form.append("before_photo", beforeFile);
+  try {
+    if (currentMode === "after" && pendingId) {
+      const form = new FormData();
+      form.append("after_photo", photoFile);
+      await fetch(`${API}/maintenance/${pendingId}/complete`, { method: "PATCH", body: form });
+      localStorage.removeItem(pendingKey);
     } else {
-      form.append("after_photo", afterFile);
+      const form = new FormData();
+      form.append("zone_id",     currentZoneId);
+      form.append("person_name", name);
+      form.append("content",     "");
+      if (currentMode === "before") {
+        form.append("before_photo", photoFile);
+      } else {
+        form.append("after_photo", photoFile);
+      }
+      const res  = await fetch(`${API}/maintenance`, { method: "POST", body: form });
+      const data = await res.json();
+      if (currentMode === "before" && data.id) {
+        localStorage.setItem(pendingKey, data.id);
+      }
     }
-    const res  = await fetch(`${API}/maintenance`, { method: "POST", body: form });
-    const data = await res.json();
 
-    // BEFOREのrecord_idをlocalStorageに保存
-    if (currentMode === "before" && data.id) {
-      localStorage.setItem(pendingKey, data.id);
+    if (currentMode === "after") {
+      fetch(`${API}/thanks/welcome`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ person_name: name })
+      }).catch(() => {});
     }
+
+    closePostModal();
+    await loadFeed();
+  } catch(e) {
+    alert("投稿に失敗しました。もう一度お試しください。");
   }
 
-  // AFTER完了時だけwelcomeありがとうを送る
-  if (currentMode === "after") {
-    fetch(`${API}/thanks/welcome`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ person_name: name })
-    }).catch(() => {});
-  }
-
-  closeModal();
   btn.disabled = false;
   btn.textContent = "記録する";
-  loadFeed();
 }
 
 // ── プッシュ通知 ──────────────────────────
@@ -415,15 +470,17 @@ async function init() {
   const zoneId = getZoneFromUrl();
 
   if (zoneId) {
-    const res = await fetch(`${API}/zones`);
-    const zones = await res.json();
-    const zone = zones.find(z => z.id === zoneId);
-    if (zone) {
-      currentZoneName = zone.name;
-      const header = document.getElementById("zoneHeader");
-      header.classList.remove("hidden");
-      header.innerHTML = `📍 <strong>${zone.name}</strong>`;
-    }
+    try {
+      const res = await fetch(`${API}/zones`);
+      const zones = await res.json();
+      const zone = zones.find(z => z.id === zoneId);
+      if (zone) {
+        currentZoneName = zone.name;
+        const banner = document.getElementById("zoneBanner");
+        banner.classList.remove("hidden");
+        document.getElementById("zoneNameText").textContent = zone.name;
+      }
+    } catch(e) {}
   }
 
   await loadFeed();
@@ -434,7 +491,7 @@ async function init() {
 window.addEventListener("DOMContentLoaded", () => {
   const user = getCurrentUser();
   if (user) {
-    document.getElementById("headerName").textContent = getName();
+    updateHeaderAvatar(user);
   }
   init();
 });

@@ -2,131 +2,225 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>arigato</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>ありがとう</title>
   <link rel="manifest" href="/manifest.json">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f8faf8; color: #222; }
 
+    :root {
+      --bg: #ffffff;
+      --surface: #f7f7f7;
+      --border: #ececec;
+      --text: #111;
+      --text-muted: #999;
+      --accent: #777;
+    }
+
+    body {
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
+      background: var(--bg); color: var(--text);
+      max-width: 390px; margin: 0 auto;
+    }
+
+    /* ヘッダー */
     header {
-      background: #4caf82; color: white;
-      padding: 16px 20px;
+      padding: 14px 18px 10px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo { font-size: 1.1rem; font-weight: 900; letter-spacing: 0.12em; color: var(--text); }
+    .header-right { display: flex; align-items: center; gap: 10px; }
+    .my-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      overflow: hidden; background: var(--surface);
+    }
+    .my-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* ゾーンバナー */
+    .zone-banner {
+      padding: 14px 18px 12px;
+      border-bottom: 1px solid var(--border);
       display: flex; align-items: center; justify-content: space-between;
     }
-    header h1 { font-size: 1.2rem; letter-spacing: 0.05em; }
-    header span { font-size: 0.85rem; opacity: 0.85; }
+    .zone-label { font-size: 0.68rem; color: var(--text-muted); letter-spacing: 0.08em; margin-bottom: 3px; }
+    .zone-name-text { font-size: 1.25rem; font-weight: 800; }
 
-    main { max-width: 600px; margin: 0 auto; padding: 16px; }
+    /* カード */
+    .card { border-bottom: 1px solid var(--border); }
+    .card-header {
+      padding: 12px 18px 8px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      overflow: hidden; background: var(--surface); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; color: var(--text-muted);
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .card-person { font-weight: 700; font-size: 0.9rem; }
+    .card-time { font-size: 0.7rem; color: var(--text-muted); margin-top: 1px; }
 
-    /* フィード */
-    .card {
-      background: white; border-radius: 12px;
-      margin-bottom: 12px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-      overflow: hidden;
+    /* 写真 */
+    .photo-wrap { position: relative; width: 100%; overflow: hidden; }
+    .card-photo {
+      width: 100%; display: block;
+      aspect-ratio: 4/3; object-fit: cover;
+      background: var(--surface);
     }
-    .card-meta {
-      padding: 12px 16px 8px;
-      display: flex; justify-content: space-between; align-items: center;
+    .photo-label {
+      position: absolute; top: 10px; right: 10px;
+      background: rgba(0,0,0,0.45); color: white;
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em;
+      padding: 3px 8px; border-radius: 10px;
     }
-    .person { font-weight: bold; color: #4caf82; }
-    .zone-tag {
-      background: #e8f5ee; color: #4caf82;
-      padding: 2px 10px; border-radius: 20px; font-size: 0.8rem;
-    }
-    .time { font-size: 0.75rem; color: #999; padding: 0 16px 8px; }
-    .card-photo { width: 100%; display: block; aspect-ratio: 4/3; object-fit: cover; background: #eee; }
-    .before-after { display: flex; }
-    .before-after img { width: 50%; aspect-ratio: 4/3; object-fit: cover; }
-    .before-after .label {
-      position: absolute; background: rgba(0,0,0,0.4); color: white;
-      font-size: 0.7rem; padding: 2px 6px; border-radius: 0 0 4px 0;
-    }
-    .photo-wrap { position: relative; flex: 1; }
 
-    .thanks-area { padding: 8px 16px 16px; }
-    .thanks-btn {
-      width: 100%; padding: 10px;
-      background: #f0faf5; border: 1px solid #4caf82;
-      border-radius: 8px; color: #4caf82; font-size: 0.95rem;
-      cursor: pointer;
+    /* ありがとうフロート */
+    .arigato-overlay {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 100%; pointer-events: none; overflow: hidden;
     }
-    .thanks-btn:active { background: #e0f5ea; }
-    .thanks-count { font-size: 0.8rem; color: #999; text-align: center; margin-top: 6px; }
+    .af {
+      position: absolute; bottom: 0;
+      display: flex; align-items: center; gap: 5px;
+      background: rgba(255,255,255,0.92);
+      border-radius: 20px; padding: 4px 9px 4px 5px;
+      animation: floatUp 5s linear infinite; opacity: 0;
+    }
+    .af-face {
+      width: 20px; height: 20px; border-radius: 50%;
+      overflow: hidden; flex-shrink: 0;
+    }
+    .af-face img { width: 100%; height: 100%; object-fit: cover; }
+    .af-text {
+      font-size: 0.7rem; font-weight: 700; color: #333;
+      letter-spacing: 0.06em;
+    }
+    @keyframes floatUp {
+      0%   { transform: translateY(0);       opacity: 1; }
+      65%  { transform: translateY(-95px);   opacity: 1; }
+      100% { transform: translateY(-150px);  opacity: 0; }
+    }
 
-    /* 投稿ボタン（FAB） */
+    /* ありがとうエリア */
+    .thanks-row {
+      padding: 10px 18px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .thanks-senders { display: flex; }
+    .sender-avatar {
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 2px solid var(--bg);
+      overflow: hidden; background: var(--surface);
+      margin-left: -7px;
+    }
+    .sender-avatar:first-child { margin-left: 0; }
+    .sender-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* ありがとうボタン */
+    .btn-thanks {
+      width: 62px; height: 62px; border-radius: 50%;
+      border: 1.5px solid var(--border);
+      background: var(--bg); padding: 0;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 0.68rem; font-weight: 900; color: #bbb;
+      letter-spacing: 0.02em;
+      transition: transform 0.15s, background 0.15s;
+      font-family: inherit;
+    }
+    .btn-thanks:active { transform: scale(0.95); }
+    .btn-thanks.sent { background: #e8e8e8; border-color: #888; color: #555; }
+    .btn-thanks.first {
+      border-style: dashed; border-color: var(--accent); color: var(--accent);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0.15); }
+      50%       { box-shadow: 0 0 0 8px rgba(0,0,0,0); }
+    }
+
+    /* FAB */
     .fab {
-      position: fixed; bottom: 24px; right: 24px;
-      width: 64px; height: 64px; border-radius: 50%;
-      background: #4caf82; color: white; border: none;
-      font-size: 1.6rem; cursor: pointer;
-      box-shadow: 0 4px 14px rgba(76,175,130,0.5);
+      position: fixed; bottom: 28px; right: 24px;
+      width: 72px; height: 72px; border-radius: 50%;
+      background: var(--text); color: white; border: none;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.82rem; font-weight: 900; font-family: inherit;
+      letter-spacing: 0.04em;
     }
+    .spacer { height: 90px; }
 
-    /* 投稿モーダル */
+    /* モード選択シート */
+    .mode-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: flex; align-items: flex-end; justify-content: center;
+      z-index: 110;
+    }
+    .mode-overlay.hidden { display: none; }
+    .mode-sheet {
+      background: white; width: 100%; max-width: 390px;
+      border-radius: 20px 20px 0 0; padding: 20px 20px 36px;
+    }
+    .mode-handle {
+      width: 36px; height: 4px; background: #e0e0e0;
+      border-radius: 2px; margin: 0 auto 20px;
+    }
+    .mode-btn {
+      width: 100%; padding: 18px 20px;
+      border: 1.5px solid var(--border); border-radius: 14px;
+      background: white; cursor: pointer; margin-bottom: 10px;
+      text-align: left; font-family: inherit;
+    }
+    .mode-btn:last-child { margin-bottom: 0; }
+    .mode-label { font-weight: 700; font-size: 0.95rem; }
+    .mode-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+    /* ありがとうモーダル */
     .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
       display: flex; align-items: flex-end; justify-content: center;
       z-index: 100;
     }
+    .modal-overlay.hidden { display: none; }
     .modal {
-      background: white; width: 100%; max-width: 600px;
-      border-radius: 20px 20px 0 0; padding: 24px;
+      background: white; width: 100%; max-width: 390px;
+      border-radius: 20px 20px 0 0; padding: 28px 24px 40px;
     }
-    .modal h2 { font-size: 1rem; margin-bottom: 16px; color: #444; }
-    .zone-name { color: #4caf82; font-weight: bold; }
-
-    .photo-row { display: flex; gap: 10px; margin-bottom: 16px; }
-    .photo-box {
-      flex: 1; border: 2px dashed #ccc; border-radius: 10px;
-      aspect-ratio: 4/3; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      cursor: pointer; overflow: hidden; position: relative;
+    .modal-person-photo {
+      width: 64px; height: 64px; border-radius: 50%;
+      overflow: hidden; margin: 0 auto 12px; background: var(--surface);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem; font-weight: 700; color: var(--text-muted);
     }
-    .photo-box input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-    .photo-box img { width: 100%; height: 100%; object-fit: cover; }
-    .photo-box span { font-size: 0.8rem; color: #aaa; margin-top: 4px; }
-    .photo-box .icon { font-size: 1.8rem; }
-
-    .post-btn {
-      width: 100%; padding: 14px; background: #4caf82;
-      color: white; border: none; border-radius: 10px;
-      font-size: 1rem; cursor: pointer; font-weight: bold;
+    .modal-person-photo img { width: 100%; height: 100%; object-fit: cover; }
+    .modal-hint { text-align: center; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 24px; }
+    .thanks-textarea {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid var(--border); border-radius: 10px;
+      font-size: 0.9rem; font-family: inherit; resize: none;
+      outline: none; color: var(--text); margin-bottom: 14px;
+      background: var(--surface);
     }
-    .post-btn:disabled { background: #ccc; }
-    .cancel-btn {
+    .thanks-textarea:focus { border-color: var(--accent); background: white; }
+    .btn-send {
+      width: 100%; padding: 14px; background: var(--text);
+      color: white; border: none; border-radius: 12px;
+      font-size: 0.95rem; font-weight: 700; cursor: pointer;
+      margin-bottom: 10px; font-family: inherit;
+    }
+    .btn-skip {
       width: 100%; padding: 10px; background: none; border: none;
-      color: #999; font-size: 0.9rem; cursor: pointer; margin-top: 8px;
+      color: var(--text-muted); font-size: 0.85rem; cursor: pointer;
+      font-family: inherit;
     }
 
-    /* 名前登録 */
-    .name-screen {
-      position: fixed; inset: 0; background: white;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center; padding: 40px;
-    }
-    .name-screen .logo { font-size: 3rem; margin-bottom: 12px; }
-    .name-screen h2 { margin-bottom: 6px; }
-    .name-screen p { color: #888; margin-bottom: 28px; font-size: 0.9rem; }
-    .name-screen input {
-      width: 100%; padding: 12px; border: 1px solid #ddd;
-      border-radius: 10px; font-size: 1rem; margin-bottom: 12px;
-    }
-    .name-screen button {
-      width: 100%; padding: 14px; background: #4caf82;
-      color: white; border: none; border-radius: 10px;
-      font-size: 1rem; cursor: pointer; font-weight: bold;
-    }
-
-    .zone-header {
-      background: white; padding: 12px 20px; margin-bottom: 4px;
-      border-bottom: 1px solid #eee; font-size: 0.9rem; color: #666;
-    }
-    .zone-header strong { color: #4caf82; }
+    /* 空フィード */
+    .empty { text-align: center; color: #bbb; padding: 60px 0; font-size: 0.9rem; }
 
     .hidden { display: none; }
-    .empty { text-align: center; color: #bbb; padding: 48px 0; }
 
     /* 認証画面 */
     .auth-screen {
@@ -138,43 +232,41 @@
       width: 100%; max-width: 390px; padding: 40px 28px;
       display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: center;
     }
-    .auth-logo { font-size: 1.4rem; font-weight: 900; letter-spacing: 0.1em; margin-bottom: 40px; }
+    .auth-logo { font-size: 1.4rem; font-weight: 900; letter-spacing: 0.12em; margin-bottom: 40px; }
     .auth-title { font-size: 1.05rem; font-weight: 800; margin-bottom: 8px; text-align: center; }
     .auth-sub { font-size: 0.8rem; color: #999; margin-bottom: 32px; text-align: center; }
     .auth-btn {
       width: 100%; padding: 16px; border-radius: 14px;
-      border: 1.5px solid #eee; background: white;
+      border: 1.5px solid var(--border); background: white;
       font-size: 0.95rem; font-weight: 700; font-family: inherit;
       cursor: pointer; margin-bottom: 12px; text-align: left;
     }
-    .auth-btn.primary { background: #111; color: white; border-color: #111; }
+    .auth-btn.primary { background: var(--text); color: white; border-color: var(--text); }
     .auth-btn-sub { font-size: 0.75rem; font-weight: 400; margin-top: 3px; opacity: 0.6; }
-    .auth-btn:disabled { background: #f5f5f5; color: #bbb; border-color: #eee; cursor: default; }
+    .auth-btn:disabled { background: var(--surface); color: var(--text-muted); border-color: var(--border); cursor: default; }
     .auth-back {
       width: 100%; background: none; border: none; font-size: 0.85rem;
       color: #999; cursor: pointer; margin-bottom: 28px; padding: 0;
       font-family: inherit; text-align: left;
     }
-    .auth-name-row {
-      display: flex; gap: 10px; width: 100%; margin-bottom: 14px;
-    }
+    .auth-name-row { display: flex; gap: 10px; width: 100%; margin-bottom: 14px; }
     .auth-input {
       flex: 1 1 0; min-width: 0; padding: 14px 16px;
-      border: 1.5px solid #eee; border-radius: 12px;
-      font-size: 0.95rem; font-family: inherit; outline: none; background: #f7f7f7;
+      border: 1.5px solid var(--border); border-radius: 12px;
+      font-size: 0.95rem; font-family: inherit; outline: none;
+      color: var(--text); background: var(--surface);
     }
-    .auth-input:focus { border-color: #111; background: white; }
+    .auth-input:focus { border-color: var(--accent); background: white; }
     .auth-selfie-wrap { margin: 20px 0 28px; width: 100%; }
     .auth-selfie {
       width: 90px; height: 90px; border-radius: 50%;
-      border: 1.5px solid #eee; background: #f7f7f7;
+      border: 1.5px solid var(--border); background: var(--surface);
       margin: 0 auto; display: flex; align-items: center; justify-content: center;
       cursor: pointer; overflow: hidden; transition: background 0.15s;
     }
     .auth-selfie:hover { background: #e8e8e8; }
     .auth-selfie img { width: 100%; height: 100%; object-fit: cover; display: none; }
     .auth-selfie-label { text-align: center; font-size: 0.72rem; color: #999; margin-top: 8px; }
-    .auth-selfie-icon { width: 28px; height: 28px; stroke: #ccc; }
     .auth-user-grid {
       display: flex; flex-wrap: wrap; gap: 10px;
       width: 100%; overflow-y: auto; max-height: 55vh; align-content: flex-start;
@@ -184,44 +276,14 @@
       width: 76px; cursor: pointer; padding: 8px; border-radius: 12px;
       border: 2px solid transparent; transition: all 0.15s;
     }
-    .auth-user-card:hover { background: #f5f5f5; }
-    .auth-user-card.selected { border-color: #111; background: #f5f5f5; }
+    .auth-user-card:hover { background: var(--surface); }
+    .auth-user-card.selected { border-color: var(--text); background: var(--surface); }
     .auth-user-photo {
       width: 56px; height: 56px; border-radius: 50%;
       overflow: hidden; background: #eee; margin-bottom: 6px;
     }
     .auth-user-photo img { width: 100%; height: 100%; object-fit: cover; }
-    .auth-user-name { font-size: 0.68rem; font-weight: 700; text-align: center; line-height: 1.4; color: #222; }
-
-    /* モード選択シート */
-    .mode-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
-      display: flex; align-items: flex-end; justify-content: center;
-      z-index: 110;
-    }
-    .mode-sheet {
-      background: white; width: 100%; max-width: 600px;
-      border-radius: 20px 20px 0 0; padding: 20px 20px 36px;
-    }
-    .mode-handle {
-      width: 36px; height: 4px; background: #e0e0e0;
-      border-radius: 2px; margin: 0 auto 20px;
-    }
-    .mode-btn {
-      width: 100%; padding: 16px 20px;
-      border: 1.5px solid #eee; border-radius: 12px;
-      background: white; cursor: pointer; margin-bottom: 10px;
-      display: flex; align-items: center; gap: 14px; text-align: left;
-    }
-    .mode-btn:last-child { margin-bottom: 0; }
-    .mode-icon {
-      width: 40px; height: 40px; border-radius: 50%;
-      background: #f5f5f5; flex-shrink: 0;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.2rem;
-    }
-    .mode-label { font-weight: bold; font-size: 0.95rem; }
-    .mode-sub { font-size: 0.75rem; color: #999; margin-top: 2px; }
+    .auth-user-name { font-size: 0.68rem; font-weight: 700; text-align: center; line-height: 1.4; }
   </style>
 </head>
 <body>
@@ -256,7 +318,7 @@
     <div class="auth-selfie-wrap">
       <div class="auth-selfie" id="authSelfie" onclick="document.getElementById('authSelfieFile').click()">
         <img id="authSelfieImg" src="" alt="">
-        <svg class="auth-selfie-icon" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" id="authSelfieIcon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:28px;height:28px" id="authSelfieIcon">
           <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
           <circle cx="12" cy="13" r="4"/>
         </svg>
@@ -280,63 +342,75 @@
 
 <!-- ヘッダー -->
 <header>
-  <h1>🌱 arigato</h1>
-  <span id="headerName"></span>
+  <div class="logo">ありがとう</div>
+  <div class="header-right">
+    <div class="my-avatar" id="myAvatar">
+      <img src="" alt="" id="myAvatarImg" style="display:none">
+    </div>
+  </div>
 </header>
 
-<!-- ゾーンヘッダー（QRアクセス時） -->
-<div class="zone-header hidden" id="zoneHeader"></div>
+<!-- ゾーンバナー -->
+<div class="zone-banner hidden" id="zoneBanner">
+  <div>
+    <div class="zone-label">ZONE</div>
+    <div class="zone-name-text" id="zoneNameText"></div>
+  </div>
+</div>
 
 <!-- フィード -->
 <main id="feedList"></main>
 
-<!-- 投稿ボタン -->
-<button class="fab" onclick="openModeSelect()">📷</button>
+<div class="spacer"></div>
+
+<!-- FAB -->
+<button class="fab" onclick="openModeSelect()">手伝う</button>
 
 <!-- モード選択シート -->
 <div class="mode-overlay hidden" id="modeOverlay" onclick="closeModeSelect(event)">
   <div class="mode-sheet">
     <div class="mode-handle"></div>
     <button class="mode-btn" onclick="startBefore()">
-      <div class="mode-icon">🌱</div>
-      <div>
-        <div class="mode-label">この場所を手伝う</div>
-        <div class="mode-sub">手伝う前の様子を記録してから</div>
-      </div>
+      <div class="mode-label">手伝う前</div>
+      <div class="mode-sub">始める前の様子を記録する</div>
     </button>
     <button class="mode-btn" onclick="startAfter()">
-      <div class="mode-icon">✅</div>
-      <div>
-        <div class="mode-label">手伝いました</div>
-        <div class="mode-sub">手伝った後の様子を記録する</div>
-      </div>
+      <div class="mode-label">手伝った後</div>
+      <div class="mode-sub">終わった後の様子を記録する</div>
     </button>
   </div>
 </div>
 
-<!-- 投稿モーダル -->
+<!-- ありがとうモーダル -->
 <div class="modal-overlay hidden" id="modalOverlay">
   <div class="modal">
-    <h2 id="modalTitle">📍 を良くしました</h2>
-    <div class="form-group" id="zoneSelectWrap" style="margin-bottom:14px;display:none">
-      <select id="modalZoneSelect" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:0.95rem"></select>
+    <div class="modal-person-photo" id="modalPersonPhoto"></div>
+    <div class="modal-hint" id="modalHint">この人にありがとうを届ける</div>
+    <textarea class="thanks-textarea" id="thanksText" rows="3" placeholder="ひとことメッセージ（任意）"></textarea>
+    <button class="btn-send" onclick="sendThanks()">送る</button>
+    <button class="btn-skip" onclick="closeModal()">キャンセル</button>
+  </div>
+</div>
+
+<!-- 写真投稿モーダル -->
+<div class="modal-overlay hidden" id="postModalOverlay">
+  <div class="modal">
+    <div style="font-size:0.9rem;font-weight:700;margin-bottom:16px" id="postModalTitle">手伝う前の様子を記録する</div>
+    <div id="zoneSelectWrap" style="display:none;margin-bottom:14px">
+      <select id="modalZoneSelect" style="width:100%;padding:12px;border:1.5px solid #eee;border-radius:10px;font-size:0.95rem;font-family:inherit"></select>
     </div>
-    <div class="photo-row">
-      <div class="photo-box" id="beforeBox">
-        <input type="file" accept="image/*" capture="environment" id="beforePhoto" onchange="previewPhoto(this,'beforeBox','beforeImg')">
-        <div class="icon">📷</div>
-        <span>Before（任意）</span>
-        <img id="beforeImg" class="hidden">
-      </div>
-      <div class="photo-box" id="afterBox">
-        <input type="file" accept="image/*" capture="environment" id="afterPhoto" onchange="previewPhoto(this,'afterBox','afterImg')">
-        <div class="icon">✨</div>
-        <span>After</span>
-        <img id="afterImg" class="hidden">
+    <div style="margin-bottom:16px">
+      <div id="photoBox" style="border:1.5px solid #eee;border-radius:12px;aspect-ratio:4/3;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;position:relative;background:#f7f7f7" onclick="document.getElementById('photoInput').click()">
+        <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none" onchange="previewPostPhoto(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#ccc" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="width:36px;height:36px" id="photoIcon">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+        <img id="photoPreview" style="display:none;width:100%;height:100%;object-fit:cover;position:absolute;inset:0">
       </div>
     </div>
-    <button class="post-btn" id="postBtn" onclick="submitPost()">記録する</button>
-    <button class="cancel-btn" onclick="closeModal()">キャンセル</button>
+    <button class="btn-send" id="postBtn" onclick="submitPost()">記録する</button>
+    <button class="btn-skip" onclick="closePostModal()">キャンセル</button>
   </div>
 </div>
 
