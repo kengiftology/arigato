@@ -529,7 +529,10 @@ async function init() {
   }
 
   await loadFeed();
-  await registerPush();
+  // ログイン済みの場合のみプッシュ通知を購読
+  if (getCurrentUser()) {
+    await registerPush();
+  }
 }
 
 // ── 起動 ──────────────────────────────────
