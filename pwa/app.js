@@ -206,11 +206,12 @@ function cardHtml(r) {
       </div>
       ${photoSrc ? `
       <div class="photo-wrap" id="photowrap-${r.id}"
-        data-before="${beforeUrl}" data-after="${afterUrl}" data-showing="after"
-        onclick="${hasBoth ? `togglePhoto('${r.id}')` : ''}">
+        data-before="${beforeUrl}" data-after="${afterUrl}"
+        data-showing="${r.after_photo ? 'after' : 'before'}"
+        data-hasboth="${hasBoth ? '1' : '0'}">
         <img class="card-photo" id="photo-${r.id}" src="${photoSrc}" alt="">
         <div class="photo-label" id="label-${r.id}">${initLabel}</div>
-        ${hasBoth ? `<div class="photo-tap-hint">タップで切り替え</div>` : ""}
+        ${hasBoth ? '<div class="photo-tap-hint">タップで切り替え</div>' : ""}
         <div class="arigato-overlay" id="overlay-${r.id}"></div>
       </div>` : ""}
       <div class="thanks-row">
@@ -223,14 +224,15 @@ function cardHtml(r) {
   `;
 }
 
-// ── 写真トグル ────────────────────────────
-function togglePhoto(id) {
-  const wrap  = document.getElementById(`photowrap-${id}`);
+// ── 写真トグル（イベント委譲） ────────────────
+document.addEventListener("click", e => {
+  const wrap = e.target.closest(".photo-wrap");
+  if (!wrap || wrap.dataset.hasboth !== "1") return;
+  const id = wrap.id.replace("photowrap-", "");
   const img   = document.getElementById(`photo-${id}`);
   const label = document.getElementById(`label-${id}`);
-  if (!wrap) return;
-  const showing = wrap.dataset.showing;
-  if (showing === "after") {
+  if (!img || !label) return;
+  if (wrap.dataset.showing === "after") {
     img.src = wrap.dataset.before;
     label.textContent = "BEFORE";
     wrap.dataset.showing = "before";
@@ -239,7 +241,7 @@ function togglePhoto(id) {
     label.textContent = "AFTER";
     wrap.dataset.showing = "after";
   }
-}
+});
 
 // ── ありがとうモーダル ─────────────────────
 let pendingThanksId = null;
@@ -281,11 +283,15 @@ async function sendThanks() {
   // フロートアニメーション
   triggerFloat(id);
 
-  await fetch(`${API}/thanks/${id}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sender_name: getName() || "", message: msg })
-  });
+  try {
+    await fetch(`${API}/thanks/${id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sender_name: getName() || "" })
+    });
+  } catch(e) {
+    console.error("sendThanks error:", e);
+  }
 }
 
 function closeModal() {
