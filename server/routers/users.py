@@ -43,3 +43,20 @@ def list_users():
     db = get_db()
     docs = db.collection("users").order_by("created_at").stream()
     return [{"id": d.id, **d.to_dict()} for d in docs]
+
+
+@router.patch("/{user_id}/photo")
+async def update_user_photo(
+    user_id: str,
+    photo: UploadFile = File(...),
+):
+    db = get_db()
+    ref = db.collection("users").document(user_id)
+    if not ref.get().exists:
+        return {"error": "not found"}
+    try:
+        photo_url = upload_photo(await photo.read(), photo.filename)
+    except Exception as e:
+        return {"error": str(e)}
+    ref.update({"photo_url": photo_url})
+    return {"ok": True, "photo_url": photo_url}
