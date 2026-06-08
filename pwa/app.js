@@ -170,10 +170,13 @@ async function loadFeed() {
 
 function cardHtml(r) {
   const initial = r.person_name ? r.person_name[0] : "？";
+  const hasBoth = r.before_photo && r.after_photo;
   const photoSrc = r.after_photo || r.before_photo || "";
-  const label = r.after_photo ? "AFTER" : "BEFORE";
+  const initLabel = r.after_photo ? "AFTER" : "BEFORE";
   const thanksLabel = "ありがとう";
   const btnClass = r.thanks_count === 0 ? "btn-thanks first" : "btn-thanks";
+  const beforeUrl = r.before_photo || "";
+  const afterUrl  = r.after_photo  || "";
 
   return `
     <div class="card" id="card-${r.id}">
@@ -187,9 +190,12 @@ function cardHtml(r) {
         </div>
       </div>
       ${photoSrc ? `
-      <div class="photo-wrap" id="photowrap-${r.id}">
-        <img class="card-photo" src="${photoSrc}" alt="">
-        <div class="photo-label">${label}</div>
+      <div class="photo-wrap" id="photowrap-${r.id}"
+        data-before="${beforeUrl}" data-after="${afterUrl}" data-showing="after"
+        onclick="${hasBoth ? `togglePhoto('${r.id}')` : ''}">
+        <img class="card-photo" id="photo-${r.id}" src="${photoSrc}" alt="">
+        <div class="photo-label" id="label-${r.id}">${initLabel}</div>
+        ${hasBoth ? `<div class="photo-tap-hint">タップで切り替え</div>` : ""}
         <div class="arigato-overlay" id="overlay-${r.id}"></div>
       </div>` : ""}
       <div class="thanks-row">
@@ -200,6 +206,24 @@ function cardHtml(r) {
       </div>
     </div>
   `;
+}
+
+// ── 写真トグル ────────────────────────────
+function togglePhoto(id) {
+  const wrap  = document.getElementById(`photowrap-${id}`);
+  const img   = document.getElementById(`photo-${id}`);
+  const label = document.getElementById(`label-${id}`);
+  if (!wrap) return;
+  const showing = wrap.dataset.showing;
+  if (showing === "after") {
+    img.src = wrap.dataset.before;
+    label.textContent = "BEFORE";
+    wrap.dataset.showing = "before";
+  } else {
+    img.src = wrap.dataset.after;
+    label.textContent = "AFTER";
+    wrap.dataset.showing = "after";
+  }
 }
 
 // ── ありがとうモーダル ─────────────────────
