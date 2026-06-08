@@ -148,11 +148,23 @@ function getZoneFromUrl() {
 }
 
 // ── フィード ──────────────────────────────
+let userPhotoMap = {}; // person_name → photo_url
+
 async function loadFeed() {
   const zoneId = getZoneFromUrl();
-  const url = zoneId ? `${API}/maintenance/zone/${zoneId}` : `${API}/maintenance`;
-  const res = await fetch(url);
-  const records = await res.json();
+  const [recordsRes, usersRes] = await Promise.all([
+    fetch(zoneId ? `${API}/maintenance/zone/${zoneId}` : `${API}/maintenance`),
+    fetch(`${API}/users`)
+  ]);
+  const records = await recordsRes.json();
+  const users   = await usersRes.json();
+
+  // 名前 → 写真URLのマップを作成
+  userPhotoMap = {};
+  users.forEach(u => {
+    const name = `${u.last_name} ${u.first_name}`;
+    if (u.photo_url) userPhotoMap[name] = u.photo_url;
+  });
 
   // 自動ありがとう（フィードを見た = その場所を使った）
   records.slice(0, 5).forEach(r =>
@@ -169,7 +181,8 @@ async function loadFeed() {
 }
 
 function cardHtml(r) {
-  const initial = r.person_name ? r.person_name[0] : "？";
+  const initial  = r.person_name ? r.person_name[0] : "？";
+  const photoUrl = userPhotoMap[r.person_name] || null;
   const hasBoth = r.before_photo && r.after_photo;
   const photoSrc = r.after_photo || r.before_photo || "";
   const initLabel = r.after_photo ? "AFTER" : "BEFORE";
@@ -182,7 +195,9 @@ function cardHtml(r) {
     <div class="card" id="card-${r.id}">
       <div class="card-header">
         <div class="avatar">
-          <span>${initial}</span>
+          ${photoUrl
+            ? `<img src="${photoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+            : `<span>${initial}</span>`}
         </div>
         <div>
           <div class="card-person">${r.person_name}</div>
