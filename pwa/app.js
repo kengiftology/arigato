@@ -188,6 +188,9 @@ async function loadFeed() {
 
   list.innerHTML = records.map(r => cardHtml(r)).join("");
 
+  // ゾーンページ：貢献者アバターをバナーに表示
+  if (zoneId) renderContributors(records);
+
   // もらったありがとうを表示（フロート + 送り主アバター + 送信済み状態）
   const me = getName();
   records.forEach(r => {
@@ -199,6 +202,19 @@ async function loadFeed() {
       if (btn) { btn.classList.remove("first"); btn.classList.add("sent"); }
     }
   });
+}
+
+// ゾーンを手伝った人たちのアバター（タップで蓄積シート）
+function renderContributors(records) {
+  const div = document.getElementById("zoneContribs");
+  if (!div) return;
+  const names = [...new Set(records.map(r => r.person_name).filter(Boolean))].slice(0, 5);
+  div.innerHTML = names.map(n => {
+    const p = userPhotoMap[n];
+    return `<div class="c-avatar" onclick="openPersonSheet('${encodeURIComponent(n)}')">${
+      p ? `<img src="${p}" alt="">` : n[0]
+    }</div>`;
+  }).join("");
 }
 
 // 送り主のアバターを並べる（手動ありがとうのみ）
