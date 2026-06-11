@@ -351,6 +351,7 @@ async function sendThanks() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sender_name: getName() || "", message: msg })
     });
+    showToast("届けました 🙏", "");
   } catch(e) {
     console.error("sendThanks error:", e);
   }
@@ -518,6 +519,9 @@ async function submitPost() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ person_name: name })
       }).catch(() => {});
+      showToast("この場所を手伝ってくれてありがとう 🌱", "あなたのお手伝いが記録されました");
+    } else {
+      showToast("頑張って！ 🌱", "始めようとしてくれてありがとう");
     }
 
     closePostModal();
@@ -552,6 +556,27 @@ async function registerPush() {
       body: JSON.stringify(sub)
     });
   } catch (e) {}
+}
+
+// ── アプリ内トースト通知 ───────────────────
+let toastTimer = null;
+function showToast(msg, sub = "") {
+  const toast = document.getElementById("toast");
+  if (!toast) return;
+  document.getElementById("toastMsg").textContent = msg;
+  document.getElementById("toastSub").textContent = sub;
+  toast.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove("show"), 3200);
+}
+
+// Service Workerからのプッシュをフォアグラウンドでも表示
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", e => {
+    if (e.data && e.data.type === "push") {
+      showToast(e.data.title || "ありがとう", e.data.body || "");
+    }
+  });
 }
 
 // ── ユーティリティ ────────────────────────

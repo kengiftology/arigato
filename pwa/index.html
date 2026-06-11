@@ -226,6 +226,29 @@
       font-family: inherit;
     }
 
+    /* アプリ内トースト通知 */
+    .toast {
+      position: fixed; bottom: 100px; left: 50%;
+      transform: translateX(-50%) translateY(160px);
+      background: #1a1a1a; color: white;
+      padding: 12px 18px; border-radius: 14px;
+      font-size: 0.82rem; line-height: 1.5;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+      z-index: 300; max-width: 320px; width: 90%;
+      transition: transform 0.35s cubic-bezier(0.175,0.885,0.32,1.275);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--accent); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+    }
+    .toast-app { font-size: 0.65rem; color: #888; margin-bottom: 2px; }
+    .toast-msg { font-weight: 600; }
+    .toast-sub { font-size: 0.72rem; color: #aaa; }
+
     /* 空フィード */
     .empty { text-align: center; color: #bbb; padding: 60px 0; font-size: 0.9rem; }
 
@@ -420,6 +443,16 @@
     </div>
     <button class="btn-send" id="postBtn" onclick="submitPost()">記録する</button>
     <button class="btn-skip" onclick="closePostModal()">キャンセル</button>
+  </div>
+</div>
+
+<!-- アプリ内トースト通知 -->
+<div class="toast" id="toast">
+  <div class="toast-icon">🌱</div>
+  <div>
+    <div class="toast-app">ありがとう</div>
+    <div class="toast-msg" id="toastMsg"></div>
+    <div class="toast-sub" id="toastSub"></div>
   </div>
 </div>
 
