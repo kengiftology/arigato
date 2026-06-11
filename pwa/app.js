@@ -384,9 +384,12 @@ function _openThanksModal(id, encodedName) {
 
   const name = decodeURIComponent(encodedName || "");
   const initial = name ? name[0] : "？";
+  const photo = userPhotoMap[name];
 
   const photoEl = document.getElementById("modalPersonPhoto");
-  photoEl.innerHTML = `<span style="font-size:1.4rem;font-weight:700;color:#999">${initial}</span>`;
+  photoEl.innerHTML = photo
+    ? `<img src="${photo}" alt="" style="width:100%;height:100%;object-fit:cover">`
+    : `<span style="font-size:1.4rem;font-weight:700;color:#999">${initial}</span>`;
 
   document.getElementById("modalHint").textContent = name ? `${name} さんにありがとうを届ける` : "ありがとうを届ける";
   document.getElementById("thanksText").value = "";
