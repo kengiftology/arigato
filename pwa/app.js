@@ -152,18 +152,27 @@ let userPhotoMap = {}; // person_name → photo_url
 
 async function loadFeed() {
   const zoneId = getZoneFromUrl();
-  const [recordsRes, usersRes] = await Promise.all([
+  const [recordsRes, usersRes, thanksRes] = await Promise.all([
     fetch(zoneId ? `${API}/maintenance/zone/${zoneId}` : `${API}/maintenance`),
-    fetch(`${API}/users`)
+    fetch(`${API}/users`),
+    fetch(`${API}/admin/thanks`)
   ]);
-  const records = await recordsRes.json();
-  const users   = await usersRes.json();
+  const records   = await recordsRes.json();
+  const users     = await usersRes.json();
+  const allThanks = await thanksRes.json();
 
   // 名前 → 写真URLのマップを作成
   userPhotoMap = {};
   users.forEach(u => {
     const name = `${u.last_name} ${u.first_name}`;
     if (u.photo_url) userPhotoMap[name] = u.photo_url;
+  });
+
+  // 記録ID → ありがとうリストのマップ
+  const thanksByRecord = {};
+  allThanks.forEach(t => {
+    if (!thanksByRecord[t.maintenance_id]) thanksByRecord[t.maintenance_id] = [];
+    thanksByRecord[t.maintenance_id].push(t);
   });
 
   // 自動ありがとう（フィードを見た = その場所を使った）
@@ -178,6 +187,58 @@ async function loadFeed() {
   }
 
   list.innerHTML = records.map(r => cardHtml(r)).join("");
+
+  // もらったありがとうを表示（フロート + 送り主アバター + 送信済み状態）
+  const me = getName();
+  records.forEach(r => {
+    const tList = thanksByRecord[r.id] || [];
+    renderSenders(r.id, tList);
+    renderFloats(r.id, tList);
+    if (me && tList.some(t => t.sender_name === me)) {
+      const btn = document.getElementById(`btn-${r.id}`);
+      if (btn) { btn.classList.remove("first"); btn.classList.add("sent"); }
+    }
+  });
+}
+
+// 送り主のアバターを並べる（手動ありがとうのみ）
+function renderSenders(id, tList) {
+  const div = document.getElementById(`senders-${id}`);
+  if (!div) return;
+  const names = [...new Set(
+    tList.filter(t => t.source === "user" && t.sender_name).map(t => t.sender_name)
+  )].slice(0, 6);
+  div.innerHTML = names.map(n => {
+    const p = userPhotoMap[n];
+    return `<div class="sender-avatar">${
+      p ? `<img src="${p}" alt="">`
+        : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;color:#999">${n[0]}</div>`
+    }</div>`;
+  }).join("");
+}
+
+// もらったありがとうを写真上に常時浮かせる
+function renderFloats(id, tList) {
+  const overlay = document.getElementById(`overlay-${id}`);
+  if (!overlay || tList.length === 0) return;
+  const shown = tList.slice(0, 8); // 多すぎると邪魔なので最大8件
+  const interval = 5 / shown.length;
+  shown.forEach((t, i) => {
+    const pill = document.createElement("div");
+    pill.className = "af";
+    pill.style.left = `${10 + Math.random() * 58}%`;
+    pill.style.animationDelay = `${-(interval * i).toFixed(2)}s`;
+    const isUser = t.source === "user" && t.sender_name;
+    const photo = isUser ? userPhotoMap[t.sender_name] : null;
+    const face = photo
+      ? `<img src="${photo}" alt="">`
+      : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;color:#999">${isUser ? t.sender_name[0] : "🌱"}</div>`;
+    pill.innerHTML = `
+      <div class="af-face">${face}</div>
+      <span class="af-text">ありがとう</span>
+    `;
+    overlay.appendChild(pill);
+  });
 }
 
 function cardHtml(r) {
@@ -300,6 +361,7 @@ function closeModal() {
 }
 
 // ── ありがとうフロートアニメーション ─────────
+// 自分が送った瞬間に1つ追加（そのまま常時ループに加わる）
 function triggerFloat(recordId) {
   const overlay = document.getElementById(`overlay-${recordId}`);
   if (!overlay) return;
@@ -307,22 +369,17 @@ function triggerFloat(recordId) {
   const photoUrl = user ? user.photo_url : null;
   const initial = user ? user.last_name[0] : "？";
 
-  for (let i = 0; i < 3; i++) {
-    setTimeout(() => {
-      const pill = document.createElement("div");
-      pill.className = "af";
-      pill.style.left = `${15 + Math.random() * 55}%`;
-      pill.style.animationDelay = "0s";
-      pill.innerHTML = `
-        <div class="af-face">
-          ${photoUrl ? `<img src="${photoUrl}" alt="">` : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700">${initial}</div>`}
-        </div>
-        <span class="af-text">ありがとう</span>
-      `;
-      overlay.appendChild(pill);
-      setTimeout(() => pill.remove(), 5100);
-    }, i * 600);
-  }
+  const pill = document.createElement("div");
+  pill.className = "af";
+  pill.style.left = `${15 + Math.random() * 55}%`;
+  pill.style.animationDelay = "0s";
+  pill.innerHTML = `
+    <div class="af-face">
+      ${photoUrl ? `<img src="${photoUrl}" alt="">` : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;color:#999">${initial}</div>`}
+    </div>
+    <span class="af-text">ありがとう</span>
+  `;
+  overlay.appendChild(pill);
 }
 
 // ── モード選択 ────────────────────────────
