@@ -226,6 +226,51 @@
       font-family: inherit;
     }
 
+    /* 人の蓄積シート */
+    .person-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+      display: flex; align-items: flex-end; justify-content: center;
+    }
+    .person-overlay.open { opacity: 1; pointer-events: all; }
+    .person-sheet {
+      background: white; width: 100%; max-width: 390px;
+      border-radius: 20px 20px 0 0;
+      max-height: 80vh; overflow-y: auto;
+      transform: translateY(30px); transition: transform 0.25s;
+    }
+    .person-overlay.open .person-sheet { transform: translateY(0); }
+    .person-sheet-header {
+      padding: 20px 20px 14px; position: sticky; top: 0;
+      background: white; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px;
+    }
+    .person-sheet-avatar {
+      width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
+      background: var(--surface); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; color: var(--text-muted);
+    }
+    .person-sheet-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .person-sheet-name { font-weight: 800; font-size: 1.05rem; }
+    .person-sheet-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+    .person-photo-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+      padding: 2px;
+    }
+    .person-photo-item {
+      aspect-ratio: 1; overflow: hidden; position: relative;
+      background: var(--surface);
+    }
+    .person-photo-item img { width: 100%; height: 100%; object-fit: cover; }
+    .person-photo-date {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.5));
+      color: white; font-size: 0.58rem; padding: 10px 4px 4px;
+    }
+    .person-empty { padding: 32px 20px; text-align: center; color: #bbb; font-size: 0.85rem; }
+    .card-header { cursor: pointer; }
+
     /* アプリ内トースト通知 */
     .toast {
       position: fixed; bottom: 100px; left: 50%;
@@ -443,6 +488,20 @@
     </div>
     <button class="btn-send" id="postBtn" onclick="submitPost()">記録する</button>
     <button class="btn-skip" onclick="closePostModal()">キャンセル</button>
+  </div>
+</div>
+
+<!-- 人の蓄積シート -->
+<div class="person-overlay" id="personOverlay" onclick="closePersonSheet(event)">
+  <div class="person-sheet">
+    <div class="person-sheet-header">
+      <div class="person-sheet-avatar" id="personAvatar"></div>
+      <div>
+        <div class="person-sheet-name" id="personName"></div>
+        <div class="person-sheet-sub" id="personSub"></div>
+      </div>
+    </div>
+    <div class="person-photo-grid" id="personGrid"></div>
   </div>
 </div>
 

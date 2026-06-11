@@ -255,7 +255,7 @@ function cardHtml(r) {
 
   return `
     <div class="card" id="card-${r.id}">
-      <div class="card-header">
+      <div class="card-header" onclick="openPersonSheet('${encodeURIComponent(r.person_name || "")}')">
         <div class="avatar">
           ${photoUrl
             ? `<img src="${photoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
@@ -284,6 +284,55 @@ function cardHtml(r) {
       </div>
     </div>
   `;
+}
+
+// ── 人の蓄積シート ─────────────────────────
+async function openPersonSheet(encodedName) {
+  const name = decodeURIComponent(encodedName || "");
+  if (!name) return;
+
+  const avatarEl = document.getElementById("personAvatar");
+  const photo = userPhotoMap[name];
+  avatarEl.innerHTML = photo
+    ? `<img src="${photo}" alt="">`
+    : `<span>${name[0]}</span>`;
+  document.getElementById("personName").textContent = name;
+  document.getElementById("personSub").textContent = "読み込み中…";
+  document.getElementById("personGrid").innerHTML = "";
+  document.getElementById("personOverlay").classList.add("open");
+
+  try {
+    const res = await fetch(`${API}/maintenance`);
+    const records = (await res.json())
+      .filter(r => r.person_name === name)
+      .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || "")); // 古い順 = 積み重ね
+
+    document.getElementById("personSub").textContent = `${records.length}回のお手伝い`;
+
+    if (records.length === 0) {
+      document.getElementById("personGrid").innerHTML = "";
+      return;
+    }
+
+    document.getElementById("personGrid").innerHTML = records.map(r => {
+      const src = r.after_photo || r.before_photo;
+      const d = new Date(r.created_at);
+      const label = `${d.getMonth() + 1}月${d.getDate()}日 · ${r.zone_name || ""}`;
+      return `
+        <div class="person-photo-item">
+          ${src ? `<img src="${src}" alt="">` : ""}
+          <div class="person-photo-date">${label}</div>
+        </div>`;
+    }).join("");
+  } catch(e) {
+    document.getElementById("personSub").textContent = "読み込みに失敗しました";
+  }
+}
+
+function closePersonSheet(e) {
+  if (e.target === document.getElementById("personOverlay")) {
+    document.getElementById("personOverlay").classList.remove("open");
+  }
 }
 
 // ── 写真トグル（イベント委譲） ────────────────
