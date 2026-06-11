@@ -26,17 +26,18 @@ def send_thanks(maintenance_id: str, body: dict = Body(default={})):
         return {"error": "not found"}
 
     sender_name = body.get("sender_name", "")
+    message     = body.get("message", "")
     data = doc.to_dict()
-    _record_thanks(db, maintenance_id, source="user", sender_name=sender_name)
+    _record_thanks(db, maintenance_id, source="user", sender_name=sender_name, message=message)
     ref.update({"thanks_count": firestore.Increment(1)})
 
     if sender_name:
         title = f"{sender_name}さんより"
-        body  = "ありがとう 🙏"
+        push_body = message if message else "ありがとう 🙏"
     else:
         title = "ありがとう 🙏"
-        body  = "あなたの整備に感謝が届きました"
-    send_push_to(data["person_name"], title, body)
+        push_body = message if message else "あなたのお手伝いに感謝が届きました"
+    send_push_to(data["person_name"], title, push_body)
     return {"ok": True}
 
 @router.post("/{maintenance_id}/auto")
@@ -64,11 +65,12 @@ def send_auto_thanks(maintenance_id: str):
 
     return {"ok": True}
 
-def _record_thanks(db, maintenance_id: str, source: str = "user", sender_name: str = ""):
+def _record_thanks(db, maintenance_id: str, source: str = "user", sender_name: str = "", message: str = ""):
     now = datetime.now(JST).isoformat()
     db.collection("thanks").add({
         "maintenance_id": maintenance_id,
         "source": source,
         "sender_name": sender_name,
+        "message": message,
         "created_at": now,
     })

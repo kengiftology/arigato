@@ -233,9 +233,10 @@ function renderFloats(id, tList) {
     const face = photo
       ? `<img src="${photo}" alt="">`
       : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;color:#999">${isUser ? t.sender_name[0] : "🌱"}</div>`;
+    const text = (t.message || "ありがとう").slice(0, 20);
     pill.innerHTML = `
       <div class="af-face">${face}</div>
-      <span class="af-text">ありがとう</span>
+      <span class="af-text">${text}</span>
     `;
     overlay.appendChild(pill);
   });
@@ -342,13 +343,13 @@ async function sendThanks() {
   }
 
   // フロートアニメーション
-  triggerFloat(id);
+  triggerFloat(id, msg);
 
   try {
     await fetch(`${API}/thanks/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sender_name: getName() || "" })
+      body: JSON.stringify({ sender_name: getName() || "", message: msg })
     });
   } catch(e) {
     console.error("sendThanks error:", e);
@@ -362,12 +363,13 @@ function closeModal() {
 
 // ── ありがとうフロートアニメーション ─────────
 // 自分が送った瞬間に1つ追加（そのまま常時ループに加わる）
-function triggerFloat(recordId) {
+function triggerFloat(recordId, msg = "") {
   const overlay = document.getElementById(`overlay-${recordId}`);
   if (!overlay) return;
   const user = getCurrentUser();
   const photoUrl = user ? user.photo_url : null;
   const initial = user ? user.last_name[0] : "？";
+  const text = (msg || "ありがとう").slice(0, 20);
 
   const pill = document.createElement("div");
   pill.className = "af";
@@ -377,7 +379,7 @@ function triggerFloat(recordId) {
     <div class="af-face">
       ${photoUrl ? `<img src="${photoUrl}" alt="">` : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;color:#999">${initial}</div>`}
     </div>
-    <span class="af-text">ありがとう</span>
+    <span class="af-text">${text}</span>
   `;
   overlay.appendChild(pill);
 }

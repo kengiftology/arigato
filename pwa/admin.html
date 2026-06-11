@@ -200,7 +200,7 @@ async function loadThanks() {
     <div class="thanks-row">
       <span class="thanks-source ${t.source}">${t.source === "user" ? "手動" : "自動"}</span>
       <span class="thanks-sender">${t.sender_name || "—"}</span>
-      <span class="thanks-target">→ ${recordMap[t.maintenance_id] || t.maintenance_id}</span>
+      <span class="thanks-target">→ ${recordMap[t.maintenance_id] || t.maintenance_id}${t.message ? `　「${t.message}」` : ""}</span>
       <span class="thanks-time">${fmt(t.created_at)}</span>
     </div>
   `).join("");
