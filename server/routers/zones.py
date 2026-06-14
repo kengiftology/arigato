@@ -58,10 +58,12 @@ def zone_timeline(zone_id: str):
             td = t.to_dict()
             if td.get("source") == "auto":
                 use_count += 1
+                user_name = td.get("sender_name", "")
                 events.append({
                     "type": "use",
                     "id": t.id,
                     "maintenance_id": doc.id,
+                    "user_name": user_name,
                     "created_at": td.get("created_at", ""),
                 })
             else:

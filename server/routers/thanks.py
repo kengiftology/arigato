@@ -42,36 +42,45 @@ def send_thanks(maintenance_id: str, body: dict = Body(default={})):
     return {"ok": True}
 
 @router.post("/{maintenance_id}/auto")
-def send_auto_thanks(maintenance_id: str):
-    """アプリからの自動ありがとう（フィードを見た = 使った）"""
+def send_auto_thanks(maintenance_id: str, user_name: str = ""):
+    """アプリからの自動ありがとう（フィードを見た = 使った）。
+    user_name があれば「誰が使ったか」を記録する。"""
     db = get_db()
     ref = db.collection("maintenance").document(maintenance_id)
     doc = ref.get()
     if not doc.exists:
         return {"ok": False}
 
-    # 直近1時間以内に同じ記録への自動ありがとうがあれば送らない。
-    # それより古ければ新たな「利用」として記録する → useイベントが積み重なる。
+    data = doc.to_dict()
+    doer = data.get("helped_by") or data.get("person_name", "")
+
+    # 自分の手入れを自分が見た場合は「利用」に数えない
+    if user_name and user_name == doer:
+        return {"ok": True, "skipped": "self"}
+
+    # 直近1時間以内に「同じ人」が同じ記録を使っていれば二重に数えない。
+    # 別の人 or 1時間以上経過なら新たな「利用」として記録 → useが積み重なる。
     now = datetime.now(JST)
     one_hour_ago = (now - timedelta(hours=1)).isoformat()
 
     # 複合インデックス回避のため maintenance_id の等価フィルタのみで取得し、
-    # source / created_at の判定はクライアント側で行う
+    # source / sender_name / created_at の判定はクライアント側で行う
     existing = (db.collection("thanks")
                   .where("maintenance_id", "==", maintenance_id)
                   .stream())
-    auto_times = [
+    same_user_times = [
         t.to_dict().get("created_at", "")
         for t in existing
         if t.to_dict().get("source") == "auto"
+        and t.to_dict().get("sender_name", "") == user_name
     ]
-    last_auto = max(auto_times) if auto_times else ""
+    last_use = max(same_user_times) if same_user_times else ""
 
-    if not last_auto or last_auto < one_hour_ago:
-        _record_thanks(db, maintenance_id, source="auto")
+    if not last_use or last_use < one_hour_ago:
+        _record_thanks(db, maintenance_id, source="auto", sender_name=user_name)
         ref.update({"thanks_count": firestore.Increment(1)})
-        data = doc.to_dict()
-        send_push_to(data.get("helped_by") or data["person_name"], "ありがとう 🌱", "あなたのお手伝いが使われています")
+        who = f"{user_name}さんが" if user_name else "誰かが"
+        send_push_to(doer, "ありがとう 🌱", f"{who}あなたのお手伝いを使いました")
 
     return {"ok": True}
 

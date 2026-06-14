@@ -231,8 +231,9 @@ async function loadTimeline(zoneId) {
   renderContributors(careEvents.map(e => ({ person_name: e.person_name, helped_by: e.helped_by })));
 
   // この場所を見た = 使った：完了済みの手入れに自動ありがとうを送る（useを積む）
+  const viewer = encodeURIComponent(getName() || "");
   careEvents.filter(e => e.after_photo).slice(0, 5).forEach(e =>
-    fetch(`${API}/thanks/${e.id}/auto`, { method: "POST" }).catch(() => {})
+    fetch(`${API}/thanks/${e.id}/auto?user_name=${viewer}`, { method: "POST" }).catch(() => {})
   );
 
   const list = document.getElementById("feedList");
@@ -259,10 +260,16 @@ async function loadTimeline(zoneId) {
   // イベント列
   const eventsHtml = tl.events.map(e => {
     if (e.type === "use") {
+      const who = e.user_name ? `${e.user_name} が使った` : "誰かが使った";
+      const photo = e.user_name ? userPhotoMap[e.user_name] : null;
+      const face = photo
+        ? `<span class="tl-use-face"><img src="${photo}" alt=""></span>`
+        : "";
       return `
         <div class="tl-event tl-use">
           <div class="tl-marker"></div>
-          <div class="tl-use-text">${fmtDateTime(e.created_at)}　誰かが使った</div>
+          ${face}
+          <div class="tl-use-text">${fmtDateTime(e.created_at)}　${who}</div>
         </div>`;
     }
     // care：完了済みは通常カード、ビフォーのみは手伝い待ちカードを流用
