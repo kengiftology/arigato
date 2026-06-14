@@ -37,7 +37,8 @@ def send_thanks(maintenance_id: str, body: dict = Body(default={})):
     else:
         title = "ありがとう 🙏"
         push_body = message if message else "あなたのお手伝いに感謝が届きました"
-    send_push_to(data["person_name"], title, push_body)
+    # 実際に手を動かした人へ届ける（誰かのビフォーに応えた場合は helped_by）
+    send_push_to(data.get("helped_by") or data["person_name"], title, push_body)
     return {"ok": True}
 
 @router.post("/{maintenance_id}/auto")
@@ -49,19 +50,28 @@ def send_auto_thanks(maintenance_id: str):
     if not doc.exists:
         return {"ok": False}
 
-    # 1時間以内に同じ記録への自動ありがとうがあれば送らない
-    one_hour_ago = datetime.now(JST).replace(tzinfo=None)
-    recent = (db.collection("thanks")
-               .where("maintenance_id", "==", maintenance_id)
-               .where("source", "==", "auto")
-               .limit(1)
-               .stream())
+    # 直近1時間以内に同じ記録への自動ありがとうがあれば送らない。
+    # それより古ければ新たな「利用」として記録する → useイベントが積み重なる。
+    now = datetime.now(JST)
+    one_hour_ago = (now - timedelta(hours=1)).isoformat()
 
-    if not any(True for _ in recent):
+    # 複合インデックス回避のため maintenance_id の等価フィルタのみで取得し、
+    # source / created_at の判定はクライアント側で行う
+    existing = (db.collection("thanks")
+                  .where("maintenance_id", "==", maintenance_id)
+                  .stream())
+    auto_times = [
+        t.to_dict().get("created_at", "")
+        for t in existing
+        if t.to_dict().get("source") == "auto"
+    ]
+    last_auto = max(auto_times) if auto_times else ""
+
+    if not last_auto or last_auto < one_hour_ago:
         _record_thanks(db, maintenance_id, source="auto")
         ref.update({"thanks_count": firestore.Increment(1)})
         data = doc.to_dict()
-        send_push_to(data["person_name"], "ありがとう 🌱", "あなたのお手伝いが使われています")
+        send_push_to(data.get("helped_by") or data["person_name"], "ありがとう 🌱", "あなたのお手伝いが使われています")
 
     return {"ok": True}
 
