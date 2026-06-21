@@ -8,3 +8,22 @@ venv/
 set_github_secrets.py
 check_deploy.py
 *.json.key
+.anthropic_key
+.claude/
+pwa/_demo.js
+pwa/demo.html
+pwa/chat-demo.html
+build_demo.py
+build_chat_lines.py
+# デモ・ビルド（現行ファイル名）
+pwa/_demo_home.js
+pwa/home-demo.html
+pwa/place-demo.html
+build_home.py
+# 開発・運用スクリプト（一回限り）
+add_past_record.py
+check_deploy_detail.py
+create_firestore.py
+get_logs.py
+get_cloudrun_logs.py
+get_cloudrun_logs2.py
