@@ -313,18 +313,15 @@ async function loadChat(zoneId) {
   const name = (tl.zone && tl.zone.name) || "この場所";
   const me = getName();
 
-  if (care.length === 0) {
-    list.innerHTML = `<div class="empty">まだ、この場所との会話はありません</div>`;
-    return;
-  }
-
-  chatLatestCareId = care[care.length - 1].id;
+  chatLatestCareId = care.length ? care[care.length - 1].id : null;
 
   // 見た＝使った：完了済みの手入れに自動ありがとうを送る（useを積む／研究データ）
-  const viewer = encodeURIComponent(me || "");
-  care.filter(e => e.after_photo).slice(-5).forEach(e =>
-    fetch(`${API}/thanks/${e.id}/auto?user_name=${viewer}`, { method: "POST" }).catch(() => {})
-  );
+  if (care.length) {
+    const viewer = encodeURIComponent(me || "");
+    care.filter(e => e.after_photo).slice(-5).forEach(e =>
+      fetch(`${API}/thanks/${e.id}/auto?user_name=${viewer}`, { method: "POST" }).catch(() => {})
+    );
+  }
 
   // 会話相手＝場所、を最上部に固定（「私、◯◯と話してる」を一目で）
   let html = `
@@ -337,6 +334,17 @@ async function loadChat(zoneId) {
     </div>`;
 
   html += `<div class="chat">`;
+
+  if (care.length === 0) {
+    // 記録ゼロの場所でも、最初の一歩（課題を出す／整えた所を残す）を踏めるように
+    html += `
+      <div class="msg-place">
+        <div class="msg-place-icon">🌿</div>
+        <div class="msg-place-bubbles">
+          <div class="bubble-place">まだ、わたしの記録はないみたい。<br>気になるところや、整えてくれた所があれば、下の📷で残してね。</div>
+        </div>
+      </div>`;
+  } else {
   // 🍂🌿の意味ガイド（初見の道しるべ）
   html += `<div class="chat-legend"><span>🍂 <b>散らかっていた姿</b></span><span>🌿 <b>整えてもらった姿</b></span></div>`;
 
@@ -361,7 +369,8 @@ async function loadChat(zoneId) {
   care.forEach(e => {
     const t = e.created_at || "";
     if (e.before_photo) snaps.push({ key: e.id + "-b", dir: "down", photo: e.before_photo, at: t, order: 0,
-                                     suggestion: e.before_suggestion });
+                                     suggestion: e.before_suggestion,
+                                     recordId: e.id, openTask: e.status === "in_progress" });
     if (e.after_photo)  snaps.push({ key: e.id + "-a", dir: "up", photo: e.after_photo, at: t, order: 1,
                                      line: e.place_line, thanks: (e.thanks || []).length,
                                      beforePhoto: e.before_photo,
@@ -374,12 +383,17 @@ async function loadChat(zoneId) {
     if (s.dir === "down") {
       // 課題の写真 → AIの「こうした方が良い」を一つの吹き出しの文章に（下にぶら下げない）
       const hint = s.suggestion || "散らかってきた。誰か、気づいてくれるかな。";
+      // 未解決の課題（招待状）には「これ、やった」＝手伝いを記録するボタン
+      const solveBtn = s.openTask
+        ? `<button class="chat-thank-btn solve" onclick="solveTask('${s.recordId}')">これ、やった 🌿</button>`
+        : "";
       html += `
         <div class="msg-place down" id="care-${s.key}">
           <div class="msg-place-icon">🍂</div>
           <div class="msg-place-bubbles">
             <div class="bubble-place photo down"><img class="card-photo" src="${s.photo}" alt=""></div>
             <div class="bubble-place down">${hint}</div>
+            ${solveBtn}
             <div class="chat-time">${fmtDateTime(s.at)}</div>
           </div>
         </div>`;
@@ -414,10 +428,11 @@ async function loadChat(zoneId) {
         <div class="bubble-place">来てくれて、ありがとう。<br>今日のわたし、見ていってね。</div>
       </div>
     </div>`;
+  }
 
   html += `</div>`; // .chat
 
-  // 下の入力欄：📷で「いまの姿」を投稿（手を動かした記録）／文字で話しかける
+  // 下の入力欄：📷で投稿（課題を出す／整えた所を残す）／文字で話しかける
   html += `
     <div class="chat-compose">
       <button class="chat-cam" onclick="startPlacePhoto()" title="いまの姿を撮る">📷</button>
@@ -426,7 +441,9 @@ async function loadChat(zoneId) {
       <button class="chat-send" onclick="sendChatThanks()">送る</button>
     </div>
     <input type="file" id="placePhotoInput" accept="image/*" capture="environment"
-      style="display:none" onchange="onPlacePhotoPicked(this)">`;
+      style="display:none" onchange="onPlacePhotoPicked(this)">
+    <input type="file" id="solvePhotoInput" accept="image/*" capture="environment"
+      style="display:none" onchange="onSolvePhotoPicked(this)">`;
 
   list.innerHTML = html;
 
@@ -434,7 +451,7 @@ async function loadChat(zoneId) {
   requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight));
 }
 
-// ── 投稿フロー（案1：撮る→どの姿の続きか選ぶ→場所が比べて反応） ──────
+// ── 投稿フロー：📷で撮る →「気になる(課題)/整えた」を選ぶ → 保存 ──────
 function startPlacePhoto() {
   const inp = document.getElementById("placePhotoInput");
   if (inp) inp.click();
@@ -445,17 +462,11 @@ function onPlacePhotoPicked(input) {
   const file = input.files[0];
   const url = URL.createObjectURL(file);
   input.value = "";
-  openContinuePicker(url, file);
+  openIntentPicker(url, file);
 }
 
-// 撮った写真は「どの姿の続き?」を選ばせる（比較対象を確定＝何に反応してるか分かる）
-function openContinuePicker(newPhotoUrl, newFile) {
-  // 今チャットに出ている「整った姿（up）」の写真を候補に
-  const ups = [...document.querySelectorAll(".chat .msg-place:not(.down) .card-photo")];
-  const thumbs = ups.map((img, i) =>
-    `<img class="cont-thumb" src="${img.src}" onclick="chooseContinuation(${i})">`
-  ).join("");
-
+// 撮った写真が「気になる(課題=before)」か「整えた(after)」かを選ばせる
+function openIntentPicker(newPhotoUrl, newFile) {
   const ov = document.createElement("div");
   ov.className = "cont-overlay";
   ov.id = "contOverlay";
@@ -465,16 +476,14 @@ function openContinuePicker(newPhotoUrl, newFile) {
         <div class="cont-label">撮った、いまの姿</div>
         <img class="cont-new" src="${newPhotoUrl}">
       </div>
-      <div class="cont-label">これは、どの姿の「その後」？</div>
+      <div class="cont-label">これは、どっち？</div>
       <div class="cont-thumbs">
-        ${thumbs}
-        <div class="cont-thumb cont-new-place" onclick="chooseContinuation(-1)">どれでもない<br>（新しい場所）</div>
+        <div class="cont-thumb cont-new-place" onclick="postSnap('before')">🍂 ここ、気になる<br>（誰かに気づいてほしい）</div>
+        <div class="cont-thumb cont-new-place" onclick="postSnap('after')">🌿 きれいにした<br>（整えた所を残す）</div>
       </div>
       <button class="cont-cancel" onclick="closeContinuePicker()">やめる</button>
     </div>`;
-  ov._newPhoto = newPhotoUrl;
   ov._newFile = newFile;
-  ov._ups = ups.map(i => i.src);
   document.body.appendChild(ov);
 }
 
@@ -483,16 +492,14 @@ function closeContinuePicker() {
   if (ov) ov.remove();
 }
 
-// 続き先を選んだ → 新しい姿を流れに加え、場所が「その2枚を比べて」反応する
-function chooseContinuation(idx) {
+// 選んだ意図で /maintenance に保存（before=課題/招待状、after=整えた記録）
+function postSnap(kind) {
   const ov = document.getElementById("contOverlay");
   if (!ov) return;
-  const newFile  = ov._newFile;
-  const prevPhoto = idx >= 0 ? ov._ups[idx] : null;
+  const newFile = ov._newFile;
   closeContinuePicker();
   if (!newFile) return;
 
-  // 手伝い＝「いまの姿」を after として実際にサーバーへ記録する。
   // 未登録ならまず登録（顔写真）→ そのあと保存。保存後はサーバーの実データで再描画。
   requireAuth(async () => {
     const zoneId = getZoneFromUrl();
@@ -501,12 +508,48 @@ function chooseContinuation(idx) {
       const form = new FormData();
       form.append("zone_id",     zoneId);
       form.append("person_name", getName() || "");
-      form.append("content",     prevPhoto ? "前の姿の続き" : "新しい場所");
-      form.append("after_photo", newFile);
+      form.append("content",     "");
+      form.append(kind === "before" ? "before_photo" : "after_photo", newFile);
       const res = await fetch(`${API}/maintenance`, { method: "POST", body: form });
       if (!res.ok) throw new Error("post failed");
-      showToast("いまの姿を、この場所に記録しました 🌿", "この記録は、他の人にも見えます");
-      await loadChat(zoneId);  // サーバーの実データで再描画＝保存された証拠
+      showToast(
+        kind === "before" ? "気になる所を、この場所に残しました 🍂" : "整えた所を、この場所に記録しました 🌿",
+        "この記録は、他の人にも見えます"
+      );
+      await loadChat(zoneId);
+    } catch(e) {
+      alert("記録に失敗しました。もう一度お試しください。");
+    }
+  }, "post");
+}
+
+// ── 手伝いの受け渡し：🍂課題を「これ、やった」で完了させる ──────
+let pendingSolveId = null;
+function solveTask(recordId) {
+  pendingSolveId = recordId;
+  const inp = document.getElementById("solvePhotoInput");
+  if (inp) inp.click();
+}
+
+function onSolvePhotoPicked(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  input.value = "";
+  const recordId = pendingSolveId;
+  if (!recordId) return;
+
+  // 未登録ならまず登録 → 既存の課題(in_progress)に after を付けて完了。
+  // helper_name が投稿者と違えば helped_by 記録＋投稿者へ通知（受け渡し）。
+  requireAuth(async () => {
+    const zoneId = getZoneFromUrl();
+    try {
+      const form = new FormData();
+      form.append("after_photo", file);
+      form.append("helper_name", getName() || "");
+      const res = await fetch(`${API}/maintenance/${recordId}/complete`, { method: "PATCH", body: form });
+      if (!res.ok) throw new Error("complete failed");
+      showToast("手伝いを記録しました 🌿", "気にかけた人に、場所から届きます");
+      if (zoneId) await loadChat(zoneId);
     } catch(e) {
       alert("記録に失敗しました。もう一度お試しください。");
     }
