@@ -442,13 +442,14 @@ function startPlacePhoto() {
 
 function onPlacePhotoPicked(input) {
   if (!input.files || !input.files[0]) return;
-  const url = URL.createObjectURL(input.files[0]);
+  const file = input.files[0];
+  const url = URL.createObjectURL(file);
   input.value = "";
-  openContinuePicker(url);
+  openContinuePicker(url, file);
 }
 
 // 撮った写真は「どの姿の続き?」を選ばせる（比較対象を確定＝何に反応してるか分かる）
-function openContinuePicker(newPhotoUrl) {
+function openContinuePicker(newPhotoUrl, newFile) {
   // 今チャットに出ている「整った姿（up）」の写真を候補に
   const ups = [...document.querySelectorAll(".chat .msg-place:not(.down) .card-photo")];
   const thumbs = ups.map((img, i) =>
@@ -472,6 +473,7 @@ function openContinuePicker(newPhotoUrl) {
       <button class="cont-cancel" onclick="closeContinuePicker()">やめる</button>
     </div>`;
   ov._newPhoto = newPhotoUrl;
+  ov._newFile = newFile;
   ov._ups = ups.map(i => i.src);
   document.body.appendChild(ov);
 }
@@ -485,31 +487,30 @@ function closeContinuePicker() {
 function chooseContinuation(idx) {
   const ov = document.getElementById("contOverlay");
   if (!ov) return;
-  const newPhoto = ov._newPhoto;
+  const newFile  = ov._newFile;
   const prevPhoto = idx >= 0 ? ov._ups[idx] : null;
   closeContinuePicker();
+  if (!newFile) return;
 
-  const chat = document.querySelector(".chat");
-  if (!chat) return;
-
-  // 場所の反応（本番では AI が prevPhoto と newPhoto を実際に見比べて生成）
-  const line = prevPhoto
-    ? "この前のここ、また手をかけてくれたんだね。前より整ってる。"
-    : "新しいところに、手が入った。ここも、見ていくね。";
-
-  const post = document.createElement("div");
-  post.className = "msg-place";
-  post.innerHTML = `
-    <div class="msg-place-icon">🌿</div>
-    <div class="msg-place-bubbles">
-      <div class="bubble-place photo"><img class="card-photo" src="${newPhoto}" alt=""></div>
-      <div class="bubble-place">${line}</div>
-      <div class="care-reception">変わった。でも、気づいてもらえたかは、まだ分からない。</div>
-      <div class="chat-time">たった今</div>
-    </div>`;
-  chat.appendChild(post);
-  post.scrollIntoView({ behavior: "smooth", block: "end" });
-  showToast("いまの姿を、この場所に記録しました 🌿", prevPhoto ? "前の姿と見比べて反応します" : "新しい場所として加わりました");
+  // 手伝い＝「いまの姿」を after として実際にサーバーへ記録する。
+  // 未登録ならまず登録（顔写真）→ そのあと保存。保存後はサーバーの実データで再描画。
+  requireAuth(async () => {
+    const zoneId = getZoneFromUrl();
+    if (!zoneId) return;
+    try {
+      const form = new FormData();
+      form.append("zone_id",     zoneId);
+      form.append("person_name", getName() || "");
+      form.append("content",     prevPhoto ? "前の姿の続き" : "新しい場所");
+      form.append("after_photo", newFile);
+      const res = await fetch(`${API}/maintenance`, { method: "POST", body: form });
+      if (!res.ok) throw new Error("post failed");
+      showToast("いまの姿を、この場所に記録しました 🌿", "この記録は、他の人にも見えます");
+      await loadChat(zoneId);  // サーバーの実データで再描画＝保存された証拠
+    } catch(e) {
+      alert("記録に失敗しました。もう一度お試しください。");
+    }
+  }, "post");
 }
 
 // 場所が「手が入った」ことを伝える一言（匿名・場所が主語）
@@ -631,6 +632,13 @@ function thankUp(key) {
   if (msg) msg.textContent = line ? `${line} ありがとう。` : "整えてくれて、ありがとう。";
   const btn = document.getElementById("thx-" + key);
   if (btn) btn.remove();
+  // サーバーへ：この手入れ(careId)にありがとうを保存し、整えた人へ届ける
+  const careId = key.replace(/-[ab]$/, "");
+  fetch(`${API}/thanks/${careId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sender_name: getName() || "", message: "" })
+  }).catch(() => {});
 }
 
 // チャットの入力から、場所にありがとうを送る
