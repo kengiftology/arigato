@@ -31,12 +31,10 @@ def send_thanks(maintenance_id: str, body: dict = Body(default={})):
     _record_thanks(db, maintenance_id, source="user", sender_name=sender_name, message=message)
     ref.update({"thanks_count": firestore.Increment(1)})
 
-    if sender_name:
-        title = f"{sender_name}さんより"
-        push_body = message if message else "ありがとう 🙏"
-    else:
-        title = "ありがとう 🙏"
-        push_body = message if message else "あなたのお手伝いに感謝が届きました"
+    # 匿名：通知は「環境（場所）からのありがとう」として届く。送り主名は出さない
+    zone_name = data.get("zone_name", "") or "この場所"
+    title = f"{zone_name}からありがとう 🌱"
+    push_body = message if message else "あなたの手入れに、ありがとうが届きました"
     # 実際に手を動かした人へ届ける（誰かのビフォーに応えた場合は helped_by）
     send_push_to(data.get("helped_by") or data["person_name"], title, push_body)
     return {"ok": True}
@@ -79,8 +77,9 @@ def send_auto_thanks(maintenance_id: str, user_name: str = ""):
     if not last_use or last_use < one_hour_ago:
         _record_thanks(db, maintenance_id, source="auto", sender_name=user_name)
         ref.update({"thanks_count": firestore.Increment(1)})
-        who = f"{user_name}さんが" if user_name else "誰かが"
-        send_push_to(doer, "ありがとう 🌱", f"{who}あなたのお手伝いを使いました")
+        # 匿名：環境（場所）からのありがとうとして届く。使った人の名前は出さない
+        zone_name = data.get("zone_name", "") or "この場所"
+        send_push_to(doer, f"{zone_name}からありがとう 🌱", "あなたの手入れが、誰かに使われました")
 
     return {"ok": True}
 

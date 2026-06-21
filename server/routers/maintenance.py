@@ -57,16 +57,14 @@ async def create_maintenance(
         print(f"[warn] photo upload failed: {e}")
 
     # statusを写真の有無で決定
+    # in_progress = ビフォーだけの状態。本人の途中経過でもあり、
+    # 誰かが代わりに手伝ってもいい「招待状」でもある（ここ気になる統合）
     if before_url and not after_url:
         status = "in_progress"
     elif after_url and not before_url:
         status = "after_only"
     else:
         status = "completed"
-
-    # 同じユーザー+ゾーンのin_progressレコードをabandoned に
-    if status == "in_progress":
-        _abandon_previous(db, zone_id, person_name)
 
     record_id = str(uuid.uuid4())
     now = datetime.now(JST).isoformat()
@@ -82,9 +80,9 @@ async def create_maintenance(
         "status":       status,
     })
 
-    # BEFORE投稿時は「頑張って！」を本人に
+    # BEFORE投稿時は本人に（自分でやっても、誰かに任せてもいい）
     if status == "in_progress":
-        send_push_to(person_name, "頑張って！ 🌱", "手伝おうとしてくれてありがとう")
+        send_push_to(person_name, "気づいてくれてありがとう 🌱", "きれいになったら、まっさきにお知らせします")
 
     return {"id": record_id, "status": status}
 
@@ -93,12 +91,14 @@ async def create_maintenance(
 async def complete_maintenance(
     record_id: str,
     after_photo: UploadFile = File(...),
+    helper_name: str = Form(""),
 ):
     db = get_db()
     ref = db.collection("maintenance").document(record_id)
     doc = ref.get()
     if not doc.exists:
         return {"error": "not found"}
+    data = doc.to_dict()
 
     after_url = None
     try:
@@ -106,20 +106,24 @@ async def complete_maintenance(
     except Exception as e:
         print(f"[warn] after photo upload failed: {e}")
 
-    ref.update({
+    update = {
         "after_photo":  after_url,
         "status":       "completed",
         "completed_at": datetime.now(JST).isoformat(),
-    })
+    }
 
+    # ビフォーを置いた人と別の人が手伝った場合：受け渡しを記録して通知
+    # 匿名：誰が手伝ったかは出さない。場所が主語
+    poster = data.get("person_name", "")
+    if helper_name and helper_name != poster:
+        update["helped_by"] = helper_name
+        if poster:
+            zone_name = data.get("zone_name", "") or "気になっていた場所"
+            send_push_to(
+                poster,
+                f"{zone_name}が手伝われました 🌱",
+                "あなたが気にかけた場所が、きれいになりました。ありがとうを届けませんか？",
+            )
+
+    ref.update(update)
     return {"ok": True, "status": "completed"}
-
-
-def _abandon_previous(db, zone_id: str, person_name: str):
-    docs = (db.collection("maintenance")
-              .where("zone_id", "==", zone_id)
-              .where("person_name", "==", person_name)
-              .where("status", "==", "in_progress")
-              .stream())
-    for doc in docs:
-        doc.reference.update({"status": "abandoned"})

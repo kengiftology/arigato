@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, UploadFile, File, Form
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from server.database import get_db
 from server.storage import upload_photo
 
@@ -12,16 +12,17 @@ JST = timezone(timedelta(hours=9))
 async def register_user(
     last_name: str = Form(...),
     first_name: str = Form(...),
-    photo: UploadFile = File(None),
+    photo: UploadFile = File(...),
 ):
-    db = get_db()
-    photo_url = None
-    if photo and photo.filename:
-        try:
-            photo_url = upload_photo(await photo.read(), photo.filename)
-        except Exception as e:
-            print(f"[warn] user photo upload failed: {e}")
+    # 顔写真は必須（同姓同名を見分けるため）。失敗時はユーザーを作らず弾く
+    if not photo or not photo.filename:
+        raise HTTPException(status_code=400, detail="顔写真は必須です")
+    try:
+        photo_url = upload_photo(await photo.read(), photo.filename)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"顔写真のアップロードに失敗しました: {e}")
 
+    db = get_db()
     user_id = str(uuid.uuid4())
     now = datetime.now(JST).isoformat()
     db.collection("users").document(user_id).set({

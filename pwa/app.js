@@ -97,16 +97,17 @@ async function completeRegister() {
   const first = document.getElementById("inputFirstName").value.trim();
   if (!last || !first) { alert("姓と名を入力してください"); return; }
 
+  const fileInput = document.getElementById("authSelfieFile");
+  if (!fileInput.files[0]) { alert("顔写真を撮ってください"); return; }
+
   const form = new FormData();
   form.append("last_name", last);
   form.append("first_name", first);
-  const fileInput = document.getElementById("authSelfieFile");
-  if (fileInput.files[0]) {
-    form.append("photo", fileInput.files[0]);
-  }
+  form.append("photo", fileInput.files[0]);
 
   try {
     const res = await fetch(`${API}/users/register`, { method: "POST", body: form });
+    if (!res.ok) { alert("登録に失敗しました。もう一度お試しください。"); return; }
     const user = await res.json();
     finishAuth(user);
   } catch(e) {
@@ -211,6 +212,457 @@ async function loadFeed() {
   });
 }
 
+// ── ホーム：維持マップ（どこが手入れされ、どこが放置か） ──────────
+function loadHome(zones) {
+  const list = document.getElementById("feedList");
+  const banner = document.getElementById("zoneBanner");
+  if (banner) banner.classList.add("hidden");
+  const now = Date.now();
+  const DAY = 86400 * 1000;
+
+  function state(z) {
+    if (!z.last_care_at) return { cls: "untouched", icon: "·", text: "まだ、誰も手をかけていない" };
+    const days = Math.floor((now - new Date(z.last_care_at).getTime()) / DAY);
+    const when = days <= 0 ? "今日" : days === 1 ? "昨日" : `${days}日前`;
+    if (days <= 7)  return { cls: "fresh",   icon: "🌿", text: `${when}、手が入った` };
+    if (days <= 21) return { cls: "kept",    icon: "🌱", text: `${when}に手が入った` };
+    return                  { cls: "wilting", icon: "🍂", text: `${when}から、誰も手をかけていない` };
+  }
+
+  const items = zones.map(z => {
+    const s = state(z);
+    return `
+      <div class="home-item ${s.cls}" onclick="homeTap('${z.id}')">
+        <div class="home-icon">${s.icon}</div>
+        <div class="home-body">
+          <div class="home-name">${z.name}</div>
+          <div class="home-state">${s.text}</div>
+        </div>
+        <div class="home-arrow">›</div>
+      </div>`;
+  }).join("");
+
+  list.innerHTML = `
+    <div class="home-head">
+      <div class="home-title">みんなの場所</div>
+      <div class="home-sub">手が入っている場所と、待っている場所</div>
+    </div>
+    ${items}`;
+}
+
+function homeTap(zoneId) {
+  // デモ：データのあるリビングはチャットへ。他は会話がまだない
+  if (zoneId === "b5e6bcea") { window.location.href = "/chat-demo.html"; return; }
+  showToast("この場所は、まだ手入れの記録がありません", "");
+}
+
+// ── 場所が一人称で話す ───────────────────────
+// 開いた人と場所の関係で台詞が変わる。場所＝交換の相手だと体感させる。
+function zoneSpeechLines(tl, careEvents) {
+  const me = getName();
+  const HOUR = 3600 * 1000;
+  const now = Date.now();
+  const recentCare = careEvents.find(e =>
+    e.after_photo && e.created_at && (now - new Date(e.created_at).getTime()) < 24 * HOUR
+  );
+  const myCare = me && careEvents.some(e => (e.helped_by || e.person_name) === me);
+
+  // すべて「私（場所）」が主語。人は出さない。
+  if (myCare) {
+    // 手を入れた人へ＝返礼（逆電波）：場所が、自分がどう在れているかを返す
+    return ["あなたが手を入れてくれたから、", "私はいい場所でいられています。", "ありがとう。"];
+  } else if (recentCare) {
+    return ["さっき、誰かが手を入れてくれた。", "私は少しずつ、いい場所になっていきます。"];
+  } else if (careEvents.length > 0) {
+    // 使う人/まだの人へ＝気づき・招待
+    return ["ここは、たくさんの手で整えられてきた場所です。", "よかったら、見ていってください。"];
+  } else {
+    return ["まだ、誰の手も入っていません。", "はじめの一手を、待っています。"];
+  }
+}
+
+function zoneSpeech(tl, careEvents) {
+  const name = (tl.zone && tl.zone.name) || "この場所";
+  const lines = zoneSpeechLines(tl, careEvents);
+  return `
+    <div class="zone-speech">
+      <div class="zone-speech-icon">🌿</div>
+      <div class="zone-speech-body">
+        <div class="zone-speech-from">${name}</div>
+        <div class="zone-speech-bubble">${lines.join("<br>")}</div>
+      </div>
+    </div>`;
+}
+
+// ── チャット版：場所との会話として描く（試作） ──────────────
+let chatLatestCareId = null;
+
+async function loadChat(zoneId) {
+  const [tlRes, usersRes] = await Promise.all([
+    fetch(`${API}/zones/${zoneId}/timeline`),
+    fetch(`${API}/users`)
+  ]);
+  const tl    = await tlRes.json();
+  const users = await usersRes.json();
+  userPhotoMap = {};
+  users.forEach(u => { const n = `${u.last_name} ${u.first_name}`; if (u.photo_url) userPhotoMap[n] = u.photo_url; });
+
+  document.body.classList.add("chat-view");  // 「手伝う」FABを隠す
+  const list = document.getElementById("feedList");
+  const care = tl.events.filter(e => e.type === "care").slice().reverse(); // 古い順（上が古い）
+  const name = (tl.zone && tl.zone.name) || "この場所";
+  const me = getName();
+
+  if (care.length === 0) {
+    list.innerHTML = `<div class="empty">まだ、この場所との会話はありません</div>`;
+    return;
+  }
+
+  chatLatestCareId = care[care.length - 1].id;
+
+  // 会話相手＝場所、を最上部に固定（「私、◯◯と話してる」を一目で）
+  let html = `
+    <div class="chat-header">
+      <div class="chat-header-icon">🌿</div>
+      <div>
+        <div class="chat-header-name">${name}</div>
+        <div class="chat-header-sub">いま、あなたと話しています</div>
+      </div>
+    </div>`;
+
+  html += `<div class="chat">`;
+  // 🍂🌿の意味ガイド（初見の道しるべ）
+  html += `<div class="chat-legend"><span>🍂 <b>散らかっていた姿</b></span><span>🌿 <b>整えてもらった姿</b></span></div>`;
+
+  // ③ 電波：自分が整えた手入れに、誰かからありがとうが届いていたら、
+  //    場所が「あなた」にお礼を返す（ヒト→環境→ヒトの最後の往復）を会話の先頭に。
+  const myThanked = me && care.some(e => (e.helped_by || e.person_name) === me && (e.thanks || []).length > 0);
+  if (myThanked) {
+    html += `
+      <div class="msg-place denpa">
+        <div class="msg-place-icon">🌿</div>
+        <div class="msg-place-bubbles">
+          <div class="bubble-place strong">この前、整えてくれてありがとう。<br>あなたの手、ちゃんと届いてるよ。</div>
+        </div>
+      </div>`;
+  }
+
+  // 写真は1枚ずつ、全部を時系列で。各手入れを2スナップに分割：
+  //   ビフォー（散らかってた姿）＝🍂 下がり（変化の「元」。これが無いと何が変わったか分からない）
+  //   アフター（整った姿）       ＝🌿 上がり（ありがとうが乗る）
+  // 1枚ずつの流れ（最初こう→次こう）にして、元→変化が見えるようにする。
+  const snaps = [];
+  care.forEach(e => {
+    const t = e.created_at || "";
+    if (e.before_photo) snaps.push({ key: e.id + "-b", dir: "down", photo: e.before_photo, at: t, order: 0,
+                                     suggestion: e.before_suggestion });
+    if (e.after_photo)  snaps.push({ key: e.id + "-a", dir: "up", photo: e.after_photo, at: t, order: 1,
+                                     line: e.place_line, thanks: (e.thanks || []).length,
+                                     beforePhoto: e.before_photo,
+                                     beforeKey: e.before_photo ? e.id + "-b" : null });  // 紐づけ用＝引用する元の姿の投稿
+  });
+  // 時刻順、同時刻ならビフォー→アフターの順
+  snaps.sort((a, b) => (a.at || "").localeCompare(b.at || "") || a.order - b.order);
+
+  snaps.forEach(s => {
+    if (s.dir === "down") {
+      // 課題の写真 → AIの「こうした方が良い」を一つの吹き出しの文章に（下にぶら下げない）
+      const hint = s.suggestion || "散らかってきた。誰か、気づいてくれるかな。";
+      html += `
+        <div class="msg-place down" id="care-${s.key}">
+          <div class="msg-place-icon">🍂</div>
+          <div class="msg-place-bubbles">
+            <div class="bubble-place photo down"><img class="card-photo" src="${s.photo}" alt=""></div>
+            <div class="bubble-place down">${hint}</div>
+            <div class="chat-time">${fmtDateTime(s.at)}</div>
+          </div>
+        </div>`;
+    } else {
+      // アフター（手伝い終えた姿）：最初は言葉なし＝「誰か気づいてくれるかな？」。
+      // ありがとうが押されると、場所が具体的にお礼を言う（thankUp）。
+      const line = s.line || "ここ、整えてくれた。";
+      const quote = s.beforePhoto ? `
+        <div class="quote-before"${s.beforeKey ? ` onclick="goToPost('care-${s.beforeKey}')" role="button" tabindex="0"` : ""}>
+          <img src="${s.beforePhoto}" alt="">
+          <span>さっきの、散らかっていた姿</span>
+        </div>` : "";
+      html += `
+        <div class="msg-place" id="care-${s.key}" data-line="${encodeURIComponent(line)}">
+          <div class="msg-place-icon">🌿</div>
+          <div class="msg-place-bubbles">
+            ${quote}
+            <div class="bubble-place photo"><img class="card-photo" src="${s.photo}" alt=""></div>
+            <div class="bubble-place" id="msg-${s.key}">誰か、気づいてくれるかな？</div>
+            <button class="chat-thank-btn" id="thx-${s.key}" onclick="thankUp('${s.key}')">ありがとう</button>
+            <div class="chat-time">${fmtDateTime(s.at)}</div>
+          </div>
+        </div>`;
+    }
+  });
+
+  // 会話の最後（最新＝最初に目に入る所）で、場所があなたに話しかける
+  html += `
+    <div class="msg-place">
+      <div class="msg-place-icon">🌿</div>
+      <div class="msg-place-bubbles">
+        <div class="bubble-place">来てくれて、ありがとう。<br>今日のわたし、見ていってね。</div>
+      </div>
+    </div>`;
+
+  html += `</div>`; // .chat
+
+  // 下の入力欄：📷で「いまの姿」を投稿（手を動かした記録）／文字で話しかける
+  html += `
+    <div class="chat-compose">
+      <button class="chat-cam" onclick="startPlacePhoto()" title="いまの姿を撮る">📷</button>
+      <input class="chat-input" id="chatInput" placeholder="${name}に話しかけてみる…"
+        onkeydown="if(event.key==='Enter')sendChatThanks()">
+      <button class="chat-send" onclick="sendChatThanks()">送る</button>
+    </div>
+    <input type="file" id="placePhotoInput" accept="image/*" capture="environment"
+      style="display:none" onchange="onPlacePhotoPicked(this)">`;
+
+  list.innerHTML = html;
+
+  // 最新（場所の挨拶）が見えるよう、最下部へ
+  requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight));
+}
+
+// ── 投稿フロー（案1：撮る→どの姿の続きか選ぶ→場所が比べて反応） ──────
+function startPlacePhoto() {
+  const inp = document.getElementById("placePhotoInput");
+  if (inp) inp.click();
+}
+
+function onPlacePhotoPicked(input) {
+  if (!input.files || !input.files[0]) return;
+  const url = URL.createObjectURL(input.files[0]);
+  input.value = "";
+  openContinuePicker(url);
+}
+
+// 撮った写真は「どの姿の続き?」を選ばせる（比較対象を確定＝何に反応してるか分かる）
+function openContinuePicker(newPhotoUrl) {
+  // 今チャットに出ている「整った姿（up）」の写真を候補に
+  const ups = [...document.querySelectorAll(".chat .msg-place:not(.down) .card-photo")];
+  const thumbs = ups.map((img, i) =>
+    `<img class="cont-thumb" src="${img.src}" onclick="chooseContinuation(${i})">`
+  ).join("");
+
+  const ov = document.createElement("div");
+  ov.className = "cont-overlay";
+  ov.id = "contOverlay";
+  ov.innerHTML = `
+    <div class="cont-sheet">
+      <div class="cont-newwrap">
+        <div class="cont-label">撮った、いまの姿</div>
+        <img class="cont-new" src="${newPhotoUrl}">
+      </div>
+      <div class="cont-label">これは、どの姿の「その後」？</div>
+      <div class="cont-thumbs">
+        ${thumbs}
+        <div class="cont-thumb cont-new-place" onclick="chooseContinuation(-1)">どれでもない<br>（新しい場所）</div>
+      </div>
+      <button class="cont-cancel" onclick="closeContinuePicker()">やめる</button>
+    </div>`;
+  ov._newPhoto = newPhotoUrl;
+  ov._ups = ups.map(i => i.src);
+  document.body.appendChild(ov);
+}
+
+function closeContinuePicker() {
+  const ov = document.getElementById("contOverlay");
+  if (ov) ov.remove();
+}
+
+// 続き先を選んだ → 新しい姿を流れに加え、場所が「その2枚を比べて」反応する
+function chooseContinuation(idx) {
+  const ov = document.getElementById("contOverlay");
+  if (!ov) return;
+  const newPhoto = ov._newPhoto;
+  const prevPhoto = idx >= 0 ? ov._ups[idx] : null;
+  closeContinuePicker();
+
+  const chat = document.querySelector(".chat");
+  if (!chat) return;
+
+  // 場所の反応（本番では AI が prevPhoto と newPhoto を実際に見比べて生成）
+  const line = prevPhoto
+    ? "この前のここ、また手をかけてくれたんだね。前より整ってる。"
+    : "新しいところに、手が入った。ここも、見ていくね。";
+
+  const post = document.createElement("div");
+  post.className = "msg-place";
+  post.innerHTML = `
+    <div class="msg-place-icon">🌿</div>
+    <div class="msg-place-bubbles">
+      <div class="bubble-place photo"><img class="card-photo" src="${newPhoto}" alt=""></div>
+      <div class="bubble-place">${line}</div>
+      <div class="care-reception">変わった。でも、気づいてもらえたかは、まだ分からない。</div>
+      <div class="chat-time">たった今</div>
+    </div>`;
+  chat.appendChild(post);
+  post.scrollIntoView({ behavior: "smooth", block: "end" });
+  showToast("いまの姿を、この場所に記録しました 🌿", prevPhoto ? "前の姿と見比べて反応します" : "新しい場所として加わりました");
+}
+
+// 場所が「手が入った」ことを伝える一言（匿名・場所が主語）
+function chatCareLine(e) {
+  if (!e.after_photo && e.before_photo) return "ここ、ちょっと気になっているんだ。";
+  return "誰かが、私に手を入れてくれた。";
+}
+
+// ── 場所＝ひとつの生きてる存在（AIなし・出し分け） ──────────────
+// 単位は「いまの姿（1枚）」。ビフォー/アフターのペアは無い。
+// ありがとうの有無で、場所の「変化の受け取り方」が変わる。
+function loadPlace(zoneId) {
+  return fetch(`${API}/zones/${zoneId}/timeline`).then(r => r.json()).then(tl => {
+    const list = document.getElementById("feedList");
+    const name = (tl.zone && tl.zone.name) || "この場所";
+    const me = getName();
+    // 各手入れの写真を「その時の姿」として、新しい順に（ビフォー単体も含む）。
+    const snaps = tl.events.filter(e => e.type === "care" && (e.after_photo || e.before_photo))
+      .map(e => ({
+        id: e.id,
+        photo: e.after_photo || e.before_photo,
+        at: e.created_at,
+        thanks: (e.thanks || []).length,
+        doer: e.helped_by || e.person_name,   // この姿にした人
+      }))
+      .sort((a, b) => (b.at || "").localeCompare(a.at || ""));
+
+    if (snaps.length === 0) { list.innerHTML = `<div class="empty">まだ、この場所の姿はありません</div>`; return; }
+
+    const now = Date.now(), DAY = 86400000;
+    const latest = snaps[0];
+    const days = Math.floor((now - new Date(latest.at).getTime()) / DAY);
+
+    let nowLine;
+    if (days <= 7)       nowLine = "いま、よく整ってる。気持ちいい。";
+    else if (days <= 21) nowLine = "まだ、この前の整いが残ってる。";
+    else                 nowLine = "最近、また少し、雑然としてきたかも。";
+
+    // ③ 環境からのありがとう：自分が整えた姿に、誰かからありがとうが届いていたら、
+    //    場所が「あなた」に向けてお礼を返す（ヒト→環境→ヒトの電波の最後の往復）
+    const myThanked = me && snaps.some(s => s.doer === me && s.thanks > 0);
+    const fromPlace = myThanked ? `
+      <div class="place-from">
+        <div class="place-from-icon">🌿</div>
+        <div class="place-from-body">
+          <div class="place-from-name">${name}より</div>
+          <div class="place-from-line">この前、整えてくれてありがとう。<br>おかげで、まだ気持ちよくいられてる。</div>
+        </div>
+      </div>` : "";
+
+    let html = `
+      <div class="place">
+        ${fromPlace}
+        <div class="place-now">
+          <div class="place-now-label">${name}のいま</div>
+          <img class="place-now-photo" src="${latest.photo}" alt="">
+          <div class="place-now-line" id="nowLine">${nowLine}</div>
+        </div>
+        <div class="place-hist-head">これまでの姿</div>`;
+
+    snaps.forEach(s => {
+      html += `
+        <div class="place-snap" id="snap-${s.id}" data-thanks="${s.thanks}" data-doer="${encodeURIComponent(s.doer || "")}">
+          <img class="place-snap-photo" src="${s.photo}" alt="">
+          <div class="place-snap-body">
+            <div class="place-snap-when">${fmtDate(s.at)}</div>
+            <div class="place-snap-line" id="snapline-${s.id}">${receptionLine(s.thanks)}</div>
+            <button class="place-thank-btn" onclick="placeThank('${s.id}')">ありがとうを送る</button>
+          </div>
+        </div>`;
+    });
+
+    html += `</div>`;
+    list.innerHTML = html;
+
+    const banner = document.getElementById("zoneBanner");
+    if (banner) banner.classList.add("hidden");
+  });
+}
+
+// ありがとうの数で、場所の「変化の受け取り方」が変わる（核）
+function receptionLine(n) {
+  if (n === 0)  return "変わった。でも、気づいてもらえたかは、まだ分からない。";
+  if (n < 3)    return "整えてもらった、って伝わってきた。";
+  return "あのときのこと、みんなが気にかけてくれた。";
+}
+
+// その姿に「ありがとう」を送る → 場所の受け取り方が変わり、整えた人へ環境から返る
+function placeThank(snapId) {
+  const snap = document.getElementById("snap-" + snapId);
+  if (!snap) return;
+  const n = (parseInt(snap.dataset.thanks, 10) || 0) + 1;
+  snap.dataset.thanks = n;
+  const line = document.getElementById("snapline-" + snapId);
+  if (line) line.textContent = receptionLine(n);
+  const nowLine = document.getElementById("nowLine");
+  if (nowLine) nowLine.textContent = "誰かが気づいてくれた。ここは、保たれていく。";
+  // ヒト→環境→ヒト：あなたのありがとうを、場所が整えた人へ届ける
+  showToast(`あなたのありがとうを、${"この場所"}が受け取りました 🌿`, "整えた人へ、場所から届きます");
+}
+
+// 引用画像から、元の投稿（散らかっていた姿）へ飛ぶ
+function goToPost(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  requestAnimationFrame(() => {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+  el.classList.add("post-highlight");
+  setTimeout(() => el.classList.remove("post-highlight"), 1600);
+}
+
+// アフター写真への「ありがとう」：押されると、場所が具体的にお礼を言う
+function thankUp(key) {
+  const post = document.getElementById("care-" + key);
+  if (!post) return;
+  const line = post.dataset.line ? decodeURIComponent(post.dataset.line) : "";
+  const msg = document.getElementById("msg-" + key);
+  if (msg) msg.textContent = line ? `${line} ありがとう。` : "整えてくれて、ありがとう。";
+  const btn = document.getElementById("thx-" + key);
+  if (btn) btn.remove();
+}
+
+// チャットの入力から、場所にありがとうを送る
+async function sendChatThanks() {
+  const input = document.getElementById("chatInput");
+  if (!input) return;
+  const msg = input.value.trim();
+  input.value = "";
+
+  const chat = document.querySelector(".chat");
+  if (!chat) return;
+
+  // あなたの一言（右）
+  const you = document.createElement("div");
+  you.className = "msg-you";
+  you.innerHTML = `<div class="bubble-you">${msg || "ありがとう"}</div>`;
+  chat.appendChild(you);
+
+  // 場所が受け取って返す（整えた人へ届ける＝電波）
+  const reply = document.createElement("div");
+  reply.className = "msg-place";
+  reply.innerHTML = `
+    <div class="msg-place-icon">🌿</div>
+    <div class="msg-place-bubbles">
+      <div class="bubble-place">受け取ったよ。整えてくれた人に、ちゃんと届けるね。</div>
+    </div>`;
+  chat.appendChild(reply);
+  reply.scrollIntoView({ behavior: "smooth", block: "end" });
+
+  if (chatLatestCareId) {
+    fetch(`${API}/thanks/${chatLatestCareId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sender_name: getName() || "", message: msg })
+    }).catch(() => {});
+  }
+}
+
 // ── 場所の変遷タイムライン ───────────────────
 async function loadTimeline(zoneId) {
   const [tlRes, usersRes] = await Promise.all([
@@ -248,32 +700,22 @@ async function loadTimeline(zoneId) {
     useByRecord[e.maintenance_id] = (useByRecord[e.maintenance_id] || 0) + 1;
   });
 
-  // サマリー帯
-  const s = tl.summary;
-  const summaryHtml = `
-    <div class="tl-summary">
-      <div class="tl-summary-title">この場所のこれまで</div>
-      <div class="tl-summary-nums">手入れ ${s.care_count}回 · 利用 ${s.use_count}回 · ${s.contributor_count}人</div>
-      ${s.first_care_at ? `<div class="tl-summary-period">${fmtDate(s.first_care_at)} から ${fmtDate(s.last_care_at)} まで</div>` : ""}
-    </div>`;
+  // 場所が一人称で、いま開いた人に話しかける（環境との交換を体感させる）
+  const speechHtml = zoneSpeech(tl, careEvents);
 
   // イベント列
   const eventsHtml = tl.events.map(e => {
     if (e.type === "use") {
-      const who = e.user_name ? `${e.user_name} が使った` : "誰かが使った";
-      const photo = e.user_name ? userPhotoMap[e.user_name] : null;
-      const face = photo
-        ? `<span class="tl-use-face"><img src="${photo}" alt=""></span>`
-        : "";
+      // 匿名：誰が使ったかは出さない
       return `
         <div class="tl-event tl-use">
           <div class="tl-marker"></div>
-          ${face}
-          <div class="tl-use-text">${fmtDateTime(e.created_at)}　${who}</div>
+          <div class="tl-use-text">${fmtDateTime(e.created_at)}　誰かが使った</div>
         </div>`;
     }
     // care：完了済みは通常カード、ビフォーのみは手伝い待ちカードを流用
     const isWaiting = !e.after_photo && e.before_photo && e.status !== "abandoned";
+    // 場所名はバナーに出るので、カード側は中立ラベル（"手入れ"）にする
     const inner = isWaiting ? waitingCardHtml(careRecord(e)) : cardHtml(careRecord(e));
     return `
       <div class="tl-event tl-care">
@@ -285,7 +727,7 @@ async function loadTimeline(zoneId) {
       </div>`;
   }).join("");
 
-  list.innerHTML = summaryHtml + `<div class="timeline">${eventsHtml}</div>`;
+  list.innerHTML = speechHtml + `<div class="timeline">${eventsHtml}</div>`;
 
   // フロート・送り主・送信済み状態（完了カードのみ）
   const me = getName();
@@ -303,7 +745,7 @@ async function loadTimeline(zoneId) {
 }
 
 // timeline の care イベントを cardHtml/waitingCardHtml が読める形に
-function careRecord(e) {
+function careRecord(e, zoneName = "") {
   return {
     id: e.id,
     person_name: e.person_name,
@@ -313,37 +755,22 @@ function careRecord(e) {
     status: e.status,
     thanks_count: e.thanks_count,
     created_at: e.created_at,
-    zone_name: "",
+    zone_name: zoneName,
   };
 }
 
-// ゾーンを手伝った人たちのアバター（タップで蓄積シート）
+// 匿名：人数は出さない（人のデータは見せない）
 function renderContributors(records) {
   const div = document.getElementById("zoneContribs");
-  if (!div) return;
-  const names = [...new Set(records.map(r => r.helped_by || r.person_name).filter(Boolean))].slice(0, 5);
-  div.innerHTML = names.map(n => {
-    const p = userPhotoMap[n];
-    return `<div class="c-avatar" onclick="openPersonSheet('${encodeURIComponent(n)}')">${
-      p ? `<img src="${p}" alt="">` : n[0]
-    }</div>`;
-  }).join("");
+  if (div) div.innerHTML = "";
 }
 
-// 送り主のアバターを並べる（手動ありがとうのみ）
+// その手入れに灯ったありがとうの数（匿名：送り主は出さない）
 function renderSenders(id, tList) {
   const div = document.getElementById(`senders-${id}`);
   if (!div) return;
-  const names = [...new Set(
-    tList.filter(t => t.source === "user" && t.sender_name).map(t => t.sender_name)
-  )].slice(0, 6);
-  div.innerHTML = names.map(n => {
-    const p = userPhotoMap[n];
-    return `<div class="sender-avatar">${
-      p ? `<img src="${p}" alt="">`
-        : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;color:#999">${n[0]}</div>`
-    }</div>`;
-  }).join("");
+  const count = tList.filter(t => t.source === "user").length;
+  div.innerHTML = count ? `<div class="thanks-count-label">${count} のありがとう</div>` : "";
 }
 
 // もらったありがとうを写真上に常時浮かせる
@@ -357,38 +784,20 @@ function renderFloats(id, tList) {
     pill.className = "af";
     pill.style.left = `${10 + Math.random() * 58}%`;
     pill.style.animationDelay = `${-(interval * i).toFixed(2)}s`;
-    const isUser = t.source === "user" && t.sender_name;
-    const photo = isUser ? userPhotoMap[t.sender_name] : null;
-    const face = photo
-      ? `<img src="${photo}" alt="">`
-      : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;color:#999">${isUser ? t.sender_name[0] : "🌱"}</div>`;
+    // 匿名：送り主の顔は出さない。無地のありがとうピル
     const text = (t.message || "ありがとう").slice(0, 20);
-    pill.innerHTML = `
-      <div class="af-face">${face}</div>
-      <span class="af-text">${text}</span>
-    `;
+    pill.innerHTML = `<span class="af-text">🌱 ${text}</span>`;
     overlay.appendChild(pill);
   });
 }
 
 // 手伝い待ちカード（ビフォーだけの記録 = 本人の途中経過 or 誰かへの招待状）
 function waitingCardHtml(r) {
-  const initial  = r.person_name ? r.person_name[0] : "？";
-  const photoUrl = userPhotoMap[r.person_name] || null;
-  const zoneLabel = r.zone_name && !getZoneFromUrl() ? ` · ${r.zone_name}` : "";
+  // 匿名：誰が置いたか・タイトルは出さない。「気になっています」タグだけ
   const mine = getName() === r.person_name;
   return `
     <div class="concern-card">
-      <div class="card-header" onclick="openPersonSheet('${encodeURIComponent(r.person_name || "")}')">
-        <div class="avatar">
-          ${photoUrl
-            ? `<img src="${photoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
-            : `<span>${initial}</span>`}
-        </div>
-        <div style="flex:1">
-          <div class="card-person">${r.person_name}</div>
-          <div class="card-time">${formatTime(r.created_at)}${zoneLabel}</div>
-        </div>
+      <div class="card-header" style="justify-content:flex-end">
         <div class="concern-tag">気になっています</div>
       </div>
       ${r.before_photo ? `<img class="concern-photo" src="${r.before_photo}" alt="">` : ""}
@@ -401,10 +810,7 @@ function waitingCardHtml(r) {
 }
 
 function cardHtml(r) {
-  const doer     = r.helped_by || r.person_name;   // 実際に手を動かした人
-  const initial  = doer ? doer[0] : "？";
-  const photoUrl = userPhotoMap[doer] || null;
-  const handoff  = r.helped_by ? `${r.person_name}さんの「気になる」に応えました` : "";
+  // 匿名：人もタイトルも受け渡し文も出さない。写真とありがとうだけ
   const hasBoth = r.before_photo && r.after_photo;
   const photoSrc = r.after_photo || r.before_photo || "";
   const initLabel = r.after_photo ? "AFTER" : "BEFORE";
@@ -415,17 +821,6 @@ function cardHtml(r) {
 
   return `
     <div class="card" id="card-${r.id}">
-      <div class="card-header" onclick="openPersonSheet('${encodeURIComponent(doer || "")}')">
-        <div class="avatar">
-          ${photoUrl
-            ? `<img src="${photoUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
-            : `<span>${initial}</span>`}
-        </div>
-        <div>
-          <div class="card-person">${doer}</div>
-          <div class="card-time">${formatTime(r.created_at)}${handoff ? " · " + handoff : ""}</div>
-        </div>
-      </div>
       ${photoSrc ? `
       <div class="photo-wrap" id="photowrap-${r.id}"
         data-before="${beforeUrl}" data-after="${afterUrl}"
@@ -438,7 +833,7 @@ function cardHtml(r) {
       </div>` : ""}
       <div class="thanks-row">
         <div class="thanks-senders" id="senders-${r.id}"></div>
-        <button class="${btnClass}" id="btn-${r.id}" onclick="openThanksModal('${r.id}', '${encodeURIComponent(doer || "")}')">
+        <button class="${btnClass}" id="btn-${r.id}" onclick="openThanksModal('${r.id}')">
           ${thanksLabel}
         </button>
       </div>
@@ -517,25 +912,21 @@ document.addEventListener("click", e => {
 // ── ありがとうモーダル ─────────────────────
 let pendingThanksId = null;
 
-function openThanksModal(id, encodedName) {
-  requireAuth(() => _openThanksModal(id, encodedName), "thanks");
+function openThanksModal(id) {
+  requireAuth(() => _openThanksModal(id), "thanks");
 }
 
-function _openThanksModal(id, encodedName) {
+function _openThanksModal(id) {
   pendingThanksId = id;
   const btn = document.getElementById(`btn-${id}`);
   if (btn && btn.classList.contains("sent")) return;
 
-  const name = decodeURIComponent(encodedName || "");
-  const initial = name ? name[0] : "？";
-  const photo = userPhotoMap[name];
-
+  // 匿名：宛先は人ではなく「その場所」。案A＝環境に向けてありがとうを送る
+  const place = currentZoneName || "この場所";
   const photoEl = document.getElementById("modalPersonPhoto");
-  photoEl.innerHTML = photo
-    ? `<img src="${photo}" alt="" style="width:100%;height:100%;object-fit:cover">`
-    : `<span style="font-size:1.4rem;font-weight:700;color:#999">${initial}</span>`;
+  photoEl.innerHTML = `<span style="font-size:1.6rem">🌱</span>`;
 
-  document.getElementById("modalHint").textContent = name ? `${name} さんにありがとうを届ける` : "ありがとうを届ける";
+  document.getElementById("modalHint").textContent = `${place}にありがとうを伝える`;
   document.getElementById("thanksText").value = "";
   document.getElementById("modalOverlay").classList.remove("hidden");
 }
@@ -563,7 +954,7 @@ async function sendThanks() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sender_name: getName() || "", message: msg })
     });
-    showToast("届けました 🙏", "");
+    showToast(`${currentZoneName || "この場所"}にありがとうを伝えました 🌱`, "");
   } catch(e) {
     console.error("sendThanks error:", e);
   }
@@ -579,21 +970,14 @@ function closeModal() {
 function triggerFloat(recordId, msg = "") {
   const overlay = document.getElementById(`overlay-${recordId}`);
   if (!overlay) return;
-  const user = getCurrentUser();
-  const photoUrl = user ? user.photo_url : null;
-  const initial = user ? user.last_name[0] : "？";
+  // 匿名：送り主の顔は出さない
   const text = (msg || "ありがとう").slice(0, 20);
 
   const pill = document.createElement("div");
   pill.className = "af";
   pill.style.left = `${15 + Math.random() * 55}%`;
   pill.style.animationDelay = "0s";
-  pill.innerHTML = `
-    <div class="af-face">
-      ${photoUrl ? `<img src="${photoUrl}" alt="">` : `<div style="width:100%;height:100%;background:#ddd;display:flex;align-items:center;justify-content:center;font-size:0.6rem;font-weight:700;color:#999">${initial}</div>`}
-    </div>
-    <span class="af-text">${text}</span>
-  `;
+  pill.innerHTML = `<span class="af-text">🌱 ${text}</span>`;
   overlay.appendChild(pill);
 }
 
