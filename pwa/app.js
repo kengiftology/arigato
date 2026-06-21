@@ -492,6 +492,27 @@ function closeContinuePicker() {
   if (ov) ov.remove();
 }
 
+// 送信中オーバーレイ：AI生成＋アップロードの数秒、画面を覆って二重投稿を防ぐ
+function showBusy(msg) {
+  let ov = document.getElementById("busyOverlay");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "busyOverlay";
+    ov.style.cssText = "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.35);" +
+      "display:flex;align-items:center;justify-content:center";
+    ov.innerHTML = '<div style="background:#fff;padding:18px 26px;border-radius:14px;' +
+      'font-size:0.95rem;color:#333;box-shadow:0 6px 24px rgba(0,0,0,.2)">' +
+      '<span id="busyMsg"></span></div>';
+    document.body.appendChild(ov);
+  }
+  ov.querySelector("#busyMsg").textContent = msg || "送信中…";
+  ov.style.display = "flex";
+}
+function hideBusy() {
+  const ov = document.getElementById("busyOverlay");
+  if (ov) ov.style.display = "none";
+}
+
 // 選んだ意図で /maintenance に保存（before=課題/招待状、after=整えた記録）
 function postSnap(kind) {
   const ov = document.getElementById("contOverlay");
@@ -504,6 +525,7 @@ function postSnap(kind) {
   requireAuth(async () => {
     const zoneId = getZoneFromUrl();
     if (!zoneId) return;
+    showBusy(kind === "before" ? "気になる所を記録中…" : "整えた所を記録中…");
     try {
       const form = new FormData();
       form.append("zone_id",     zoneId);
@@ -519,6 +541,8 @@ function postSnap(kind) {
       await loadChat(zoneId);
     } catch(e) {
       alert("記録に失敗しました。もう一度お試しください。");
+    } finally {
+      hideBusy();
     }
   }, "post");
 }
@@ -542,6 +566,7 @@ function onSolvePhotoPicked(input) {
   // helper_name が投稿者と違えば helped_by 記録＋投稿者へ通知（受け渡し）。
   requireAuth(async () => {
     const zoneId = getZoneFromUrl();
+    showBusy("手伝いを記録中…");
     try {
       const form = new FormData();
       form.append("after_photo", file);
@@ -552,6 +577,8 @@ function onSolvePhotoPicked(input) {
       if (zoneId) await loadChat(zoneId);
     } catch(e) {
       alert("記録に失敗しました。もう一度お試しください。");
+    } finally {
+      hideBusy();
     }
   }, "post");
 }
