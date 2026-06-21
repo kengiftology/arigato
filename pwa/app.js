@@ -13,6 +13,18 @@ function saveUser(user) {
   localStorage.setItem("arigato_user", JSON.stringify(user));
 }
 
+// 同じ手入れに何度もありがとうを積まないための端末側メモ
+function hasThanked(id) {
+  try { return JSON.parse(localStorage.getItem("arigato_thanked") || "[]").includes(id); }
+  catch (e) { return false; }
+}
+function markThanked(id) {
+  try {
+    const a = JSON.parse(localStorage.getItem("arigato_thanked") || "[]");
+    if (!a.includes(id)) { a.push(id); localStorage.setItem("arigato_thanked", JSON.stringify(a)); }
+  } catch (e) {}
+}
+
 // ── 認証フロー ────────────────────────────
 let pendingAction = null;
 let authType = "thanks";
@@ -361,6 +373,18 @@ async function loadChat(zoneId) {
       </div>`;
   }
 
+  // ③' あなたが出した課題を、別の誰かが解決してくれた → 再訪で必ず気づける（通知に依存しない）
+  const myTaskHelped = me && care.some(e => e.person_name === me && e.helped_by && e.helped_by !== me && e.after_photo);
+  if (myTaskHelped) {
+    html += `
+      <div class="msg-place denpa">
+        <div class="msg-place-icon">🌿</div>
+        <div class="msg-place-bubbles">
+          <div class="bubble-place strong">あなたが気にかけたところ、誰かが整えてくれたよ。<br>見ていってね。</div>
+        </div>
+      </div>`;
+  }
+
   // 写真は1枚ずつ、全部を時系列で。各手入れを2スナップに分割：
   //   ビフォー（散らかってた姿）＝🍂 下がり（変化の「元」。これが無いと何が変わったか分からない）
   //   アフター（整った姿）       ＝🌿 上がり（ありがとうが乗る）
@@ -374,7 +398,8 @@ async function loadChat(zoneId) {
     if (e.after_photo)  snaps.push({ key: e.id + "-a", dir: "up", photo: e.after_photo, at: t, order: 1,
                                      line: e.place_line, thanks: (e.thanks || []).length,
                                      beforePhoto: e.before_photo,
-                                     beforeKey: e.before_photo ? e.id + "-b" : null });  // 紐づけ用＝引用する元の姿の投稿
+                                     beforeKey: e.before_photo ? e.id + "-b" : null,  // 紐づけ用＝引用する元の姿の投稿
+                                     thanked: hasThanked(e.id) });
   });
   // 時刻順、同時刻ならビフォー→アフターの順
   snaps.sort((a, b) => (a.at || "").localeCompare(b.at || "") || a.order - b.order);
@@ -406,14 +431,18 @@ async function loadChat(zoneId) {
           <img src="${s.beforePhoto}" alt="">
           <span>さっきの、散らかっていた姿</span>
         </div>` : "";
+      // 既にこの端末でありがとう済みなら、お礼の言葉を出しボタンは出さない（二重付与防止）
+      const thankBlock = s.thanked
+        ? `<div class="bubble-place" id="msg-${s.key}">${line} ありがとう。</div>`
+        : `<div class="bubble-place" id="msg-${s.key}">誰か、気づいてくれるかな？</div>
+            <button class="chat-thank-btn" id="thx-${s.key}" onclick="thankUp('${s.key}')">ありがとう</button>`;
       html += `
         <div class="msg-place" id="care-${s.key}" data-line="${encodeURIComponent(line)}">
           <div class="msg-place-icon">🌿</div>
           <div class="msg-place-bubbles">
             ${quote}
             <div class="bubble-place photo"><img class="card-photo" src="${s.photo}" alt=""></div>
-            <div class="bubble-place" id="msg-${s.key}">誰か、気づいてくれるかな？</div>
-            <button class="chat-thank-btn" id="thx-${s.key}" onclick="thankUp('${s.key}')">ありがとう</button>
+            ${thankBlock}
             <div class="chat-time">${fmtDateTime(s.at)}</div>
           </div>
         </div>`;
@@ -434,6 +463,7 @@ async function loadChat(zoneId) {
 
   // 下の入力欄：📷で投稿（課題を出す／整えた所を残す）／文字で話しかける
   html += `
+    <div style="text-align:center;font-size:0.72rem;color:#9aa;padding:4px 0 2px">📷 気になる所・整えた所を残す</div>
     <div class="chat-compose">
       <button class="chat-cam" onclick="startPlacePhoto()" title="いまの姿を撮る">📷</button>
       <input class="chat-input" id="chatInput" placeholder="${name}に話しかけてみる…"
@@ -704,6 +734,7 @@ function thankUp(key) {
   if (btn) btn.remove();
   // サーバーへ：この手入れ(careId)にありがとうを保存し、整えた人へ届ける
   const careId = key.replace(/-[ab]$/, "");
+  markThanked(careId);  // 再読込しても二重に積まないよう端末に記録
   fetch(`${API}/thanks/${careId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
