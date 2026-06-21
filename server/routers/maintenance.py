@@ -1,8 +1,6 @@
 import uuid
-import os
-import hmac
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, UploadFile, File, Form, Body, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form
 from server.database import get_db
 from server.storage import upload_photo, photo_url
 from server.push import send_push_to
@@ -101,41 +99,6 @@ async def create_maintenance(
         send_push_to(person_name, "気づいてくれてありがとう 🌱", "きれいになったら、まっさきにお知らせします")
 
     return {"id": record_id, "status": status}
-
-
-@router.post("/backfill-ai")
-async def backfill_ai(body: dict = Body(default={})):
-    """過去レコードに AI 一言（before_suggestion / place_line）を後付けする一回限りの管理用。
-    保護：本番 env の ANTHROPIC_API_KEY と一致する token を要求（実行後はこのエンドポイントを削除する）。"""
-    token = body.get("token", "")
-    expected = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not expected or not hmac.compare_digest(str(token), expected):
-        raise HTTPException(status_code=403, detail="forbidden")
-
-    db = get_db()
-    docs = list(db.collection("maintenance").stream())
-    scanned = len(docs)
-    filled_before = 0
-    filled_after = 0
-    for doc in docs:
-        m = doc.to_dict()
-        upd = {}
-        bp = m.get("before_photo")
-        if bp and not m.get("before_suggestion"):
-            line = await ai.place_line_url(photo_url(bp), "before")
-            if line:
-                upd["before_suggestion"] = line
-        ap = m.get("after_photo")
-        if ap and not m.get("place_line"):
-            line = await ai.place_line_url(photo_url(ap), "after")
-            if line:
-                upd["place_line"] = line
-        if upd:
-            doc.reference.update(upd)
-            filled_before += 1 if "before_suggestion" in upd else 0
-            filled_after += 1 if "place_line" in upd else 0
-
-    return {"scanned": scanned, "filled_before": filled_before, "filled_after": filled_after}
 
 
 @router.patch("/{record_id}/complete")
