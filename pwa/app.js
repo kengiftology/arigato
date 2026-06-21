@@ -320,6 +320,12 @@ async function loadChat(zoneId) {
 
   chatLatestCareId = care[care.length - 1].id;
 
+  // 見た＝使った：完了済みの手入れに自動ありがとうを送る（useを積む／研究データ）
+  const viewer = encodeURIComponent(me || "");
+  care.filter(e => e.after_photo).slice(-5).forEach(e =>
+    fetch(`${API}/thanks/${e.id}/auto?user_name=${viewer}`, { method: "POST" }).catch(() => {})
+  );
+
   // 会話相手＝場所、を最上部に固定（「私、◯◯と話してる」を一目で）
   let html = `
     <div class="chat-header">
@@ -1268,7 +1274,7 @@ async function init() {
   }
 
   if (zoneId) {
-    await loadTimeline(zoneId);
+    await loadChat(zoneId);
   } else {
     await loadFeed();
   }
