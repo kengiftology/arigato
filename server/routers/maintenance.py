@@ -4,6 +4,7 @@ from fastapi import APIRouter, UploadFile, File, Form
 from server.database import get_db
 from server.storage import upload_photo, photo_url
 from server.push import send_push_to
+from server import ai
 from google.cloud import firestore
 
 router = APIRouter(prefix="/maintenance", tags=["maintenance"])
@@ -46,13 +47,20 @@ async def create_maintenance(
     zone_doc = db.collection("zones").document(zone_id).get()
     zone_name = zone_doc.to_dict()["name"] if zone_doc.exists else zone_id
 
+    before_bytes = None
+    after_bytes  = None
+    before_mt = after_mt = "image/jpeg"
     before_url = None
     after_url  = None
     try:
         if before_photo and before_photo.filename:
-            before_url = upload_photo(await before_photo.read(), before_photo.filename)
+            before_bytes = await before_photo.read()
+            before_mt = before_photo.content_type or "image/jpeg"
+            before_url = upload_photo(before_bytes, before_photo.filename)
         if after_photo and after_photo.filename:
-            after_url = upload_photo(await after_photo.read(), after_photo.filename)
+            after_bytes = await after_photo.read()
+            after_mt = after_photo.content_type or "image/jpeg"
+            after_url = upload_photo(after_bytes, after_photo.filename)
     except Exception as e:
         print(f"[warn] photo upload failed: {e}")
 
@@ -66,18 +74,24 @@ async def create_maintenance(
     else:
         status = "completed"
 
+    # 場所の一言をAI生成（写真ベース）。失敗時はNone→フロントが汎用文へフォールバック
+    before_suggestion = await ai.place_line(before_bytes, before_mt, "before") if before_url else None
+    place_line        = await ai.place_line(after_bytes,  after_mt,  "after")  if after_url  else None
+
     record_id = str(uuid.uuid4())
     now = datetime.now(JST).isoformat()
     db.collection("maintenance").document(record_id).set({
-        "zone_id":      zone_id,
-        "zone_name":    zone_name,
-        "person_name":  person_name,
-        "content":      content,
-        "before_photo": before_url,
-        "after_photo":  after_url,
-        "created_at":   now,
-        "thanks_count": 0,
-        "status":       status,
+        "zone_id":           zone_id,
+        "zone_name":         zone_name,
+        "person_name":       person_name,
+        "content":           content,
+        "before_photo":      before_url,
+        "after_photo":       after_url,
+        "before_suggestion": before_suggestion,
+        "place_line":        place_line,
+        "created_at":        now,
+        "thanks_count":      0,
+        "status":            status,
     })
 
     # BEFORE投稿時は本人に（自分でやっても、誰かに任せてもいい）
@@ -100,17 +114,26 @@ async def complete_maintenance(
         return {"error": "not found"}
     data = doc.to_dict()
 
+    after_bytes = None
+    after_mt = "image/jpeg"
     after_url = None
     try:
-        after_url = upload_photo(await after_photo.read(), after_photo.filename)
+        after_bytes = await after_photo.read()
+        after_mt = after_photo.content_type or "image/jpeg"
+        after_url = upload_photo(after_bytes, after_photo.filename)
     except Exception as e:
         print(f"[warn] after photo upload failed: {e}")
+
+    # 整えた姿の一言をAI生成（失敗時はNone→フロントが汎用文へフォールバック）
+    place_line = await ai.place_line(after_bytes, after_mt, "after") if after_url else None
 
     update = {
         "after_photo":  after_url,
         "status":       "completed",
         "completed_at": datetime.now(JST).isoformat(),
     }
+    if place_line:
+        update["place_line"] = place_line
 
     # ビフォーを置いた人と別の人が手伝った場合：受け渡しを記録して通知
     # 匿名：誰が手伝ったかは出さない。場所が主語

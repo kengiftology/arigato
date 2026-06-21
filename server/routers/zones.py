@@ -80,6 +80,8 @@ def zone_timeline(zone_id: str):
             "helped_by": m.get("helped_by"),
             "before_photo": photo_url(m.get("before_photo")),
             "after_photo": photo_url(m.get("after_photo")),
+            "before_suggestion": m.get("before_suggestion"),
+            "place_line": m.get("place_line"),
             "status": m.get("status", ""),
             "thanks_count": m.get("thanks_count", 0),
             "thanks": user_thanks,
