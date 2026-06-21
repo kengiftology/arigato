@@ -82,3 +82,36 @@ async def place_line(image_bytes: bytes, media_type: str, kind: str) -> str | No
     except Exception as e:
         print(f"[warn] place_line generation failed: {e}")
         return None
+
+
+async def place_line_url(image_url: str, kind: str) -> str | None:
+    """公開URLの写真から場所の一言を生成（過去レコードのバックフィル用）。"""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+    if not image_url:
+        return None
+    prompt = _PROMPT.get(kind)
+    if not prompt:
+        return None
+    try:
+        client = _get_client()
+        msg = await client.messages.create(
+            model=MODEL,
+            max_tokens=120,
+            system=_SYSTEM,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "url", "url": image_url}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+        )
+        for block in msg.content:
+            if block.type == "text":
+                line = block.text.strip()
+                return line or None
+        return None
+    except Exception as e:
+        print(f"[warn] place_line_url generation failed: {e}")
+        return None
