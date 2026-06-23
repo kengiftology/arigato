@@ -357,6 +357,14 @@ async function loadChat(zoneId) {
         </div>
       </div>`;
   } else {
+  // 開始のあいさつ（トークの入り口＝相手＝場所が話しかけてくる）
+  html += `
+    <div class="msg-place">
+      <div class="msg-place-icon">🌿</div>
+      <div class="msg-place-bubbles">
+        <div class="bubble-place">やあ、来てくれてありがとう。<br>わたしの今日を、ちょっと見ていって。</div>
+      </div>
+    </div>`;
   // 🍂🌿の意味ガイド（初見の道しるべ）
   html += `<div class="chat-legend"><span>🍂 <b>散らかっていた姿</b></span><span>🌿 <b>整えてもらった姿</b></span></div>`;
 

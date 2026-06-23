@@ -295,6 +295,21 @@
       padding: 10px 14px; font-size: 0.9rem; font-weight: 600; line-height: 1.6;
       max-width: 75%;
     }
+    /* トークらしさ：吹き出しのしっぽ（色は各吹き出しの背景に合わせる） */
+    .bubble-place:not(.photo):not(.note):not(.soft) { position: relative; }
+    .bubble-place:not(.photo):not(.note):not(.soft)::before {
+      content: ""; position: absolute; left: -5px; top: 13px;
+      width: 10px; height: 10px; background: var(--accent-soft);
+      clip-path: polygon(100% 0, 100% 100%, 0 35%);
+    }
+    .bubble-place.down:not(.photo)::before { background: #f3ebe0; }
+    .bubble-place.strong::before { background: var(--accent); }
+    .bubble-you { position: relative; }
+    .bubble-you::before {
+      content: ""; position: absolute; right: -5px; top: 13px;
+      width: 10px; height: 10px; background: var(--accent);
+      clip-path: polygon(0 0, 0 100%, 100% 35%);
+    }
     /* アフター写真への「ありがとう」ボタン（押すと場所がお礼を言う） */
     .chat-thank-btn {
       display: flex; align-items: center; gap: 6px; width: fit-content;
