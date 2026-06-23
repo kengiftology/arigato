@@ -144,7 +144,7 @@ async def complete_maintenance(
             zone_name = data.get("zone_name", "") or "気になっていた場所"
             send_push_to(
                 poster,
-                f"{zone_name}が手伝われました 🌱",
+                f"{zone_name}、誰かが手伝ってくれたよ 🌱",
                 "あなたが気にかけた場所が、きれいになりました。ありがとうを届けませんか？",
             )
 
