@@ -341,7 +341,6 @@ async function loadChat(zoneId) {
       <div class="chat-header-icon">🌿</div>
       <div>
         <div class="chat-header-name">${name}</div>
-        <div class="chat-header-sub">いま、あなたと話しています</div>
       </div>
     </div>`;
 
@@ -406,6 +405,7 @@ async function loadChat(zoneId) {
     if (e.after_photo)  snaps.push({ key: e.id + "-a", dir: "up", photo: e.after_photo, at: t, order: 1,
                                      line: e.place_line, thanks: (e.thanks || []).length,
                                      beforePhoto: e.before_photo,
+                                     beforeText: e.before_suggestion,  // 引用に出す＝紐づくビフォーの実際の文
                                      beforeKey: e.before_photo ? e.id + "-b" : null,  // 紐づけ用＝引用する元の姿の投稿
                                      thanked: hasThanked(e.id) });
   });
@@ -437,7 +437,7 @@ async function loadChat(zoneId) {
       const quote = s.beforePhoto ? `
         <div class="quote-before"${s.beforeKey ? ` onclick="goToPost('care-${s.beforeKey}')" role="button" tabindex="0"` : ""}>
           <img src="${s.beforePhoto}" alt="">
-          <span>さっきの、散らかっていた姿</span>
+          <span>${s.beforeText || "さっきの、散らかっていた姿"}</span>
         </div>` : "";
       // 既にこの端末でありがとう済みなら、お礼の言葉を出しボタンは出さない（二重付与防止）
       const thankBlock = s.thanked
@@ -474,7 +474,7 @@ async function loadChat(zoneId) {
     <div style="text-align:center;font-size:0.72rem;color:#9aa;padding:4px 0 2px">📷 気になる所・整えた所を残す</div>
     <div class="chat-compose">
       <button class="chat-cam" onclick="startPlacePhoto()" title="いまの姿を撮る">📷</button>
-      <input class="chat-input" id="chatInput" placeholder="${name}に話しかけてみる…"
+      <input class="chat-input" id="chatInput" placeholder="メッセージを入力"
         onkeydown="if(event.key==='Enter')sendChatThanks()">
       <button class="chat-send" onclick="sendChatThanks()">送る</button>
     </div>
