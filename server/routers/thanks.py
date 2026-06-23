@@ -77,9 +77,12 @@ def send_auto_thanks(maintenance_id: str, user_name: str = ""):
     if not last_use or last_use < one_hour_ago:
         _record_thanks(db, maintenance_id, source="auto", sender_name=user_name)
         ref.update({"thanks_count": firestore.Increment(1)})
-        # 匿名：環境（場所）からのありがとうとして届く。使った人の名前は出さない
+        # 環境（場所）からのありがとうとして届く。使った人は下の名前＋さん、
+        # 名前が無い（未登録＝手伝っていない）人は「誰かさん」。
         zone_name = data.get("zone_name", "") or "この場所"
-        send_push_to(doer, f"{zone_name}からありがとう 🌱", "あなたの手入れが、誰かに使われました")
+        given = user_name.split()[-1] if user_name.strip() else ""
+        who = f"{given}さん" if given else "誰かさん"
+        send_push_to(doer, f"{zone_name}からありがとう 🌱", f"あなたが整えた所、{who}が使ったみたい")
 
     return {"ok": True}
 
