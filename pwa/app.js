@@ -25,6 +25,23 @@ function markThanked(id) {
   } catch (e) {}
 }
 
+// 端末ごとの匿名ID。「同じ人が使った／ありがとうした」の判定だけに使い、名前は保存しない。
+function getUid() {
+  let u = localStorage.getItem("arigato_uid");
+  if (!u) {
+    u = (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : "u-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem("arigato_uid", u);
+  }
+  return u;
+}
+// 自分が整えた手入れか（本人の利用は「使った」に数えないための判定）
+function isMyCare(e) {
+  const me = getName();
+  return !!me && (me === e.person_name || me === e.helped_by);
+}
+
 // ── 認証フロー ────────────────────────────
 let pendingAction = null;
 let authType = "thanks";
@@ -217,7 +234,7 @@ async function loadFeed() {
     const tList = thanksByRecord[r.id] || [];
     renderSenders(r.id, tList);
     renderFloats(r.id, tList);
-    if (me && tList.some(t => t.sender_name === me)) {
+    if (tList.some(t => t.sender_name === getUid())) {
       const btn = document.getElementById(`btn-${r.id}`);
       if (btn) { btn.classList.remove("first"); btn.classList.add("sent"); }
     }
@@ -328,10 +345,11 @@ async function loadChat(zoneId) {
   chatLatestCareId = care.length ? care[care.length - 1].id : null;
 
   // 見た＝使った：完了済みの手入れに自動ありがとうを送る（useを積む／研究データ）
+  // 匿名ID（端末符号）で送る。名前は記録しない。自分の手入れは数えない。
   if (care.length) {
-    const viewer = encodeURIComponent(me || "");
-    care.filter(e => e.after_photo).slice(-5).forEach(e =>
-      fetch(`${API}/thanks/${e.id}/auto?user_name=${viewer}`, { method: "POST" }).catch(() => {})
+    const viewer = encodeURIComponent(getUid());
+    care.filter(e => e.after_photo && !isMyCare(e)).slice(-5).forEach(e =>
+      fetch(`${API}/thanks/${e.id}/auto?viewer_id=${viewer}`, { method: "POST" }).catch(() => {})
     );
   }
 
@@ -387,7 +405,7 @@ async function loadChat(zoneId) {
       <div class="msg-place denpa">
         <div class="msg-place-icon">🌿</div>
         <div class="msg-place-bubbles">
-          <div class="bubble-place strong">あなたが気にかけたところ、誰かが整えてくれたよ。<br>見ていってね。</div>
+          <div class="bubble-place strong">あなたが気にかけたところ、すっかり整ったよ。<br>見ていってね。</div>
         </div>
       </div>`;
   }
@@ -433,7 +451,7 @@ async function loadChat(zoneId) {
     } else {
       // アフター（手伝い終えた姿）：最初は言葉なし＝「誰か気づいてくれるかな？」。
       // ありがとうが押されると、場所が具体的にお礼を言う（thankUp）。
-      const line = s.line || "ここ、整えてくれた。";
+      const line = s.line || "ここ、すっきり整った。";
       const quote = s.beforePhoto ? `
         <div class="quote-before"${s.beforeKey ? ` onclick="goToPost('care-${s.beforeKey}')" role="button" tabindex="0"` : ""}>
           <img src="${s.beforePhoto}" alt="">
@@ -624,7 +642,7 @@ function onSolvePhotoPicked(input) {
 // 場所が「手が入った」ことを伝える一言（匿名・場所が主語）
 function chatCareLine(e) {
   if (!e.after_photo && e.before_photo) return "ここ、ちょっと気になっているんだ。";
-  return "誰かが、私に手を入れてくれた。";
+  return "なんだか、すっきりした。";
 }
 
 // ── 場所＝ひとつの生きてる存在（AIなし・出し分け） ──────────────
@@ -746,7 +764,7 @@ function thankUp(key) {
   fetch(`${API}/thanks/${careId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sender_name: getName() || "", message: "" })
+    body: JSON.stringify({ sender_name: getUid(), message: "" })
   }).catch(() => {});
 }
 
@@ -781,7 +799,7 @@ async function sendChatThanks() {
     fetch(`${API}/thanks/${chatLatestCareId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sender_name: getName() || "", message: msg })
+      body: JSON.stringify({ sender_name: getUid(), message: msg })
     }).catch(() => {});
   }
 }
@@ -806,9 +824,10 @@ async function loadTimeline(zoneId) {
   renderContributors(careEvents.map(e => ({ person_name: e.person_name, helped_by: e.helped_by })));
 
   // この場所を見た = 使った：完了済みの手入れに自動ありがとうを送る（useを積む）
-  const viewer = encodeURIComponent(getName() || "");
-  careEvents.filter(e => e.after_photo).slice(0, 5).forEach(e =>
-    fetch(`${API}/thanks/${e.id}/auto?user_name=${viewer}`, { method: "POST" }).catch(() => {})
+  // 匿名ID（端末符号）で送る。名前は記録しない。自分の手入れは数えない。
+  const viewer = encodeURIComponent(getUid());
+  careEvents.filter(e => e.after_photo && !isMyCare(e)).slice(0, 5).forEach(e =>
+    fetch(`${API}/thanks/${e.id}/auto?viewer_id=${viewer}`, { method: "POST" }).catch(() => {})
   );
 
   const list = document.getElementById("feedList");
@@ -860,7 +879,7 @@ async function loadTimeline(zoneId) {
     const autoT = Array.from({ length: Math.min(autoCount, 4) }, () => ({ source: "auto" }));
     renderSenders(e.id, userT);
     renderFloats(e.id, [...userT, ...autoT]);
-    if (me && userT.some(t => t.sender_name === me)) {
+    if (userT.some(t => t.sender_name === getUid())) {
       const btn = document.getElementById(`btn-${e.id}`);
       if (btn) { btn.classList.remove("first"); btn.classList.add("sent"); }
     }
@@ -1075,7 +1094,7 @@ async function sendThanks() {
     await fetch(`${API}/thanks/${id}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sender_name: getName() || "", message: msg })
+      body: JSON.stringify({ sender_name: getUid(), message: msg })
     });
     showToast(`${currentZoneName || "この場所"}にありがとうを伝えました 🌱`, "");
   } catch(e) {

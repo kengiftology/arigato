@@ -13,7 +13,7 @@ def send_welcome_thanks(body: dict = Body(...)):
     """投稿直後にアプリからありがとうを届ける"""
     name = body.get("person_name", "")
     if name:
-        send_push_to(name, "この場所を手伝ってくれてありがとう 🌱", "あなたのお手伝いが記録されました")
+        send_push_to(name, "この場所を手伝ってくれてありがとう 🌱", "あなたの気づき、ちゃんと受け取ったよ")
     return {"ok": True}
 
 @router.post("/{maintenance_id}")
@@ -40,9 +40,11 @@ def send_thanks(maintenance_id: str, body: dict = Body(default={})):
     return {"ok": True}
 
 @router.post("/{maintenance_id}/auto")
-def send_auto_thanks(maintenance_id: str, user_name: str = ""):
-    """アプリからの自動ありがとう（フィードを見た = 使った）。
-    user_name があれば「誰が使ったか」を記録する。"""
+def send_auto_thanks(maintenance_id: str, viewer_id: str = ""):
+    """アプリからの自動ありがとう（場所を開いた = 使った）。
+    viewer_id は端末ごとの匿名ID。「同じ人の二重カウント防止」だけに使い、
+    名前は記録しない（誰が使ったかは保存も表示もしない＝完全匿名）。
+    本人が自分の手入れを見た場合の除外はクライアント側で行う。"""
     db = get_db()
     ref = db.collection("maintenance").document(maintenance_id)
     doc = ref.get()
@@ -52,17 +54,13 @@ def send_auto_thanks(maintenance_id: str, user_name: str = ""):
     data = doc.to_dict()
     doer = data.get("helped_by") or data.get("person_name", "")
 
-    # 自分の手入れを自分が見た場合は「利用」に数えない
-    if user_name and user_name == doer:
-        return {"ok": True, "skipped": "self"}
-
-    # 直近1時間以内に「同じ人」が同じ記録を使っていれば二重に数えない。
-    # 別の人 or 1時間以上経過なら新たな「利用」として記録 → useが積み重なる。
+    # 直近1時間以内に「同じ端末」が同じ記録を使っていれば二重に数えない。
+    # 別の端末 or 1時間以上経過なら新たな「利用」として記録 → useが積み重なる。
     now = datetime.now(JST)
     one_hour_ago = (now - timedelta(hours=1)).isoformat()
 
     # 複合インデックス回避のため maintenance_id の等価フィルタのみで取得し、
-    # source / sender_name / created_at の判定はクライアント側で行う
+    # source / created_at の判定はクライアント側で行う
     existing = (db.collection("thanks")
                   .where("maintenance_id", "==", maintenance_id)
                   .stream())
@@ -70,19 +68,17 @@ def send_auto_thanks(maintenance_id: str, user_name: str = ""):
         t.to_dict().get("created_at", "")
         for t in existing
         if t.to_dict().get("source") == "auto"
-        and t.to_dict().get("sender_name", "") == user_name
+        and t.to_dict().get("sender_name", "") == viewer_id
     ]
     last_use = max(same_user_times) if same_user_times else ""
 
     if not last_use or last_use < one_hour_ago:
-        _record_thanks(db, maintenance_id, source="auto", sender_name=user_name)
+        # sender_name には匿名ID（端末符号）のみを保存。実名は持たない。
+        _record_thanks(db, maintenance_id, source="auto", sender_name=viewer_id)
         ref.update({"thanks_count": firestore.Increment(1)})
-        # 環境（場所）からのありがとうとして届く。使った人は下の名前＋さん、
-        # 名前が無い（未登録＝手伝っていない）人は「誰かさん」。
+        # 環境（場所）からのありがとう。誰が使ったかは出さない（匿名）。
         zone_name = data.get("zone_name", "") or "この場所"
-        given = user_name.split()[-1] if user_name.strip() else ""
-        who = f"{given}さん" if given else "誰かさん"
-        send_push_to(doer, f"{zone_name}からありがとう 🌱", f"あなたが整えた所、{who}が使ったみたい")
+        send_push_to(doer, f"{zone_name}からありがとう 🌱", "あなたが整えた所、ちゃんと使われてるみたい")
 
     return {"ok": True}
 
