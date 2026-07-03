@@ -57,7 +57,8 @@ def capture_jpeg():
     """カメラを起こして1枚撮り、JPEGに変換して必ず解放する。"""
     from camera import Camera, FrameSize, PixelFormat
     import jpeg
-    cam = Camera(pixel_format=PixelFormat.RGB565, frame_size=FrameSize.SVGA)
+    # XGA(1024x768)がこのボードのRGB565上限。WiFi有効時はxclk 5MHzまで下げないとDMAが追いつかない
+    cam = Camera(pixel_format=PixelFormat.RGB565, frame_size=FrameSize.XGA, xclk_freq=5000000)
     try:
         cam.set_vflip(True)  # OV3660は素のままだと上下逆
         for _ in range(WARMUP_FRAMES):
@@ -70,7 +71,7 @@ def capture_jpeg():
         raw = bytes(raw)
     finally:
         cam.deinit()
-    enc = jpeg.Encoder(width=800, height=600, pixel_format="RGB565_BE", quality=85)
+    enc = jpeg.Encoder(width=1024, height=768, pixel_format="RGB565_BE", quality=85)
     img = enc.encode(raw)
     del raw
     gc.collect()
