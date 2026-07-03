@@ -1,5 +1,7 @@
 # esp32cam/main.py — 毎分撮影して arigato サーバーの /timelapse へ送る
-# 対象: AI-Thinker ESP32-CAM + cnadler86/micropython-camera-API 入り MicroPython v1.27
+# 対象: FREENOVE ESP32-WROVER CAM (OV3660)
+#       + cnadler86/micropython-camera-API v0.6.2 WROVER_KIT ビルド (MicroPython v1.27)
+# OV3660はこのボードでJPEG直撮りが失敗するため、RGB565で撮って jpeg.Encoder で変換する
 # 設定はデバイス上の config.json（config.example.json を参照）
 # 配置: mpremote fs cp esp32cam/main.py :main.py
 #       mpremote fs cp esp32cam/config.json :config.json
@@ -52,18 +54,27 @@ def wifi_connect():
 
 
 def capture_jpeg():
-    """カメラを起こして1枚撮り、必ず解放する。"""
-    from camera import Camera, FrameSize
-    cam = Camera(frame_size=FrameSize.SVGA, jpeg_quality=85)
+    """カメラを起こして1枚撮り、JPEGに変換して必ず解放する。"""
+    from camera import Camera, FrameSize, PixelFormat
+    import jpeg
+    cam = Camera(pixel_format=PixelFormat.RGB565, frame_size=FrameSize.SVGA)
     try:
+        cam.set_vflip(True)  # OV3660は素のままだと上下逆
         for _ in range(WARMUP_FRAMES):
             cam.capture()
             time.sleep_ms(100)
-        img = cam.capture()
-        # capture()はフレームバッファ参照を返すことがあるためコピーして解放に備える
-        return bytes(img) if img else None
+        raw = cam.capture()
+        if not raw:
+            return None
+        # capture()はフレームバッファ参照を返すためコピーしてから解放する
+        raw = bytes(raw)
     finally:
         cam.deinit()
+    enc = jpeg.Encoder(width=800, height=600, pixel_format="RGB565_BE", quality=85)
+    img = enc.encode(raw)
+    del raw
+    gc.collect()
+    return img
 
 
 def upload(img):
