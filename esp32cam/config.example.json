@@ -1,0 +1,10 @@
+{
+  "wifi": [
+    ["SSID1", "password1"],
+    ["SSID2", "password2"]
+  ],
+  "server": "https://arigato-3ipecjbnha-an.a.run.app",
+  "zone": "test",
+  "upload_key": "",
+  "interval_s": 60
+}

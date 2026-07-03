@@ -21,6 +21,13 @@ def upload_photo(file_bytes: bytes, filename: str) -> str:
     # bucket is already public via allUsers:objectViewer IAM — no make_public() needed
     return blob.public_url
 
+def upload_to(object_name: str, file_bytes: bytes, content_type: str = "image/jpeg") -> str:
+    """object_name（パス込み）をそのまま使って保存する。タイムラプス用。"""
+    bucket = get_client().bucket(BUCKET_NAME)
+    blob = bucket.blob(object_name)
+    blob.upload_from_string(file_bytes, content_type=content_type)
+    return blob.public_url
+
 def photo_url(name: str) -> str:
     if not name:
         return None

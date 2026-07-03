@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .env
+# 実機用設定（WiFiパスワードを含むためコミットしない）
+esp32cam/config.json
 data.db
 uploads/
 .venv/
