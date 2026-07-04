@@ -32,11 +32,25 @@ def send_thanks(maintenance_id: str, body: dict = Body(default={})):
     ref.update({"thanks_count": firestore.Increment(1)})
 
     # 匿名：通知は「環境（場所）からのありがとう」として届く。送り主名は出さない
+    # 束で返す：宛先はこの記録の1人でなく、この場所に手をかけた全員。
+    # 場所は多くの手で保たれている。ありがとうは場所が受け取り、みんなに分けて届く（1:N）
     zone_name = data.get("zone_name", "") or "この場所"
     title = f"{zone_name}からありがとう 🌱"
-    push_body = message if message else "あなたの手入れに、ありがとうが届きました"
-    # 実際に手を動かした人へ届ける（誰かのビフォーに応えた場合は helped_by）
-    send_push_to(data.get("helped_by") or data["person_name"], title, push_body)
+    push_body = message if message else "この場所へのありがとうが、手をかけたみんなに届きました"
+    recipients = set()
+    zone_id = data.get("zone_id")
+    if zone_id:
+        for m in db.collection("maintenance").where("zone_id", "==", zone_id).stream():
+            md = m.to_dict()
+            for who in (md.get("person_name"), md.get("helped_by")):
+                if who:
+                    recipients.add(who)
+    if not recipients:
+        doer = data.get("helped_by") or data.get("person_name", "")
+        if doer:
+            recipients.add(doer)
+    for who in recipients:
+        send_push_to(who, title, push_body)
     return {"ok": True}
 
 @router.post("/{maintenance_id}/auto")

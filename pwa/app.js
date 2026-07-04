@@ -735,7 +735,7 @@ function placeThank(snapId) {
   const nowLine = document.getElementById("nowLine");
   if (nowLine) nowLine.textContent = "誰かが気づいてくれた。ここは、保たれていく。";
   // ヒト→環境→ヒト：あなたのありがとうを、場所が整えた人へ届ける
-  showToast(`あなたのありがとうを、${"この場所"}が受け取りました 🌿`, "整えた人へ、場所から届きます");
+  showToast(`あなたのありがとうを、${"この場所"}が受け取りました 🌿`, "手をかけたみんなへ、場所から届きます");
 }
 
 // 引用画像から、元の投稿（散らかっていた姿）へ飛ぶ
@@ -790,7 +790,7 @@ async function sendChatThanks() {
   reply.innerHTML = `
     <div class="msg-place-icon">🌿</div>
     <div class="msg-place-bubbles">
-      <div class="bubble-place">受け取ったよ。整えてくれた人に、ちゃんと届けるね。</div>
+      <div class="bubble-place">受け取ったよ。手をかけたみんなに、分けて届けるね。</div>
     </div>`;
   chat.appendChild(reply);
   reply.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -1055,7 +1055,8 @@ document.addEventListener("click", e => {
 let pendingThanksId = null;
 
 function openThanksModal(id) {
-  requireAuth(() => _openThanksModal(id), "thanks");
+  // ありがとうは匿名（端末ID）なので登録不要。初めての人もその場で送れる
+  _openThanksModal(id);
 }
 
 function _openThanksModal(id) {
