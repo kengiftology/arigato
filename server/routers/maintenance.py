@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, UploadFile, File, Form
 from server.database import get_db
 from server.storage import upload_photo, photo_url
+from server.images import normalize_photo
 from server.push import send_push_to
 from server import ai
 from google.cloud import firestore
@@ -54,12 +55,11 @@ async def create_maintenance(
     after_url  = None
     try:
         if before_photo and before_photo.filename:
-            before_bytes = await before_photo.read()
-            before_mt = before_photo.content_type or "image/jpeg"
+            # HEIC等はJPEGへ正規化してから保存・AI生成に使う
+            before_bytes, before_mt, _ = normalize_photo(await before_photo.read())
             before_url = upload_photo(before_bytes, before_photo.filename)
         if after_photo and after_photo.filename:
-            after_bytes = await after_photo.read()
-            after_mt = after_photo.content_type or "image/jpeg"
+            after_bytes, after_mt, _ = normalize_photo(await after_photo.read())
             after_url = upload_photo(after_bytes, after_photo.filename)
     except Exception as e:
         print(f"[warn] photo upload failed: {e}")
@@ -118,8 +118,7 @@ async def complete_maintenance(
     after_mt = "image/jpeg"
     after_url = None
     try:
-        after_bytes = await after_photo.read()
-        after_mt = after_photo.content_type or "image/jpeg"
+        after_bytes, after_mt, _ = normalize_photo(await after_photo.read())
         after_url = upload_photo(after_bytes, after_photo.filename)
     except Exception as e:
         print(f"[warn] after photo upload failed: {e}")

@@ -1,9 +1,16 @@
-from fastapi import APIRouter
+import os
+
+import httpx
+from fastapi import APIRouter, Header, HTTPException
 from server.database import get_db
-from server.storage import photo_url
+from server.storage import photo_url, upload_photo
+from server import ai
 from google.cloud import firestore
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+# TIMELAPSE_KEY を管理操作の共通キーとして流用（未設定なら認証なし＝ローカル用）
+ADMIN_KEY = os.environ.get("TIMELAPSE_KEY", "")
 
 
 @router.get("/stats")
@@ -42,6 +49,42 @@ def list_subscriptions():
         name = d.to_dict().get("person_name", "")
         result[name] = result.get(name, 0) + 1
     return [{"person_name": k, "count": v} for k, v in sorted(result.items())]
+
+
+@router.post("/fix-photos")
+async def fix_photos(x_key: str = Header("")):
+    """HEIC等のまま保存された写真をJPEGへ変換し直し、欠けている場所の一言を再生成する。
+
+    upload_photo が変換を内蔵する前に投稿されたレコードの修復用（何度実行しても安全）。
+    """
+    if ADMIN_KEY and x_key != ADMIN_KEY:
+        raise HTTPException(status_code=401, detail="invalid key")
+
+    db = get_db()
+    fixed = []
+    async with httpx.AsyncClient(timeout=30) as http:
+        for doc in db.collection("maintenance").stream():
+            data = doc.to_dict()
+            update = {}
+            for field, kind, line_field in (
+                ("before_photo", "before", "before_suggestion"),
+                ("after_photo",  "after",  "place_line"),
+            ):
+                url = data.get(field) or ""
+                if not url.lower().endswith((".heic", ".heif")):
+                    continue
+                resp = await http.get(url)
+                resp.raise_for_status()
+                new_url = upload_photo(resp.content, "photo.heic")
+                update[field] = new_url
+                if not data.get(line_field):
+                    line = await ai.place_line_url(new_url, kind)
+                    if line:
+                        update[line_field] = line
+            if update:
+                doc.reference.update(update)
+                fixed.append({"id": doc.id, **update})
+    return {"fixed": len(fixed), "records": fixed}
 
 
 @router.get("/records")

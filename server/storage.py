@@ -1,6 +1,7 @@
 from google.cloud import storage as gcs
 import uuid, os
-from pathlib import Path
+
+from server.images import normalize_photo
 
 BUCKET_NAME = os.environ.get("GCS_BUCKET", "arigato-photos")
 
@@ -13,11 +14,12 @@ def get_client():
     return _client
 
 def upload_photo(file_bytes: bytes, filename: str) -> str:
-    ext = Path(filename).suffix
+    # HEIC等はここでJPEGに変換される（Web安全な形式はそのまま通る）
+    data, content_type, ext = normalize_photo(file_bytes)
     name = f"{uuid.uuid4()}{ext}"
     bucket = get_client().bucket(BUCKET_NAME)
     blob = bucket.blob(name)
-    blob.upload_from_string(file_bytes, content_type=f"image/{ext.lstrip('.')}")
+    blob.upload_from_string(data, content_type=content_type)
     # bucket is already public via allUsers:objectViewer IAM — no make_public() needed
     return blob.public_url
 

@@ -6,3 +6,5 @@ google-cloud-firestore
 google-cloud-storage
 anthropic
 httpx
+pillow
+pillow-heif
