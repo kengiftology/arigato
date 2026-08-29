@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 
 from server.database import init_db
-from server.routers import zones, maintenance, thanks, push, users, admin, timelapse
+from server.routers import zones, maintenance, thanks, push, users, admin, timelapse, presence, spirit
 
 app = FastAPI(title="arigato")
 
@@ -23,6 +23,8 @@ app.include_router(push.router)
 app.include_router(users.router)
 app.include_router(admin.router)
 app.include_router(timelapse.router)
+app.include_router(presence.router)
+app.include_router(spirit.router)
 
 PWA_DIR = Path(__file__).parent.parent / "pwa"
 
