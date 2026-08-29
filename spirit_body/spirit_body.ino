@@ -24,6 +24,7 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <WiFiClientSecure.h>
+#include <ArduinoOTA.h>
 #include <Preferences.h>
 #include "assets.h"
 
@@ -272,6 +273,7 @@ static uint32_t lastMrecv = 0;   // 最後にM値を取れた時刻
 // 目(WROVER 192.168.0.202:80)か、クラウドの脳(443=HTTPS・パスに/spiritが付く)。シリアルsrcで切替。
 static String srcIP = "192.168.0.202";   // 既定は目。クラウド脳なら `src arigato-3ipecjbnha-an.a.run.app 443`
 static uint16_t srcPort = 80;
+WiFiUDP mUdp;                            // 無線コマンド口（UDP 5006・netCmdで使用）
 // 情報源へHTTP(S) GET。443ならTLSで接続しパスに/spiritを前置。短いタイムアウトで本体を止めない。
 static bool httpGet(const char *path, char *body, int bodysz) {
     body[0] = 0;
@@ -318,25 +320,10 @@ static uint32_t lastCareAt = 0;
 static uint32_t lastMotion = 0, lastNotice = 0;
 static bool sleeping = false;
 static void onM(float mv);
-static void serialPcm() {
-    if (!Serial.available()) return;
-    String cmd = Serial.readStringUntil(10);
-    cmd.trim();
-    lastMotion = millis();                       // PCから操作中＝人がいる（勝手に眠らない・起きる）
-    sleeping = false;
-    long nbytes = 0;
-    if (sscanf(cmd.c_str(), "pcm %ld", &nbytes) == 1 && nbytes > 0) {
-        Serial.println("READY");
-        uint8_t buf[512];
-        long got = 0;
-        uint32_t t0 = millis();
-        while (got < nbytes && millis() - t0 < 30000) {
-            int n = Serial.readBytes((char *)buf, min((long)512, nbytes - got));
-            if (n > 0) { i2s.write(buf, n); got += n; t0 = millis(); }
-        }
-        Serial.println("DONE");
-        return;
-    }
+// 1行コマンドを処理して返事を返す（シリアル・無線UDPの共通部）。
+// pcmストリーミングだけはシリアル専用（serialPcm側で処理）。
+static String processCmd(String cmd) {
+    String out = "";
     if (cmd.startsWith("scene ")) cmd = cmd.substring(6);   // scene有無どちらでも可
     if (cmd == "notice")      ctlScene = 1;
     else if (cmd == "happy")  ctlScene = 2;
@@ -354,19 +341,27 @@ static void serialPcm() {
     }
     else if (cmd == "quiet on")  QUIET = true;
     else if (cmd == "quiet off") QUIET = false;
-    else if (cmd.startsWith("src ")) {                     // src 192.168.0.150 8080 … 情報源を切替（脳/目）
-        char ip[40] = {0}; int port = 80;
-        if (sscanf(cmd.c_str(), "src %39s %d", ip, &port) >= 1) {
+    else if (cmd.startsWith("src ")) {                     // src <host> <port> … 情報源を切替（目/クラウド脳）
+        char ip[64] = {0}; int port = 80;
+        if (sscanf(cmd.c_str(), "src %63s %d", ip, &port) >= 1) {
             srcIP = ip; srcPort = (uint16_t)port;
             prefs.putString("srcIP", srcIP);
             prefs.putUShort("srcPort", srcPort);
-            Serial.print("SRC "); Serial.print(srcIP); Serial.print(":"); Serial.println(srcPort);
+            out += "SRC " + srcIP + ":" + String(srcPort) + "\n";
         }
     }
-    else if (cmd == "care") { Serial.print("CARE "); Serial.println(careCount); }
+    else if (cmd == "care") { out += "CARE " + String(careCount) + "\n"; }
     else if (cmd.startsWith("care set ")) {
         careCount = atoi(cmd.c_str() + 9);
         prefs.putUInt("care", careCount);
+    }
+    else if (cmd == "stat") {                              // 状態まとめ（無線からの健康診断用）
+        out += "VER ota-1\n";                              // 無線更新の動作確認用の版数
+        out += "IP " + WiFi.localIP().toString() + "\n";
+        out += "SRC " + srcIP + ":" + String(srcPort) + "\n";
+        out += "M " + String(g_M, 3) + " N " + String(g_N, 3) + "\n";
+        out += "CARE " + String(careCount) + "\n";
+        out += String("QUIET ") + (QUIET ? "on" : "off") + "\n";
     }
     else if (cmd.startsWith("voice ")) {                    // voice 550 85 （高さHz・1文字ms）
         float b; int p;
@@ -380,12 +375,55 @@ static void serialPcm() {
                 char hx[3] = {vh[i], vh[i + 1], 0};
                 vb[vn++] = (uint8_t)strtol(hx, NULL, 16);
             }
-            Serial.println("OK say");
+            out += "OK say\n";
             speak(vb, vn, (uint32_t)mask);
-            return;
+            return out;
         }
     }
-    if (cmd.length()) { Serial.print("OK "); Serial.println(cmd); }
+    if (cmd.length()) out += "OK " + cmd + "\n";
+    return out;
+}
+
+static void serialPcm() {
+    if (!Serial.available()) return;
+    String cmd = Serial.readStringUntil(10);
+    cmd.trim();
+    lastMotion = millis();                       // シリアル操作＝目の前に人がいる（机上テスト時）
+    sleeping = false;
+    long nbytes = 0;
+    if (sscanf(cmd.c_str(), "pcm %ld", &nbytes) == 1 && nbytes > 0) {
+        Serial.println("READY");
+        uint8_t buf[512];
+        long got = 0;
+        uint32_t t0 = millis();
+        while (got < nbytes && millis() - t0 < 30000) {
+            int n = Serial.readBytes((char *)buf, min((long)512, nbytes - got));
+            if (n > 0) { i2s.write(buf, n); got += n; t0 = millis(); }
+        }
+        Serial.println("DONE");
+        return;
+    }
+    Serial.print(processCmd(cmd));
+}
+
+// 無線コマンド口（UDP 5006）。シリアルと同じ文法・返事は送り主へ返す。
+// ※遠隔編集は「人の気配」扱いにしない（lastMotionを触らない）＝世話判定を汚さない。
+static void netCmd() {
+    int psz = mUdp.parsePacket();
+    if (psz <= 0) return;
+    char buf[128];
+    int n = mUdp.read(buf, sizeof(buf) - 1);
+    buf[n > 0 ? n : 0] = 0;
+    String cmd = String(buf);
+    cmd.trim();
+    String out;
+    if (cmd == "ping") out = "SPIRIT " + WiFi.localIP().toString() + "\n";   // 探索に応答
+    else out = processCmd(cmd);
+    if (out.length()) {
+        mUdp.beginPacket(mUdp.remoteIP(), mUdp.remotePort());
+        mUdp.print(out);
+        mUdp.endPacket();
+    }
 }
 
 // ---------------- 肌感覚（SR-602）と状態 ----------------
@@ -442,8 +480,14 @@ static void updatePresence(uint32_t now) {
     }
 }
 
-// フレーム間の割り込み判定（新規来訪やボタンでアニメを中断）
+// フレーム間の割り込み判定（新規来訪やボタンでアニメを中断）。無線の受付もここで回す
+static void otaService();
+static void netCmd();
+static volatile bool otaBusy = false;   // OTA転送中フラグ（転送に専念するため他の仕事を止める）
 static bool checkInterrupt() {
+    otaService();                                // アニメ中も無線更新・無線コマンドを受ける
+    if (otaBusy) return true;                    // 転送開始→アニメを即中断して転送に専念
+    netCmd();
     uint32_t now = millis();
     bool wasEpisode = inEpisode;
     updatePresence(now);
@@ -473,13 +517,37 @@ void setup() {
     careCount = prefs.getUInt("care", 0);
     srcIP = prefs.getString("srcIP", srcIP);          // 情報源(目/脳)を記憶から復元
     srcPort = prefs.getUShort("srcPort", srcPort);
-    // 目(WROVER)との接続: 家のWiFiに参加し、GET /m でM・Nを取りに行く（プル型）
+    // 情報源(目/クラウド脳)との接続: WiFiに参加。繋がらなくても本体は動く
     WiFi.mode(WIFI_STA);
-    WiFi.begin("TP-Link_C452", "40568478");    // 繋がらなくても本体は動く
+    WiFi.setHostname("spirit-c3");
+    WiFi.begin("TP-Link_C452", "40568478");
+    mUdp.begin(5006);                          // 無線コマンド口（シリアルと同じ文法・ping応答）
     Serial.println("SPIRIT READY");
 }
 
+// 無線ファーム更新（ArduinoOTA）。WiFiが繋がってから一度だけ起動する。
+// 転送が始まったら otaBusy を立て、他の仕事（TLS通信・声・アニメ）を全部止めて転送に専念する。
+static bool otaUp = false;
+static void otaService() {
+    if (!otaUp) {
+        if (WiFi.status() != WL_CONNECTED) return;
+        ArduinoOTA.setHostname("spirit-c3");
+        ArduinoOTA.setPassword("40568478");    // 同じWiFiに居ても合言葉なしでは書き込めない
+        ArduinoOTA.onStart([]() { otaBusy = true; });
+        ArduinoOTA.onEnd([]() { otaBusy = false; });
+        ArduinoOTA.onError([](ota_error_t) { otaBusy = false; });
+        ArduinoOTA.begin();
+        otaUp = true;
+        Serial.print("OTA READY ");
+        Serial.println(WiFi.localIP());
+    }
+    ArduinoOTA.handle();
+}
+
 void loop() {
+    otaService();                              // 無線更新の受付（WiFi接続後）
+    if (otaBusy) { delay(1); return; }         // 転送中は全仕事を止める（窒息防止）
+    netCmd();                                  // 無線コマンド（UDP 5006）
     serialPcm();                               // PC操縦（声の試聴・シーン発火）
     if (ctlScene)  { pendingScene = ctlScene; ctlScene = 0; sleeping = false; }
     if (ctlMurmur) { ctlMurmur = false; nextMurmur = 0; }
