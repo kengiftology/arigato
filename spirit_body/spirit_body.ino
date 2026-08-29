@@ -458,6 +458,9 @@ static void onM(float mv) {
         pendingScene = 2;                        // 世話された！→ 喜び
         Serial.print("CARE ");
         Serial.println(careCount);
+        char t[8];                               // クラウドへ時刻つきで記録（研究の主要指標）
+        String p = "/care?n=" + String(careCount);
+        httpGet(p.c_str(), t, sizeof t);
     }
 }
 

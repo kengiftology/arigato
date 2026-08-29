@@ -69,6 +69,14 @@ def _doc():
     return get_db().collection("spirit").document("state")
 
 
+def _log_event(kind: str, data: dict):
+    """研究用の時系列ログ（spirit_log）。失敗しても本体を止めない。"""
+    try:
+        get_db().collection("spirit_log").add({"t": time.time(), "kind": kind, **data})
+    except Exception as e:
+        logger.warning("spirit log failed: %s", e)
+
+
 def _load() -> dict:
     global _state_cache
     if _state_cache is not None:
@@ -164,6 +172,7 @@ async def receive_frame(request: Request, x_upload_key: str = Header(None)):
     st["last_judge"] = now
     st["day_calls"] += 1
     if r.get("skip"):
+        _log_event("judge", {"skip": True})
         _save(st)
         return {"ok": True, "judged": False, "why": "person_in_frame"}
     sc = r.get("score")
@@ -178,6 +187,9 @@ async def receive_frame(request: Request, x_upload_key: str = Header(None)):
         if c:
             st["comment"] = c
     _save(st)
+    if sc is not None:
+        _log_event("judge", {"raw": sc, "score": round(st["score"], 3),
+                             "N": round(_calc_n(st, now), 3), "comment": st.get("comment", "")})
     logger.info("spirit judge: raw=%s smoothed=%.2f comment=%s", sc, st["score"], st.get("comment"))
     return {"ok": True, "judged": sc is not None, "score": st["score"]}
 
@@ -207,7 +219,28 @@ async def presence(state: str | None = None):
     """C3が ?state=empty|occupied で報告。引数なしは現在状態を返す（目が撮る前の確認用）。"""
     st = _load()
     if state in ("empty", "occupied"):
+        prev = st["empty"]
         st["empty"] = (state == "empty")
+        if prev != st["empty"]:
+            _log_event("presence", {"empty": st["empty"]})   # 在室の変化も研究データ
         _save(st)
         return "ok\n"
     return ("empty" if st["empty"] else "occupied") + "\n"
+
+
+@router.get("/care", response_class=PlainTextResponse)
+async def care(n: int = 0):
+    """C3が世話イベント検出時に報告してくる。研究の主要指標なので必ず時刻つきで残す。"""
+    _log_event("care", {"count": n})
+    return "ok\n"
+
+
+@router.get("/log")
+async def get_log(limit: int = 200):
+    """研究データの取り出し口（judge/care/presenceの時系列）。"""
+    try:
+        docs = get_db().collection("spirit_log").order_by(
+            "t", direction="DESCENDING").limit(min(limit, 1000)).stream()
+        return {"events": [d.to_dict() for d in docs]}
+    except Exception as e:
+        return {"events": [], "error": str(e)}
