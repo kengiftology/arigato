@@ -51,3 +51,11 @@ jobs:
             --min-instances 1 \
             --project ${{ secrets.GCP_PROJECT_ID }} \
             --set-env-vars "GCS_BUCKET=arigato-photos,VAPID_EMAIL=${{ secrets.VAPID_EMAIL }},VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }},VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }},ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }},TIMELAPSE_KEY=${{ secrets.TIMELAPSE_KEY }},NOTION_TOKEN=${{ secrets.NOTION_TOKEN }},NOTION_DATABASE_ID=${{ secrets.NOTION_DATABASE_ID }}"
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          gcloud logging read \
+            'resource.type="cloud_run_revision" AND resource.labels.service_name="arigato"' \
+            --limit=60 --freshness=15m --project ${{ secrets.GCP_PROJECT_ID }} \
+            --format="value(textPayload)" | head -80
