@@ -5,7 +5,13 @@ from fastapi.responses import FileResponse
 from pathlib import Path
 
 from server.database import init_db
-from server.routers import zones, maintenance, thanks, push, users, admin, timelapse, presence, spirit
+from server.routers import zones, maintenance, thanks, push, users, admin, timelapse, presence
+# spirit（地霊の脳）は読み込み失敗でも本体を巻き込まない（切り分け用の保険）
+try:
+    from server.routers import spirit
+except Exception as _e:  # noqa: BLE001
+    print(f"[warn] spirit router load failed: {_e}")
+    spirit = None
 
 app = FastAPI(title="arigato")
 
@@ -24,7 +30,8 @@ app.include_router(users.router)
 app.include_router(admin.router)
 app.include_router(timelapse.router)
 app.include_router(presence.router)
-app.include_router(spirit.router)
+if spirit is not None:
+    app.include_router(spirit.router)
 
 PWA_DIR = Path(__file__).parent.parent / "pwa"
 
