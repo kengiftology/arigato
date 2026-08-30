@@ -43,8 +43,12 @@ JUDGE_DAILY_CAP = 400  # 1日のAI呼び出し上限（費用の絶対の歯止�
 SCORE_ALPHA = 0.4      # スコア平滑化（0=動かない〜1=生値）
 MAX_COMMENT = 24
 
+# 人格はFirestore(spirit/state.persona)から注入。無ければこの既定文。
+# ルール部（score定義・JSON形式・指図禁止）は人格に関わらず常に適用する。
+_DEFAULT_PERSONA = "あなたは共有キッチンに宿る『地霊』の感覚です。"
+
 _SYSTEM = (
-    "あなたは共有キッチンに宿る『地霊』の感覚です。写真はあなたが見ている場所のいまの姿。"
+    "写真はあなたが見ている場所のいまの姿。"
     "『きれいに保たれているか／散らかっているか』を判断します。\n"
     "【最初に確認】写真に人が写っていたら、何も判断せず {\"skip\": true} だけを返す。\n"
     "【scoreの定義】score は散らかり度。0.0=完全にきれい、0.3=少し物がある、"
@@ -126,16 +130,18 @@ def _sanitize(c) -> str:
     return c[:MAX_COMMENT]
 
 
-async def _judge_image(image_bytes: bytes) -> dict:
-    """写真をClaudeに直接見せて {score, comment} か {skip} を得る。失敗は {}。"""
+async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
+    """写真をClaudeに直接見せて {score, comment} か {skip} を得る。失敗は {}。
+    persona＝そのキャラの人格。ルール部（_SYSTEM）は人格に関わらず常に適用。"""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return {}
     try:
         from anthropic import AsyncAnthropic
         client = AsyncAnthropic()
         b64 = base64.standard_b64encode(image_bytes).decode()
+        system = (persona or _DEFAULT_PERSONA) + "\n" + _SYSTEM
         msg = await client.messages.create(
-            model=MODEL, max_tokens=200, system=_SYSTEM,
+            model=MODEL, max_tokens=200, system=system,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
                 {"type": "text", "text": "いまのあなたの見た景色です。判断をJSONで。"},
@@ -176,7 +182,7 @@ async def receive_frame(request: Request, pose: str = "", x_upload_key: str = He
     except Exception as e:
         logger.warning("latest photo save failed: %s", e)
 
-    r = await _judge_image(data)
+    r = await _judge_image(data, st.get("persona", ""))
     st["last_judge"] = now
     st["day_calls"] += 1
     if r.get("skip"):
@@ -364,6 +370,19 @@ load();
 async def notes_page():
     """研究者の観察メモ入力ページ（スマホでその場で1行）。"""
     return _NOTES
+
+
+@router.post("/persona")
+async def set_persona(request: Request):
+    """キャラの人格を設定（誕生エージェントの出力を注入する口・合言葉つき）。"""
+    body = await request.json()
+    if body.get("key") != NOTE_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    st = _load()
+    st["persona"] = str(body.get("persona", ""))[:2000]
+    _save(st)
+    _log_event("persona", {"len": len(st["persona"])})
+    return {"ok": True, "len": len(st["persona"])}
 
 
 @router.post("/note")
