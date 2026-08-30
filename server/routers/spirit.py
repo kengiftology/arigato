@@ -514,8 +514,19 @@ def _new_person_id() -> str:
     return "p%02d" % n
 
 
+def _raw_gray_to_jpeg(data: bytes, w: int, h: int) -> bytes:
+    """目から届いた生の白黒データ（1画素1バイト）を、扱いやすいJPEGに変換する。
+    ESP側でJPEG圧縮すると十数秒かかるので、圧縮はサーバーで肩代わりする。"""
+    from PIL import Image
+    import io
+    img = Image.frombytes("L", (w, h), data[:w * h])
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="JPEG", quality=90)
+    return buf.getvalue()
+
+
 @router.post("/arrive")
-async def arrive(request: Request, x_upload_key: str = Header(None)):
+async def arrive(request: Request, raw: str = "", x_upload_key: str = Header(None)):
     """到着した人の写真を受け取り、匿名IDを返す。
     ・知っている顔 → そのID（人格ができていればキャラも返す）
     ・初めての顔   → 新しいIDを発行し「卵」を返す（人格は裏で創作）
@@ -528,6 +539,13 @@ async def arrive(request: Request, x_upload_key: str = Header(None)):
     data = await request.body()
     if not data:
         raise HTTPException(status_code=400, detail="empty body")
+    if raw:                                    # 生の白黒（例 raw=320x240）が来たらJPEGへ直す
+        try:
+            w, h = (int(x) for x in raw.lower().split("x"))
+            data = _raw_gray_to_jpeg(data, w, h)
+        except Exception as e:
+            logger.warning("raw decode failed: %s", e)
+            return {"person": "unknown", "state": "bad_raw"}
     try:
         from server import face
         crop = face.detect_face(data, rotate=FACE_ROTATE)

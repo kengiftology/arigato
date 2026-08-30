@@ -482,29 +482,81 @@ def spirit_sweep():
         servo3.pose(*SPIRIT_BASE)
 
 
+ARRIVE_TRIES = (2, 4, 6)      # 到着から何秒後に撮るか。顔が取れた時点で打ち切る
+
+
+def spirit_arrival_fast():
+    """来た瞬間を捉えるための速い1枚。
+    待機中の白黒カメラのまま撮り、JPEG圧縮もせず生データのまま送る。
+    カラー切替（数秒）とJPEG圧縮（十数秒）を両方省くので、シャッターまでが一気に短くなる。
+    顔認識はもともと白黒で動くので、色は捨てて構わない。"""
+    if not SPIRIT_SERVER:
+        return False
+    import requests
+    g = None
+    try:
+        g = cam.capture()                      # 待機中のカメラでそのまま1枚（切替なし）
+        if not g:
+            return False
+        g = bytes(g)                           # 0..255に固定（符号付きで読まれるのを防ぐ）
+        headers = {"Content-Type": "application/octet-stream"}
+        if SPIRIT_KEY:
+            headers["X-Upload-Key"] = SPIRIT_KEY
+        url = "%s/spirit/arrive?raw=%dx%d" % (SPIRIT_SERVER, W, MH)
+        r = requests.post(url, data=g, headers=headers)
+        body = r.text[:90]
+        r.close()
+        print("[+%ds] ARRIVE-fast %s" % (el(), body))
+        return ('"person"' in body) and ('unknown' not in body)
+    except Exception as e:
+        print("[+%ds] ARRIVE-fast err:" % el(), e)
+        return False
+    finally:
+        del g
+        gc.collect()
+
+
 def spirit_arrival():
-    """人が来た瞬間に導線を1枚撮って照合へ送る（誰が来たかを見分けるため）。
+    """人が来たら、居るあいだに何度か撮って照合へ送る。
+    行き止まりのキッチンなので、この画角に入った＝この場所を使った人。
+    立ち止まってもらうのではなく、こちらが粘る（顔が取れたら即やめる）。
     サーバ側が FACE_ENABLED=1 でなければ即 disabled が返るだけで何も起きない。"""
     if not SPIRIT_SERVER:
         return
     import requests
-    j = None
-    try:
-        j = capture_color_jpeg("svga")            # 顔が判別できる解像度で1枚
-        if not j:
-            print("[+%ds] ARRIVE capture failed" % el())
+    headers = {"Content-Type": "image/jpeg"}
+    if SPIRIT_KEY:
+        headers["X-Upload-Key"] = SPIRIT_KEY
+    for i in range(6):                        # まず速い白黒で連写（1枚1秒未満）
+        if presence_empty():
+            print("[+%ds] ARRIVE stop (left, fast phase)" % el())
             return
-        headers = {"Content-Type": "image/jpeg"}
-        if SPIRIT_KEY:
-            headers["X-Upload-Key"] = SPIRIT_KEY
-        r = requests.post(SPIRIT_SERVER + "/spirit/arrive", data=j, headers=headers)
-        print("[+%ds] ARRIVE %d %s" % (el(), r.status_code, r.text[:80]))
-        r.close()
-    except Exception as e:
-        print("[+%ds] ARRIVE err:" % el(), e)
-    finally:
-        del j
-        gc.collect()
+        if spirit_arrival_fast():
+            return                            # 顔が取れた
+        time.sleep_ms(400)
+    prev = 0
+    for wait in ARRIVE_TRIES:                 # だめならカラーで粘る（遅いが解像度は高い）
+        time.sleep(max(0, wait - prev))
+        prev = wait
+        if presence_empty():                  # もう居ないなら追わない（通過だけの人）
+            print("[+%ds] ARRIVE stop (left)" % el())
+            return
+        j = None
+        try:
+            j = capture_color_jpeg("svga")    # 顔が判別できる解像度
+            if not j:
+                continue
+            r = requests.post(SPIRIT_SERVER + "/spirit/arrive", data=j, headers=headers)
+            body = r.text[:90]
+            r.close()
+            print("[+%ds] ARRIVE(+%ds) %s" % (el(), wait, body))
+            if '"person"' in body and 'unknown' not in body:
+                return                        # 顔が取れた＝もう撮らない
+        except Exception as e:
+            print("[+%ds] ARRIVE err:" % el(), e)
+        finally:
+            del j
+            gc.collect()
 
 
 def spirit_tick():
