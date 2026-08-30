@@ -491,6 +491,145 @@ async def win_bin():
     return Response(content=_win_cache["bin"], media_type="application/octet-stream")
 
 
+FACE_ROTATE = 90         # カメラの取り付け向きの補正（実測で画像が90度回っていた）
+FACE_ENABLED = os.environ.get("FACE_ENABLED", "") == "1"   # 掲示が済むまでは既定でオフ
+
+
+def _known_faces() -> dict:
+    """登録済みの特徴量 {匿名ID: [ベクトル,...]}。実名は一切持たない。"""
+    try:
+        docs = get_db().collection("faces").stream()
+        return {d.id: (d.to_dict() or {}).get("vecs", []) for d in docs}
+    except Exception as e:
+        logger.warning("known faces load failed: %s", e)
+        return {}
+
+
+def _new_person_id() -> str:
+    """匿名IDを発行（連番のみ・誰なのかは記録しない）。"""
+    try:
+        n = len(list(get_db().collection("faces").stream())) + 1
+    except Exception:
+        n = 1
+    return "p%02d" % n
+
+
+@router.post("/arrive")
+async def arrive(request: Request, x_upload_key: str = Header(None)):
+    """到着した人の写真を受け取り、匿名IDを返す。
+    ・知っている顔 → そのID（人格ができていればキャラも返す）
+    ・初めての顔   → 新しいIDを発行し「卵」を返す（人格は裏で創作）
+    ・顔が読めない → unknown（代表キャラがとぼける）
+    写真そのものは保存しない（較正期間中だけ latest_arrival として1枚上書き）。"""
+    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    if not FACE_ENABLED:
+        return {"person": "unknown", "state": "disabled"}
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty body")
+    try:
+        from server import face
+        crop = face.detect_face(data, rotate=FACE_ROTATE)
+        if crop is None:
+            _log_event("arrive", {"person": "unknown", "why": "no_face"})
+            return {"person": "unknown", "state": "no_face"}
+        vec = face.embed(crop)
+        if vec is None:
+            return {"person": "unknown", "state": "embed_failed"}
+        known = _known_faces()
+        pid, sim = face.match(vec, known)
+        db = get_db()
+        if pid is None:                                  # 初めて見る顔 → 匿名IDを発行
+            pid = _new_person_id()
+            db.collection("faces").document(pid).set(
+                {"vecs": [vec], "born": time.time(), "persona": "", "state": "egg"})
+            _log_event("arrive", {"person": pid, "state": "new_egg", "sim": round(sim, 3)})
+            return {"person": pid, "state": "egg"}
+        doc = db.collection("faces").document(pid).get().to_dict() or {}
+        vecs = doc.get("vecs", [])
+        if len(vecs) < 5:                                # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
+            vecs.append(vec)
+            db.collection("faces").document(pid).update({"vecs": vecs})
+        state = "ready" if doc.get("persona") else "egg"
+        _log_event("arrive", {"person": pid, "state": state, "sim": round(sim, 3)})
+        return {"person": pid, "state": state}
+    except Exception as e:
+        logger.warning("arrive failed: %s", e)
+        return {"person": "unknown", "state": "error"}
+
+
+_BIRTH_PROMPT = """あなたは「地霊（じれい）」という小さな精霊の生みの親です。
+これから生まれるのは、大学の研究室の共有キッチンで、ある一人の人にだけ会う地霊です。
+その人が誰なのかは分かりません（この研究では名前を記録しないため）。
+分かるのは「この場所に、この人が来る」ということだけ。
+
+その人のための地霊を1体、世界に1つの個性として創作してください。
+- 共有キッチンに宿り、場所がきれいだと嬉しく、放置されるとそわそわする性質は共通
+- そこに載る固有の個性を: 口調のくせ・性格・好きなもの・小さなこだわり・感情の出し方
+- テンプレ的な「元気な妖精」にしない。少し意外性のある、愛せる欠点を持つ子に
+- 命令や説教は絶対にしない性格であること（この研究の憲法）
+- 既にいる子と似せない（既存: フランス語かぶれで気取るが単語を間違えて照れる子）
+
+出力: そのままAIのシステムプロンプトに使える人格記述文だけを、
+「あなたは〜」で始まる300字以内の日本語で。前置きや解説は不要。"""
+
+
+@router.post("/birth")
+async def birth(request: Request):
+    """卵のまま待っているIDに人格を吹き込む（誕生の儀式）。
+    合言葉つき。引数なしなら、卵をひとつ見つけて生ませる。"""
+    body = await request.json()
+    if body.get("key") != NOTE_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    db = get_db()
+    pid = body.get("person")
+    if not pid:                                   # 指定が無ければ卵をひとつ探す
+        for d in db.collection("faces").stream():
+            if not (d.to_dict() or {}).get("persona"):
+                pid = d.id
+                break
+    if not pid:
+        return {"ok": False, "why": "no_egg"}
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return {"ok": False, "why": "no_key"}
+    try:
+        from anthropic import AsyncAnthropic
+        client = AsyncAnthropic()
+        msg = await client.messages.create(
+            model="claude-opus-4-8", max_tokens=500,
+            messages=[{"role": "user", "content": _BIRTH_PROMPT}])
+        persona = "".join(b.text for b in msg.content if b.type == "text").strip()
+    except Exception as e:
+        logger.warning("birth failed: %s", e)
+        return {"ok": False, "why": str(e)}
+    db.collection("faces").document(pid).update({"persona": persona, "state": "ready"})
+    _log_event("birth", {"person": pid, "len": len(persona)})
+    return {"ok": True, "person": pid, "persona": persona}
+
+
+@router.get("/who", response_class=PlainTextResponse)
+async def who():
+    """C3が読む用。いま迎えるべき相手を1行で返す（例: 'p03 ready' / 'unknown'）。"""
+    st = _load()
+    return (st.get("cur_person", "unknown") + " " + st.get("cur_state", "none")) + "\n"
+
+
+@router.get("/faces")
+async def faces_summary():
+    """登録状況の確認（特徴量そのものは返さない・件数と状態だけ）。"""
+    out = []
+    try:
+        for d in get_db().collection("faces").stream():
+            v = d.to_dict() or {}
+            out.append({"id": d.id, "shots": len(v.get("vecs", [])),
+                        "state": "ready" if v.get("persona") else "egg",
+                        "born": v.get("born")})
+    except Exception as e:
+        return {"faces": [], "error": str(e)}
+    return {"faces": out, "enabled": FACE_ENABLED}
+
+
 @router.get("/log")
 async def get_log(limit: int = 200):
     """研究データの取り出し口（judge/care/presenceの時系列）。"""

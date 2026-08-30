@@ -281,8 +281,23 @@ def anim_hatch(sheet):
     return frames
 
 
+def anim_egg(sheet):
+    """白い卵（まだ誰でもない状態）。初めての顔を見てから人格が生まれるまでの待ち姿。
+    ときどき、ふるっと揺れる。"""
+    egg = egg_rows()
+    return [
+        (frame(sheet, egg, M=0), 2600),
+        (frame(sheet, lean(egg, 1), M=0), 200),
+        (frame(sheet, lean(egg, -1), M=0), 200),
+        (frame(sheet, egg, M=0), 3000),
+        (frame(sheet, lean(egg, -1), M=0), 180),
+        (frame(sheet, lean(egg, 1), M=0), 180),
+    ]
+
+
 ANIMS = {"hatch": anim_hatch, "idle": anim_idle, "happy": anim_happy,
-         "sad": anim_sad, "sleep": anim_sleep, "notice": anim_notice}
+         "sad": anim_sad, "sleep": anim_sleep, "notice": anim_notice,
+         "egg": anim_egg}
 
 
 def save_gif(frames, path):
