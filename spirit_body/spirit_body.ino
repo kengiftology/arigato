@@ -33,8 +33,8 @@
 // ★ XIAO ESP32C3（実配線 2026-08-24: 液晶=D7〜D10 / アンプ=D4〜D6 / PIR=D3）
 static const int PIN_SCL = 10, PIN_SDA = 9,  PIN_RES = 8, PIN_DC = 20;  // D10/D9/D8/D7
 static const int PIN_BCLK = 4, PIN_LRC = 3,  PIN_DIN = 5;               // D2/D1/D3
-static const int PIN_PIR = 7;                                           // D5（旧D0=GPIO2は起動モード判定ピンで
-                                                                        //  電源投入時にコケるため引っ越し。D4は実機でモニタ使用中とのこと）
+static const int PIN_PIR = 6;                                           // D4（旧D0=GPIO2は起動モード判定ピンで
+                                                                        //  電源投入時にコケるため2026-08-30引っ越し）
 static const int PIN_BTN = -1;                                          // ボタンなし
 #else
 // AtomS3 Lite 版（予備）
