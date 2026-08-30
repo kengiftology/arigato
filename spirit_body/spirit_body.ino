@@ -282,7 +282,7 @@ static void eyeNotify(bool occ) {
     if (WiFi.status() != WL_CONNECTED) return;
     WiFiClient c;
     c.setTimeout(800);
-    if (!c.connect(eyeIP.c_str(), 80)) return;
+    if (!c.connect(eyeIP.c_str(), 80, 300)) return;   // 接続300msで諦める（目が不在でも本体を待たせない）
     c.print(String("GET /presence?state=") + (occ ? "occupied" : "empty") +
             " HTTP/1.0\r\nHost: eye\r\nConnection: close\r\n\r\n");
     uint32_t t0 = millis();
@@ -623,6 +623,9 @@ static void otaService() {
         ArduinoOTA.onEnd([]() { otaBusy = false; });
         ArduinoOTA.onError([](ota_error_t) { otaBusy = false; });
         ArduinoOTA.begin();
+        WiFi.setSleep(false);                  // 省電力うたた寝をやめて応答を機敏に（電源はUSB給電なので問題なし）
+        mUdp.stop();
+        mUdp.begin(5006);                      // WiFi確立後に無線コマンド口を開き直す（接続前のbindは不発になることがある）
         otaUp = true;
         Serial.print("OTA READY ");
         Serial.println(WiFi.localIP());

@@ -18,7 +18,7 @@ except Exception:
 PORT = 5006
 
 
-def send(ip, cmd, timeout=3.0):
+def send(ip, cmd, timeout=8.0):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.settimeout(timeout)
     if ip is None:
