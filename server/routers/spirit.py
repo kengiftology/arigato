@@ -25,9 +25,10 @@ import base64
 import logging
 
 from fastapi import APIRouter, Request, Header, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, HTMLResponse
 
 from server.database import get_db
+from server.storage import upload_to
 
 router = APIRouter(prefix="/spirit", tags=["spirit"])
 logger = logging.getLogger("spirit")
@@ -168,6 +169,13 @@ async def receive_frame(request: Request, x_upload_key: str = Header(None)):
     if st["day_calls"] >= JUDGE_DAILY_CAP:
         return {"ok": True, "judged": False, "why": "daily_cap"}
 
+    try:                                  # 状態ページ用に最新1枚だけ保存（無人時のみの写真・上書き）
+        url = upload_to("spirit/latest.jpg", data, "image/jpeg")
+        st["photo_url"] = url
+        st["photo_at"] = now
+    except Exception as e:
+        logger.warning("latest photo save failed: %s", e)
+
     r = await _judge_image(data)
     st["last_judge"] = now
     st["day_calls"] += 1
@@ -233,6 +241,81 @@ async def care(n: int = 0):
     """C3が世話イベント検出時に報告してくる。研究の主要指標なので必ず時刻つきで残す。"""
     _log_event("care", {"count": n})
     return "ok\n"
+
+
+_PAGE = """<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>キッチンちゃんのようす</title><style>
+body{font-family:sans-serif;max-width:560px;margin:0 auto;padding:16px;background:#faf6ec;color:#333}
+h1{font-size:20px} .card{background:#fff;border-radius:12px;padding:16px;margin:12px 0;box-shadow:0 1px 4px #0002}
+.face{font-size:64px;text-align:center} .say{font-size:18px;text-align:center;margin:8px 0;color:#555}
+.bar{height:10px;background:#eee;border-radius:5px;overflow:hidden}.bar>i{display:block;height:100%;background:#e8a33d}
+.lbl{font-size:12px;color:#888;margin-top:10px} img{width:100%;border-radius:8px}
+.ev{font-size:13px;border-bottom:1px solid #eee;padding:6px 0}.t{color:#aaa;margin-right:8px}
+</style></head><body>
+<h1>キッチンちゃんのようす</h1>
+<div class="card"><div class="face" id="face">…</div><div class="say" id="say">よみこみちゅう…</div>
+<div class="lbl">ちらかりぐあい</div><div class="bar"><i id="score" style="width:0%"></i></div>
+<div class="lbl">ほったらかされど</div><div class="bar"><i id="nbar" style="width:0%;background:#7f77dd"></i></div>
+<div class="lbl" id="meta"></div></div>
+<div class="card"><div class="lbl">さいごに みたけしき（人がいないときだけ撮影）</div><img id="photo" alt="景色"></div>
+<div class="card"><div class="lbl">できごと</div><div id="log"></div></div>
+<script>
+async function load(){
+ const f=await (await fetch('/spirit/full')).json();
+ const face = !f.empty ? '👀' : (f.N>=0.5 ? '😔' : (f.score<0.3 ? '😊' : '😐'));
+ document.getElementById('face').textContent = face;
+ document.getElementById('say').textContent = f.comment || '……';
+ document.getElementById('score').style.width = Math.round(f.score*100)+'%';
+ document.getElementById('nbar').style.width = Math.round(f.N*100)+'%';
+ document.getElementById('meta').textContent =
+   (f.empty?'いまは だれもいない':'いま だれかいる（撮影はお休み）')+'　/ きょうの判断 '+f.day_calls+'回';
+ if(f.photo_url) document.getElementById('photo').src = f.photo_url+'?t='+(f.photo_at||Date.now());
+ const lg=await (await fetch('/spirit/log?limit=30')).json();
+ const jp={judge:'かんがえた',care:'おせわされた！',presence:'けはい'};
+ document.getElementById('log').innerHTML=(lg.events||[]).map(e=>{
+  const d=new Date(e.t*1000).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  let s=jp[e.kind]||e.kind;
+  if(e.kind==='judge') s+= e.skip?'（ひとが写ったのでスキップ）':('：'+(e.comment||'')+'（'+Math.round((e.raw??0)*100)+'）');
+  if(e.kind==='presence') s+= e.empty?'：いなくなった':'：だれかきた';
+  if(e.kind==='care') s+='（'+(e.count||'?')+'回目）';
+  return '<div class="ev"><span class="t">'+d+'</span>'+s+'</div>';}).join('');
+}
+load(); setInterval(load, 30000);
+</script></body></html>"""
+
+_NOTICE = """<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>この装置について</title><style>
+body{font-family:sans-serif;max-width:560px;margin:0 auto;padding:16px;line-height:1.8;color:#333}
+h1{font-size:20px}h2{font-size:16px;margin-top:24px}li{margin:4px 0}.sig{color:#888;margin-top:24px}
+</style></head><body>
+<h1>この装置について</h1>
+<p>これは慶應義塾大学の修士研究の一環として設置している装置です。
+共有スペースの整備が、命令や当番ではなく「ありがとう」や愛着によって続くかを観察しています。</p>
+<h2>記録するもの</h2>
+<ul><li>この場所の散らかりぐあい（カメラ画像をAIが判断した数値）</li>
+<li>「片づけられた」というできごとの回数と時刻</li>
+<li>人の気配があった/なくなったの切り替わり（人感センサー）</li></ul>
+<h2>記録しないもの</h2>
+<ul><li>人が写った写真（人がいるあいだはカメラは撮影を止めます）</li>
+<li>顔・名前など個人を特定する情報</li><li>音声</li></ul>
+<p>画像の判断にはAI（Anthropic社のClaude）を使用しています。データは研究終了時に破棄します。</p>
+<p>装置を止めてほしい・気になることがある場合はご連絡ください。</p>
+<p class="sig">連絡先：桒原（kengk0328@gmail.com）</p>
+</body></html>"""
+
+
+@router.get("/page", response_class=HTMLResponse)
+async def status_page():
+    """キッチンちゃんの状態ページ（気分・一言・最新の景色・できごと）。"""
+    return _PAGE
+
+
+@router.get("/notice", response_class=HTMLResponse)
+async def notice_page():
+    """掲示のQRの行き先（この装置についての説明）。"""
+    return _NOTICE
 
 
 @router.get("/log")
