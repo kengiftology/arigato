@@ -318,6 +318,91 @@ async def notice_page():
     return _NOTICE
 
 
+NOTE_KEY = "40568478"   # 観察メモの書き込み合言葉（いたずら防止程度・研究者本人用）
+
+_NOTES = """<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>フィールドノート</title><style>
+body{font-family:sans-serif;max-width:560px;margin:0 auto;padding:16px;background:#faf6ec;color:#333}
+h1{font-size:20px}.card{background:#fff;border-radius:12px;padding:16px;margin:12px 0;box-shadow:0 1px 4px #0002}
+select,input,textarea,button{font-size:16px;padding:10px;border-radius:8px;border:1px solid #ccc;width:100%;box-sizing:border-box;margin:4px 0}
+button{background:#e8a33d;color:#fff;border:none;font-weight:bold}
+.ev{font-size:14px;border-bottom:1px solid #eee;padding:8px 0}.t{color:#aaa;font-size:12px}
+.tag{display:inline-block;background:#eee;border-radius:6px;padding:1px 8px;font-size:12px;margin-right:6px}
+#msg{color:#2a7;font-size:14px}</style></head><body>
+<h1>フィールドノート</h1>
+<div class="card">
+<select id="tag"><option>観察</option><option>口頭のありがとう</option><option>地霊が話題に</option>
+<option>愛称・呼び名</option><option>違和感・嫌がり</option><option>答え合わせ</option><option>その他</option></select>
+<textarea id="text" rows="3" placeholder="気づいたことを一行（例：◯◯さんが地霊に話しかけてた）"></textarea>
+<input id="key" type="password" placeholder="あいことば（初回だけ）">
+<button onclick="send()">記録する</button><div id="msg"></div></div>
+<div class="card"><div id="list">よみこみちゅう…</div></div>
+<script>
+const K='spirit_note_key';
+if(localStorage.getItem(K)) document.getElementById('key').style.display='none';
+async function send(){
+ const t=document.getElementById('text').value.trim(); if(!t){return}
+ const key=localStorage.getItem(K)||document.getElementById('key').value;
+ const r=await fetch('/spirit/note',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({text:t,tag:document.getElementById('tag').value,key})});
+ if(r.ok){localStorage.setItem(K,key);document.getElementById('key').style.display='none';
+   document.getElementById('text').value='';document.getElementById('msg').textContent='記録しました';
+   setTimeout(()=>document.getElementById('msg').textContent='',2000);load();}
+ else{document.getElementById('msg').textContent='あいことばが違うかも';}}
+async function load(){
+ const d=await (await fetch('/spirit/notes_data?limit=50')).json();
+ document.getElementById('list').innerHTML=(d.notes||[]).map(n=>{
+  const dt=new Date(n.t*1000).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  return '<div class="ev"><div class="t">'+dt+'</div><span class="tag">'+(n.tag||'')+'</span>'+n.text+'</div>';
+ }).join('')||'まだ記録がありません';}
+load();
+</script></body></html>"""
+
+
+@router.get("/notes", response_class=HTMLResponse)
+async def notes_page():
+    """研究者の観察メモ入力ページ（スマホでその場で1行）。"""
+    return _NOTES
+
+
+@router.post("/note")
+async def add_note(request: Request):
+    body = await request.json()
+    if body.get("key") != NOTE_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    text = str(body.get("text", ""))[:500].strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="empty")
+    get_db().collection("fieldnotes").add(
+        {"t": time.time(), "tag": str(body.get("tag", ""))[:30], "text": text})
+    return {"ok": True}
+
+
+@router.get("/notes_data")
+async def notes_data(limit: int = 50):
+    try:
+        docs = get_db().collection("fieldnotes").order_by(
+            "t", direction="DESCENDING").limit(min(limit, 500)).stream()
+        return {"notes": [d.to_dict() for d in docs]}
+    except Exception as e:
+        return {"notes": [], "error": str(e)}
+
+
+@router.get("/export")
+async def export_all():
+    """論文分析用：機械ログと観察メモをまとめてJSONで返す。"""
+    out = {"spirit_log": [], "fieldnotes": []}
+    try:
+        out["spirit_log"] = [d.to_dict() for d in get_db().collection(
+            "spirit_log").order_by("t").limit(20000).stream()]
+        out["fieldnotes"] = [d.to_dict() for d in get_db().collection(
+            "fieldnotes").order_by("t").limit(5000).stream()]
+    except Exception as e:
+        out["error"] = str(e)
+    return out
+
+
 @router.get("/log")
 async def get_log(limit: int = 200):
     """研究データの取り出し口（judge/care/presenceの時系列）。"""
