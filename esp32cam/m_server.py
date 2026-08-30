@@ -58,7 +58,7 @@ SCAN_EVERY_S = 0      # 既定オフ。自走させるなら /scan/every?s=300
 # クラウドの脳（地霊）への送信はイベント駆動：
 #   人が去った直後に1枚（変化はそこにしか無い）＋無人が続く間は1時間に1枚（生存確認）。
 # 在室中は撮らない（人を写さない・AIも人入り写真は捨てるので撮るだけ無駄）。
-SPIRIT_TICK_S = 30            # 在室状態を見に行く間隔（軽いGETだけ）
+SPIRIT_TICK_S = 10            # 見回り間隔（在室はローカル判定になったので軽い・去ったら最大10秒で巡回開始）
 SPIRIT_HEARTBEAT_S = 3600     # 無人が続く時の定期撮影間隔
 SPIRIT_SERVER = CFG.get("server", "")
 SPIRIT_KEY = CFG.get("upload_key", "")
@@ -483,18 +483,12 @@ def spirit_sweep():
 
 
 def spirit_tick():
-    """30秒ごとの見回り。人が去った直後は3方向巡回＋無人1時間ごとは持ち場1枚。"""
+    """見回り。在室はC3からLAN直で届く（/presence・0.3秒級）ので、クラウドに聞かず自分の記憶で判断。
+    人が去った直後は3方向巡回＋無人1時間ごとは持ち場1枚。"""
     global _sp_dirty
     if not SPIRIT_SERVER:
         return
-    import requests
-    try:
-        r = requests.get(SPIRIT_SERVER + "/spirit/presence", timeout=10)
-        occ = r.text.strip() != "empty"
-        r.close()
-    except Exception as e:
-        print("[+%ds] SPIRIT presence err:" % el(), e)
-        return
+    occ = not presence_empty()      # C3のハートビート（15秒鮮度）で判定。C3未接続なら無人扱い
     if occ:
         _sp_dirty = True          # 人がいる＝去ったら変化を確かめる
         return
