@@ -488,7 +488,8 @@ static const uint32_t SLEEP_AFTER_MS  = 10UL * 60UL * 1000UL;   // 10分気配�
 static int pendingScene = 0;                   // 0=なし 1=notice 2=happy
 // うるさい対策: 通過（すぐ去る）は音なし・顔だけ／滞在（居続ける）だけ声を出す・回数に上限
 static const uint32_t STAY_MS         = 15000;                  // これ以上いたら「滞在」＝声を許す
-static const uint32_t PRESENCE_GAP_MS = 20000;                  // これだけ気配が絶えたら滞在おわり
+static const uint32_t PRESENCE_GAP_MS = 90000;                  // これだけ気配が絶えたら滞在おわり
+// ※人感の死角（カウンター・調理位置）で20秒だと在室中に「不在」誤判定→巡回撮影が走った(8/30)。90秒に延長
 static const int      VOICE_BUDGET    = 3;                      // 1回の滞在で声を出すのは最大3回
 static bool     inEpisode = false;             // 今この場に人がいる一続き
 static uint32_t episodeStart = 0;              // その滞在が始まった時刻
@@ -653,7 +654,7 @@ void loop() {
     // 目へ在室/不在を伝える（8秒ごと）。人の気配が15秒以内なら「在室」＝目はMを凍結し人を写さない
     if (now >= nextBeat) {
         nextBeat = now + 8000;
-        bool occ = (now - lastMotion) < 15000;
+        bool occ = (now - lastMotion) < 90000;   // 死角で途切れても90秒は在室扱い（撮影の誤発火防止）
         char t[8];
         httpGet(occ ? "/presence?state=occupied" : "/presence?state=empty", t, sizeof t);
     }

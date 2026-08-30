@@ -195,8 +195,15 @@ async def receive_frame(request: Request, pose: str = "", x_upload_key: str = He
     except (TypeError, ValueError):
         sc = None
     if sc is not None:
-        st["raw_score"] = sc
-        st["score"] = (1 - SCORE_ALPHA) * st["score"] + SCORE_ALPHA * sc
+        # 方向(pose)ごとに最新値を持ち、全体スコア＝方向の平均。
+        # 巡回で「カウンター0.7→床0.2」を時系列に混ぜると偽の急降下が生まれ
+        # 世話イベントが暴発する（2026-08-30に実際に起きた）ため、方向は混ぜない。
+        poses = st.get("poses", {})
+        poses[pose or "michi"] = sc
+        st["poses"] = poses
+        overall = sum(poses.values()) / len(poses)
+        st["raw_score"] = overall
+        st["score"] = (1 - SCORE_ALPHA) * st["score"] + SCORE_ALPHA * overall
         c = _sanitize(r.get("comment", ""))
         if c:
             st["comment"] = c
