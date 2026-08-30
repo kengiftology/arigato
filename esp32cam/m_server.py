@@ -482,6 +482,31 @@ def spirit_sweep():
         servo3.pose(*SPIRIT_BASE)
 
 
+def spirit_arrival():
+    """人が来た瞬間に導線を1枚撮って照合へ送る（誰が来たかを見分けるため）。
+    サーバ側が FACE_ENABLED=1 でなければ即 disabled が返るだけで何も起きない。"""
+    if not SPIRIT_SERVER:
+        return
+    import requests
+    j = None
+    try:
+        j = capture_color_jpeg("svga")            # 顔が判別できる解像度で1枚
+        if not j:
+            print("[+%ds] ARRIVE capture failed" % el())
+            return
+        headers = {"Content-Type": "image/jpeg"}
+        if SPIRIT_KEY:
+            headers["X-Upload-Key"] = SPIRIT_KEY
+        r = requests.post(SPIRIT_SERVER + "/spirit/arrive", data=j, headers=headers)
+        print("[+%ds] ARRIVE %d %s" % (el(), r.status_code, r.text[:80]))
+        r.close()
+    except Exception as e:
+        print("[+%ds] ARRIVE err:" % el(), e)
+    finally:
+        del j
+        gc.collect()
+
+
 def spirit_tick():
     """見回り。在室はC3からLAN直で届く（/presence・0.3秒級）ので、クラウドに聞かず自分の記憶で判断。
     人が去った直後は3方向巡回＋無人1時間ごとは持ち場1枚。"""
@@ -701,11 +726,19 @@ try:
             elif path.startswith(b"/presence"):
                 line = req.split(b"\r\n", 1)[0]        # 例: GET /presence?state=empty HTTP/1.0
                 st = "empty" if b"state=empty" in line else "occupied"
+                arrived = (st == "occupied" and _last_state != "occupied")
                 if st != _last_state:                  # 変化した時だけ出す（洪水にしない）
                     print("[+%ds] PRESENCE -> %s" % (el(), "EMPTY (will shoot)" if st == "empty" else "occupied (no shoot)"))
                 _last_state = st
                 _last_hb = time.ticks_ms()
                 cl.send(b"HTTP/1.0 200 OK\r\n\r\nok\n")
+                if arrived:                            # 来た瞬間に導線を1枚（誰が来たかの照合用）
+                    try:
+                        cl.close()                     # 先に返事を返してから撮る（C3を待たせない）
+                    except Exception:
+                        pass
+                    spirit_arrival()
+                    continue
             elif path.startswith(b"/pose"):
                 # 例: GET /pose?a1=90&a2=100&a3=80  (省略軸は動かさない) / GET /pose は現在角度
                 line = req.split(b"\r\n", 1)[0]
