@@ -432,11 +432,19 @@ def presence_empty():
     return _last_state == "empty"
 
 
-_sp_dirty = False     # 在室を見た＝去った後に1枚撮るべき、の印
+_sp_dirty = False     # 在室を見た＝去った後に撮るべき、の印
 _sp_last_shot = -10**9  # 最後に送った時刻（起動秒）
 
+# 首振り巡回：去った後にこの順で部屋を見て回る（可動域45-135内・最後は持ち場へ戻る）
+SPIRIT_BASE = (90, 135, 135)                  # 持ち場＝導線
+SPIRIT_SWEEP = [
+    ((90, 135, 135), "michi"),                # 導線・テーブル
+    ((30, 135, 135), "counter"),              # カウンター・食器ゾーン
+    ((90, 135, 90),  "yuka"),                 # 冷蔵庫前の床
+]
 
-def spirit_send():
+
+def spirit_send(tag=""):
     """いまの景色を1枚撮ってクラウドへ送る。失敗しても本体に影響させない。"""
     global _sp_last_shot
     import requests
@@ -448,8 +456,11 @@ def spirit_send():
         headers = {"Content-Type": "image/jpeg"}
         if SPIRIT_KEY:
             headers["X-Upload-Key"] = SPIRIT_KEY
-        r = requests.post(SPIRIT_SERVER + "/spirit/frame", data=j, headers=headers)
-        print("[+%ds] SPIRIT push %d %s" % (el(), r.status_code, r.text[:80]))
+        url = SPIRIT_SERVER + "/spirit/frame"
+        if tag:
+            url += "?pose=" + tag
+        r = requests.post(url, data=j, headers=headers)
+        print("[+%ds] SPIRIT push[%s] %d %s" % (el(), tag, r.status_code, r.text[:60]))
         r.close()
         _sp_last_shot = el()
     except Exception as e:
@@ -459,8 +470,20 @@ def spirit_send():
         gc.collect()
 
 
+def spirit_sweep():
+    """部屋を3方向見て回って送る。何があっても最後は持ち場（導線）へ戻る。"""
+    try:
+        for pose, tag in SPIRIT_SWEEP:
+            servo3.pose(*pose)
+            time.sleep_ms(800)
+            spirit_send(tag)
+            time.sleep(16)        # クラウドの判断間隔(15秒)に合わせて1枚ずつ通す
+    finally:
+        servo3.pose(*SPIRIT_BASE)
+
+
 def spirit_tick():
-    """30秒ごとの見回り。人が去った直後＋無人1時間ごとにだけ撮る（イベント駆動）。"""
+    """30秒ごとの見回り。人が去った直後は3方向巡回＋無人1時間ごとは持ち場1枚。"""
     global _sp_dirty
     if not SPIRIT_SERVER:
         return
@@ -475,13 +498,13 @@ def spirit_tick():
     if occ:
         _sp_dirty = True          # 人がいる＝去ったら変化を確かめる
         return
-    if _sp_dirty:                 # 去った直後の1枚（研究の本命ショット）
+    if _sp_dirty:                 # 去った直後＝部屋を見て回る（研究の本命）
         _sp_dirty = False
-        print("[+%ds] SPIRIT shot (visitor left)" % el())
-        spirit_send()
+        print("[+%ds] SPIRIT sweep (visitor left)" % el())
+        spirit_sweep()
     elif el() - _sp_last_shot >= SPIRIT_HEARTBEAT_S:
         print("[+%ds] SPIRIT shot (heartbeat)" % el())
-        spirit_send()
+        spirit_send("michi")
 
 
 if register_baseline():

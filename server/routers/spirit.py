@@ -38,7 +38,7 @@ MODEL = "claude-haiku-4-5-20251001"                # 頻繁に呼ぶので軽く
 
 M_HI = 0.30            # このスコア以上が続くと放置度Nが育つ
 N_FULL_S = 600.0       # Nが0->1になる秒数
-JUDGE_MIN_GAP = 90.0   # AI判断の最短間隔（秒）
+JUDGE_MIN_GAP = 15.0   # AI判断の最短間隔（秒）。首振り巡回(3枚連続)を通すため短め。費用は日次上限が守る
 JUDGE_DAILY_CAP = 400  # 1日のAI呼び出し上限（費用の絶対の歯止め）
 SCORE_ALPHA = 0.4      # スコア平滑化（0=動かない〜1=生値）
 MAX_COMMENT = 24
@@ -150,7 +150,7 @@ async def _judge_image(image_bytes: bytes) -> dict:
 
 
 @router.post("/frame")
-async def receive_frame(request: Request, x_upload_key: str = Header(None)):
+async def receive_frame(request: Request, pose: str = "", x_upload_key: str = Header(None)):
     """目からのJPEG。在室中は捨てる。スロットル内なら受け取るだけで判断しない。"""
     if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
@@ -196,7 +196,7 @@ async def receive_frame(request: Request, x_upload_key: str = Header(None)):
             st["comment"] = c
     _save(st)
     if sc is not None:
-        _log_event("judge", {"raw": sc, "score": round(st["score"], 3),
+        _log_event("judge", {"raw": sc, "score": round(st["score"], 3), "pose": pose,
                              "N": round(_calc_n(st, now), 3), "comment": st.get("comment", "")})
     logger.info("spirit judge: raw=%s smoothed=%.2f comment=%s", sc, st["score"], st.get("comment"))
     return {"ok": True, "judged": sc is not None, "score": st["score"]}
