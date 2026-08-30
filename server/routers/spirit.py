@@ -25,7 +25,7 @@ import base64
 import logging
 
 from fastapi import APIRouter, Request, Header, HTTPException
-from fastapi.responses import PlainTextResponse, HTMLResponse
+from fastapi.responses import PlainTextResponse, HTMLResponse, Response
 
 from server.database import get_db
 from server.storage import upload_to
@@ -401,6 +401,68 @@ async def export_all():
     except Exception as e:
         out["error"] = str(e)
     return out
+
+
+# ---- C3の字幕窓（一言を 240x42 のRGB565画像にして配る。C3はこれをそのまま表示する）----
+_FONT_URL = "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansjp/NotoSansJP%5Bwght%5D.ttf"
+_FONT_PATH = "/tmp/notojp.ttf"
+_WIN_W, _WIN_H = 240, 42
+_win_cache = {"text": None, "bin": None}
+
+
+async def _ensure_font():
+    if os.path.exists(_FONT_PATH):
+        return True
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as c:
+            r = await c.get(_FONT_URL)
+            r.raise_for_status()
+            with open(_FONT_PATH, "wb") as f:
+                f.write(r.content)
+        return True
+    except Exception as e:
+        logger.warning("font download failed: %s", e)
+        return False
+
+
+def _render_win(text: str) -> bytes:
+    """一言 → C3のblitWindow形式（[h][0][RGB565上位バイト先 240×42]）。"""
+    from PIL import Image, ImageDraw, ImageFont
+    img = Image.new("RGB", (_WIN_W, _WIN_H), (247, 240, 224))     # クリーム背景（本体と同じ）
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, _WIN_W - 1, _WIN_H - 1], outline=(120, 110, 90))
+    try:
+        font = ImageFont.truetype(_FONT_PATH, 18)
+    except Exception:
+        font = ImageFont.load_default()
+    t = text or "……"
+    while len(t) > 1 and d.textlength(t, font=font) > _WIN_W - 12:
+        t = t[:-1]                                                # 収まるまで末尾を落とす
+    w = d.textlength(t, font=font)
+    d.text(((_WIN_W - w) // 2, 9), t, fill=(60, 50, 40), font=font)
+    px = img.load()
+    out = bytearray([_WIN_H, 0])
+    for y in range(_WIN_H):
+        for x in range(_WIN_W):
+            r, g, b = px[x, y]
+            v = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3)
+            out.append((v >> 8) & 0xFF)
+            out.append(v & 0xFF)
+    return bytes(out)
+
+
+@router.get("/win.bin")
+async def win_bin():
+    """C3が定期的に取りに来る字幕窓。一言が変わった時だけ作り直す。"""
+    st = _load()
+    text = st.get("comment", "")
+    if _win_cache["text"] != text or _win_cache["bin"] is None:
+        if not await _ensure_font():
+            raise HTTPException(status_code=503, detail="font not ready")
+        _win_cache["bin"] = _render_win(text)
+        _win_cache["text"] = text
+    return Response(content=_win_cache["bin"], media_type="application/octet-stream")
 
 
 @router.get("/log")

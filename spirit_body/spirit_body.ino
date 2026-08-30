@@ -312,6 +312,61 @@ static bool httpGet(const char *path, char *body, int bodysz) {
     return b.length() > 0;
 }
 static bool voiceOnce = false;   // murコマンドの1回だけ発声許可
+
+// クラウドの一言の字幕窓（サーバが画像化したものを取りに行く）。取れている間はこちらを表示。
+static uint8_t cloudWin[2 + 240 * 42 * 2];
+static bool cloudWinOk = false;
+
+// 情報源へHTTP(S) GETしてバイナリ本文をbufへ。戻り=本文バイト数(失敗は-1)
+static int httpGetBin(const char *path, uint8_t *buf, int maxlen) {
+    if (WiFi.status() != WL_CONNECTED) return -1;
+    WiFiClient plain;
+    WiFiClientSecure tls;
+    Client *c;
+    bool https = (srcPort == 443);
+    if (https) {
+        tls.setInsecure();
+        tls.setTimeout(6000);
+        if (!tls.connect(srcIP.c_str(), 443)) return -1;
+        c = &tls;
+    } else {
+        if (!plain.connect(srcIP.c_str(), srcPort)) return -1;
+        c = &plain;
+    }
+    c->print("GET ");
+    if (https) c->print("/spirit");
+    c->print(path);
+    c->print(" HTTP/1.0\r\nHost: ");
+    c->print(srcIP);
+    c->print("\r\nConnection: close\r\n\r\n");
+    // ヘッダを1行ずつ読み飛ばして本文へ
+    uint32_t t0 = millis();
+    String line;
+    while (millis() - t0 < 8000) {
+        if (!c->available()) { if (!c->connected()) break; delay(5); continue; }
+        char ch = (char)c->read();
+        if (ch == '\n') {
+            line.trim();
+            if (line.length() == 0) goto body;   // 空行＝ヘッダ終わり
+            line = "";
+        } else if (ch != '\r') line += ch;
+    }
+    c->stop();
+    return -1;
+body:
+    int n = 0;
+    t0 = millis();
+    while (millis() - t0 < 10000 && n < maxlen) {
+        int avail = c->available();
+        if (avail > 0) {
+            int k = c->read(buf + n, min(avail, maxlen - n));
+            if (k > 0) { n += k; t0 = millis(); }
+        } else if (!c->connected()) break;
+        else delay(5);
+    }
+    c->stop();
+    return n;
+}
 // 世話イベント（定義は下・serialPcmから使うため前方宣言）
 Preferences prefs;
 static uint32_t careCount = 0;
@@ -504,6 +559,7 @@ static int winIdx = -1;
 static uint32_t nextMurmur = 0;
 static uint32_t nextPoll = 0;    // 次に目へM/Nを取りに行く時刻
 static uint32_t nextBeat = 0;    // 次に目へ在室/不在を伝える時刻
+static uint32_t nextWin = 30000; // 次に字幕窓（クラウドの一言）を取りに行く時刻
 
 void setup() {
     Serial.begin(115200);
@@ -581,7 +637,8 @@ void loop() {
 
     if (now >= nextMurmur) {                   // 独り言（字幕は常時・声は滞在中だけ上限つき）
         winIdx = (winIdx + 1) % N_WINS;
-        blitWindow(WINS[winIdx]);
+        if (cloudWinOk) blitWindow(cloudWin);  // クラウドの「今の一言」があればそれを表示
+        else blitWindow(WINS[winIdx]);         // 無ければ持ち歌をローテ
         bool staying = inEpisode && (now - episodeStart >= STAY_MS);   // 通過でなく居続けている
         if (!QUIET && staying && voiceUsed < VOICE_BUDGET) {
             speak(VOWS[winIdx], VOW_LEN[winIdx], VOW_NOISY[winIdx]);
@@ -599,6 +656,12 @@ void loop() {
         bool occ = (now - lastMotion) < 15000;
         char t[8];
         httpGet(occ ? "/presence?state=occupied" : "/presence?state=empty", t, sizeof t);
+    }
+    // クラウドの一言（字幕窓）を取りに行く（60秒ごと・クラウド接続時のみ）
+    if (srcPort == 443 && now >= nextWin) {
+        nextWin = now + 60000;
+        int n = httpGetBin("/win.bin", cloudWin, sizeof(cloudWin));
+        if (n >= (int)sizeof(cloudWin) - 64 && cloudWin[0] == 42) cloudWinOk = true;
     }
     // 目からM・Nを取りに行く（10秒ごと）。"M N flag" を受けてonMNへ
     if (now >= nextPoll) {
