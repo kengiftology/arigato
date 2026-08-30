@@ -10,6 +10,11 @@ IP省略時はブロードキャストで探してから送る。
 import socket
 import sys
 
+try:                                     # Windowsのコンソールで日本語が化けない・落ちないように
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 PORT = 5006
 
 

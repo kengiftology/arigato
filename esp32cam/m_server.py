@@ -55,9 +55,11 @@ M_LOW = 0.08          # このM未満なら「きれい」とみなし基準を�
 # PCなしで自走させるため、この周期でWROVER自身が首を振って scan0..4.jpg を撮り直す。
 SCAN_EVERY_S = 0      # 既定オフ。自走させるなら /scan/every?s=300
 
-# クラウドの脳（地霊）へ写真を送る間隔（秒）。0で停止。
-# 送る前にクラウドへ在室を確認し、無人のときだけ撮って送る（人を写さない）。
-SPIRIT_PUSH_S = 120
+# クラウドの脳（地霊）への送信はイベント駆動：
+#   人が去った直後に1枚（変化はそこにしか無い）＋無人が続く間は1時間に1枚（生存確認）。
+# 在室中は撮らない（人を写さない・AIも人入り写真は捨てるので撮るだけ無駄）。
+SPIRIT_TICK_S = 30            # 在室状態を見に行く間隔（軽いGETだけ）
+SPIRIT_HEARTBEAT_S = 3600     # 無人が続く時の定期撮影間隔
 SPIRIT_SERVER = CFG.get("server", "")
 SPIRIT_KEY = CFG.get("upload_key", "")
 
@@ -430,22 +432,14 @@ def presence_empty():
     return _last_state == "empty"
 
 
-def spirit_push():
-    """クラウドの脳へいまの景色を1枚送る。無人のときだけ（人を写さない）。
-    失敗しても次の周期に再挑戦するだけで、本体の他の仕事には影響させない。"""
-    if not SPIRIT_SERVER:
-        return
+_sp_dirty = False     # 在室を見た＝去った後に1枚撮るべき、の印
+_sp_last_shot = -10**9  # 最後に送った時刻（起動秒）
+
+
+def spirit_send():
+    """いまの景色を1枚撮ってクラウドへ送る。失敗しても本体に影響させない。"""
+    global _sp_last_shot
     import requests
-    try:                                  # クラウド側の在室状態を確認（C3が報告している）
-        r = requests.get(SPIRIT_SERVER + "/spirit/presence", timeout=10)
-        occ = r.text.strip() != "empty"
-        r.close()
-        if occ:
-            print("[+%ds] SPIRIT skip (occupied)" % el())
-            return
-    except Exception as e:
-        print("[+%ds] SPIRIT presence err:" % el(), e)
-        return
     j = capture_color_jpeg("vga")
     if not j:
         print("[+%ds] SPIRIT capture failed" % el())
@@ -457,11 +451,37 @@ def spirit_push():
         r = requests.post(SPIRIT_SERVER + "/spirit/frame", data=j, headers=headers)
         print("[+%ds] SPIRIT push %d %s" % (el(), r.status_code, r.text[:80]))
         r.close()
+        _sp_last_shot = el()
     except Exception as e:
         print("[+%ds] SPIRIT push err:" % el(), e)
     finally:
         del j
         gc.collect()
+
+
+def spirit_tick():
+    """30秒ごとの見回り。人が去った直後＋無人1時間ごとにだけ撮る（イベント駆動）。"""
+    global _sp_dirty
+    if not SPIRIT_SERVER:
+        return
+    import requests
+    try:
+        r = requests.get(SPIRIT_SERVER + "/spirit/presence", timeout=10)
+        occ = r.text.strip() != "empty"
+        r.close()
+    except Exception as e:
+        print("[+%ds] SPIRIT presence err:" % el(), e)
+        return
+    if occ:
+        _sp_dirty = True          # 人がいる＝去ったら変化を確かめる
+        return
+    if _sp_dirty:                 # 去った直後の1枚（研究の本命ショット）
+        _sp_dirty = False
+        print("[+%ds] SPIRIT shot (visitor left)" % el())
+        spirit_send()
+    elif el() - _sp_last_shot >= SPIRIT_HEARTBEAT_S:
+        print("[+%ds] SPIRIT shot (heartbeat)" % el())
+        spirit_send()
 
 
 if register_baseline():
@@ -572,8 +592,8 @@ srv.bind(("0.0.0.0", 80))
 srv.listen(1)
 srv.settimeout(5)
 _next_scan = time.ticks_add(time.ticks_ms(), SCAN_EVERY_S * 1000 if SCAN_EVERY_S > 0 else 60000)
-_next_spirit = time.ticks_add(time.ticks_ms(), 20000)   # 起動20秒後に初回送信
-print("SERVER up on :80  /m /baseline /health /ui   scan every %ds  spirit every %ds" % (SCAN_EVERY_S, SPIRIT_PUSH_S))
+_next_spirit = time.ticks_add(time.ticks_ms(), 20000)   # 起動20秒後に初回チェック
+print("SERVER up on :80  /m /baseline /health /ui   scan every %ds  spirit tick %ds" % (SCAN_EVERY_S, SPIRIT_TICK_S))
 
 try:
     while True:
@@ -595,11 +615,11 @@ try:
             else:
                 print("[+%ds] SWEEP skipped (occupied)" % el())
 
-        # --- クラウドの脳へ写真を送る（無人時のみ・SPIRIT_PUSH_S間隔）---
-        if SPIRIT_PUSH_S > 0 and time.ticks_diff(time.ticks_ms(), _next_spirit) >= 0:
-            _next_spirit = time.ticks_add(time.ticks_ms(), SPIRIT_PUSH_S * 1000)
+        # --- クラウドの脳への送信（イベント駆動・SPIRIT_TICK_S間隔で見回り）---
+        if SPIRIT_TICK_S > 0 and time.ticks_diff(time.ticks_ms(), _next_spirit) >= 0:
+            _next_spirit = time.ticks_add(time.ticks_ms(), SPIRIT_TICK_S * 1000)
             try:
-                spirit_push()
+                spirit_tick()
             except Exception as e:
                 print("[+%ds] SPIRIT ERR:" % el(), e)
 
