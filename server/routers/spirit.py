@@ -491,7 +491,7 @@ async def win_bin():
     return Response(content=_win_cache["bin"], media_type="application/octet-stream")
 
 
-FACE_ROTATE = 90         # カメラの取り付け向きの補正（実測で画像が90度回っていた）
+FACE_ROTATE = 270        # カメラの取り付け向きの補正（2026-08-31の実測で270度が正しいと判明）
 FACE_ENABLED = os.environ.get("FACE_ENABLED", "") == "1"   # 掲示が済むまでは既定でオフ
 
 

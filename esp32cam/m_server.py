@@ -30,10 +30,13 @@ WIFI = CFG["wifi"]
 
 # Mの計測画像は4:3（センサーの全画角）。1:1(240x240)はその中央を切り取った狭い絵になるため、
 # 部屋をなるべく広く見張る目的では4:3を使う。320/16=20、240/16=15 でブロックに割り切れる。
-W = 320               # 計測画像の幅
-MH = 240              # 計測画像の高さ
+# 2026-08-31: 顔を見分けるには320x240では顔が小さすぎた（35px程度で検出下限を割る）ため
+# 640x480へ引き上げ。散らかり度は16x16マスに潰して使うので、間引き幅を倍にすれば計算量は据え置き。
+W = 640               # 計測画像の幅
+MH = 480              # 計測画像の高さ
 B = 16                # 16x16 ブロック
 NB = B * B            # 256
+STEP = 4 if W > 320 else 2   # ブロック内の画素間引き（解像度を上げても計算量を保つ）
 
 # --- M（散らかり度）の計算パラメータ ---
 # 各マスの変化を 0/1 でなく 0..1 の「なだらかなスコア」にする（閾値ぎわで跳ねない）
@@ -108,7 +111,7 @@ print("=========================================")
 
 servo3.clear_pins()                 # 残りPWMの掃除（カメラより先）
 from camera import Camera, FrameSize, PixelFormat
-cam = Camera(pixel_format=PixelFormat.GRAYSCALE, frame_size=FrameSize.QVGA)
+cam = Camera(pixel_format=PixelFormat.GRAYSCALE, frame_size=FrameSize.VGA)
 cam.set_vflip(True)
 servo3.attach_all(center=True)      # カメラの後でattach（LEDC競合回避）→ 全軸90°保持
 print("servos attached & holding:", servo3.angles(), "duty check:", servo3.verify())
@@ -133,14 +136,14 @@ def block_stats(gray):
             while yy < y0 + bsy:
                 row = yy * W + x0
                 xx = 0
-                while xx < bsx - 2:
+                while xx < bsx - STEP:
                     p = gray[row + xx]
                     s += p; cnt += 1
-                    e += abs(gray[row + xx + 2] - p)          # 横方向の輪郭
-                    if yy + 2 < y0 + bsy:
-                        e += abs(gray[row + W * 2 + xx] - p)  # 縦方向の輪郭
-                    xx += 2
-                yy += 2
+                    e += abs(gray[row + xx + STEP] - p)          # 横方向の輪郭
+                    if yy + STEP < y0 + bsy:
+                        e += abs(gray[row + W * STEP + xx] - p)  # 縦方向の輪郭
+                    xx += STEP
+                yy += STEP
             i = by * B + bx
             means[i] = s / cnt
             edges[i] = e / cnt
@@ -232,7 +235,7 @@ def capture_color_jpeg(size="240"):
             print("[+%ds] color capture %s failed:" % (el(), name), e)
             gc.collect()
     try:                       # 白黒へ復帰（M計算に必須。ここは何があっても通す）
-        cam = Camera(pixel_format=PixelFormat.GRAYSCALE, frame_size=FrameSize.QVGA)
+        cam = Camera(pixel_format=PixelFormat.GRAYSCALE, frame_size=FrameSize.VGA)
         cam.set_vflip(True)
     except Exception as e:
         print("[+%ds] RESTORE GRAY CAM FAILED:" % el(), e)

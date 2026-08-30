@@ -29,13 +29,23 @@ _detector = None
 _lock = threading.Lock()
 
 
+_YUNET_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
+_YUNET_PATH = "/tmp/yunet.onnx"
+
+
 def _get_detector():
-    """OpenCV同梱の顔検出器。追加ダウンロード不要で動く。"""
+    """顔検出器（YuNet）。
+    2026-08-31: 旧来のカスケード方式は、斜めを向いた顔を見落とす一方で
+    床の木目を顔と誤検出した（実測: 本物0件・誤検出10件）。YuNetに交換して
+    本物のみ検出（確信度0.76〜0.89・誤検出0件）になった。"""
     global _detector
     if _detector is None:
         import cv2
-        path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
-        _detector = cv2.CascadeClassifier(path)
+        if not os.path.exists(_YUNET_PATH):
+            import urllib.request
+            logger.info("downloading yunet...")
+            urllib.request.urlretrieve(_YUNET_URL, _YUNET_PATH)
+        _detector = cv2.FaceDetectorYN.create(_YUNET_PATH, "", (320, 320), 0.6, 0.3, 5000)
     return _detector
 
 
@@ -70,11 +80,15 @@ def detect_face(image_bytes: bytes, rotate: int = 0):
              270: cv2.ROTATE_90_COUNTERCLOCKWISE}.get(rotate)
         if k is not None:
             img = cv2.rotate(img, k)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = _get_detector().detectMultiScale(gray, 1.1, 5, minSize=(_MIN_FACE_PX, _MIN_FACE_PX))
-    if len(faces) == 0:
+    det = _get_detector()
+    det.setInputSize((img.shape[1], img.shape[0]))
+    _, faces = det.detect(img)
+    if faces is None or len(faces) == 0:
         return None
-    x, y, w, h = max(faces, key=lambda f: f[2] * f[3])     # 一番大きい顔＝一番近い人
+    best = max(faces, key=lambda f: f[2] * f[3])            # 一番大きい顔＝一番近い人
+    x, y, w, h = (int(v) for v in best[:4])
+    if w < _MIN_FACE_PX:
+        return None
     m = int(w * 0.2)                                        # 少し広めに切る（髪や輪郭も入れる）
     x0, y0 = max(0, x - m), max(0, y - m)
     x1, y1 = min(img.shape[1], x + w + m), min(img.shape[0], y + h + m)
