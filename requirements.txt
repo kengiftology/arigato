@@ -8,3 +8,7 @@ anthropic
 httpx
 pillow
 pillow-heif
+insightface
+onnxruntime
+numpy<2
+opencv-python-headless
