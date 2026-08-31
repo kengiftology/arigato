@@ -114,6 +114,25 @@ from camera import Camera, FrameSize, PixelFormat
 cam = Camera(pixel_format=PixelFormat.GRAYSCALE, frame_size=FrameSize.VGA)
 cam.set_vflip(True)
 servo3.attach_all(center=True)      # カメラの後でattach（LEDC競合回避）→ 全軸90°保持
+
+# 前回の向きを思い出す（2026-08-31）。再起動のたびに初期角へ戻ると、
+# 合わせた画角が失われて散らかりの基準も撮り直しになる。実際に一度それで構図を失った。
+def save_pose():
+    try:
+        a = servo3.angles()
+        with open("pose.json", "w") as f:
+            json.dump({"a1": a.get("a1"), "a2": a.get("a2"), "a3": a.get("a3")}, f)
+    except Exception as e:
+        print("pose save failed:", e)
+
+
+try:
+    with open("pose.json") as f:
+        _pp = json.load(f)
+    servo3.pose(_pp.get("a1"), _pp.get("a2"), _pp.get("a3"))
+    print("pose restored:", _pp)
+except Exception:
+    print("no saved pose (first run)")
 print("servos attached & holding:", servo3.angles(), "duty check:", servo3.verify())
 
 
@@ -866,6 +885,7 @@ try:
                                 pass
                 if args:
                     set_ = servo3.pose(args.get("a1"), args.get("a2"), args.get("a3"))
+                    save_pose()                    # 次の再起動でもこの向きに戻れるように
                     print("[+%ds] POSE -> %s (%s)" % (el(), set_, addr[0]))
                 a = servo3.angles()
                 body = b"%d %d %d\n" % (a.get("a1", -1), a.get("a2", -1), a.get("a3", -1))
