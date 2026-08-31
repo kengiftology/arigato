@@ -305,6 +305,9 @@ async def get_full():
         "score": st["score"], "raw_score": st["raw_score"],
         "N": _calc_n(st, now), "comment": st["comment"], "empty": st["empty"],
         "day_calls": st["day_calls"],
+        "objects": st.get("objects", []),        # いま見えているもの（状態ページ用）
+        "photo_url": st.get("photo_url"), "photo_at": st.get("photo_at"),
+        "person": st.get("cur_person"), "person_state": st.get("cur_state"),
         "last_judge_ago": round(now - st["last_judge"]) if st["last_judge"] else None,
     }
 
