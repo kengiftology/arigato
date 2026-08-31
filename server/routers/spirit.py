@@ -58,7 +58,14 @@ _SYSTEM = (
     "人に指図・お願い・提案は絶対にしない（『片付けましょう』『〜してね』は禁止）。"
     "『そわそわするなあ』『すっきりして気持ちいいなあ』のように自分の心もちだけ。"
     "責めない・皮肉らない・数字を言わない。\n"
-    "必ずJSONだけを返す: {\"score\": 0〜1の小数, \"comment\": \"15字以内の独り言\"} "
+    "【objectsの書き方】写真に写っている物を、本来の置き場から出ているものを中心に挙げる。"
+    "各項目は {\"name\":\"もの\", \"where\":\"場所\", \"n\":個数} の形。"
+    "nameは日本語の一般名詞（皿・コップ・鍋・箱・袋・布巾など）。"
+    "whereは写真内の位置を大まかに（テーブル・シンク・コンロ・床・棚）。"
+    "備え付けの設備（冷蔵庫・シンクそのもの・棚そのもの）は挙げない。"
+    "多くても10個まで。\n"
+    "必ずJSONだけを返す: "
+    "{\"score\": 0〜1の小数, \"comment\": \"15字以内の独り言\", \"objects\": [...]} "
     "または {\"skip\": true}"
 )
 
@@ -270,9 +277,14 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
         if c:
             st["comment"] = c
     _save(st)
+    objs = r.get("objects")
+    if isinstance(objs, list):
+        objs = [o for o in objs if isinstance(o, dict) and o.get("name")][:10]
+        st["objects"] = objs
     if sc is not None:
         _log_event("judge", {"raw": sc, "score": round(st["score"], 3), "pose": pose,
-                             "N": round(_calc_n(st, now), 3), "comment": st.get("comment", "")})
+                             "N": round(_calc_n(st, now), 3), "comment": st.get("comment", ""),
+                             "objects": st.get("objects", [])})
     logger.info("spirit judge: raw=%s smoothed=%.2f comment=%s", sc, st["score"], st.get("comment"))
     return {"ok": True, "judged": sc is not None, "score": st["score"]}
 
@@ -327,6 +339,7 @@ h1{font-size:20px} .card{background:#fff;border-radius:12px;padding:16px;margin:
 .bar{height:10px;background:#eee;border-radius:5px;overflow:hidden}.bar>i{display:block;height:100%;background:#e8a33d}
 .lbl{font-size:12px;color:#888;margin-top:10px} img{width:100%;border-radius:8px}
 .ev{font-size:13px;border-bottom:1px solid #eee;padding:6px 0}.t{color:#aaa;margin-right:8px}
+.tag{display:inline-block;background:#f1ede2;border-radius:8px;padding:3px 10px;margin:3px 4px;font-size:14px}
 </style></head><body>
 <h1>キッチンちゃんのようす</h1>
 <div class="card"><div class="face" id="face">…</div><div class="say" id="say">よみこみちゅう…</div>
@@ -334,6 +347,7 @@ h1{font-size:20px} .card{background:#fff;border-radius:12px;padding:16px;margin:
 <div class="lbl">ほったらかされど</div><div class="bar"><i id="nbar" style="width:0%;background:#7f77dd"></i></div>
 <div class="lbl" id="meta"></div></div>
 <div class="card"><div class="lbl">さいごに みたけしき（人がいないときだけ撮影）</div><img id="photo" alt="景色"></div>
+<div class="card"><div class="lbl">いま見えているもの</div><div id="objs">…</div></div>
 <div class="card"><div class="lbl">できごと</div><div id="log"></div></div>
 <script>
 async function load(){
@@ -346,6 +360,7 @@ async function load(){
  document.getElementById('meta').textContent =
    (f.empty?'いまは だれもいない':'いま だれかいる（撮影はお休み）')+'　/ きょうの判断 '+f.day_calls+'回';
  if(f.photo_url) document.getElementById('photo').src = f.photo_url+'?t='+(f.photo_at||Date.now());
+ document.getElementById('objs').innerHTML = (f.objects&&f.objects.length) ? f.objects.map(function(o){return '<span class="tag">'+(o.name||'')+(o.n>1?('×'+o.n):'')+(o.where?('<small> '+o.where+'</small>'):'')+'</span>';}).join(' ') : 'とくに何も出ていないみたい';
  const lg=await (await fetch('/spirit/log?limit=30')).json();
  const jp={judge:'かんがえた',care:'おせわされた！',presence:'けはい'};
  document.getElementById('log').innerHTML=(lg.events||[]).map(e=>{
