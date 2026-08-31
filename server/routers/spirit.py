@@ -38,7 +38,12 @@ MODEL = "claude-haiku-4-5-20251001"                # 頻繁に呼ぶので軽く
 
 M_HI = 0.30            # このスコア以上が続くと放置度Nが育つ
 N_FULL_S = 600.0       # Nが0->1になる秒数
-JUDGE_MIN_GAP = 15.0   # AI判断の最短間隔（秒）。首振り巡回(3枚連続)を通すため短め。費用は日次上限が守る
+# AI判断の最短間隔（秒）。実測で22秒に1回＝1日4000回相当のペースになっていたため、
+# 状況で使い分ける。変化が起きるのは人が去った前後だけで、無人の部屋を
+# 何度見ても同じ答えしか返らない（2026-08-31）。
+JUDGE_GAP_AFTER_VISIT = 15.0   # 人が去った直後（巡回3枚を通したい）
+JUDGE_GAP_IDLE = 600.0         # 誰も来ていない間（10分に1回で十分）
+JUDGE_MIN_GAP = JUDGE_GAP_AFTER_VISIT
 JUDGE_DAILY_CAP = 400  # 1日のAI呼び出し上限（費用の絶対の歯止め）
 SCORE_ALPHA = 0.4      # スコア平滑化（0=動かない〜1=生値）
 MAX_COMMENT = 24
@@ -237,7 +242,10 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
         except Exception as e:
             logger.warning("identify failed: %s", e)
 
-    if now - st["last_judge"] < JUDGE_MIN_GAP:
+    # 人が去った直後（5分以内）は細かく見る。それ以外は間隔を空けて無駄打ちを避ける
+    recent_visit = (now - st.get("last_seen", 0)) < 300
+    gap = JUDGE_GAP_AFTER_VISIT if recent_visit else JUDGE_GAP_IDLE
+    if now - st["last_judge"] < gap:
         return {"ok": True, "judged": False, "why": "throttled"}
     if now - st["day_start"] > 86400:
         st["day_start"], st["day_calls"] = now, 0
