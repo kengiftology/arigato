@@ -488,35 +488,61 @@ def spirit_sweep():
 ARRIVE_TRIES = (2, 4, 6)      # 到着から何秒後に撮るか。顔が取れた時点で打ち切る
 
 
-def spirit_arrival_fast():
-    """来た瞬間を捉えるための速い1枚。
-    待機中の白黒カメラのまま撮り、JPEG圧縮もせず生データのまま送る。
-    カラー切替（数秒）とJPEG圧縮（十数秒）を両方省くので、シャッターまでが一気に短くなる。
-    顔認識はもともと白黒で動くので、色は捨てて構わない。"""
+def spirit_arrival_burst(shots=5, gap_ms=300):
+    """来た人の顔が取れるまで粘る。撮影と送信を切り離すのが要点。
+
+    以前は「1枚撮る→送る→返事を待つ→次を撮る」を繰り返していたため、
+    通信の往復（実測2秒）が撮影間隔を縛っていた。人は歩いているので、
+    その2秒の間に顔の向きも位置も変わってしまう。
+
+    そこでまず連続で撮ってメモリに溜め、撮り終えてから順に送る。
+    撮影間隔は通信に縛られず0.3秒程度まで詰まるので、
+    「どこかのコマで顔が正面を向いている」確率が上がる。
+    顔が見つかった時点で残りは捨てる。
+    """
     if not SPIRIT_SERVER:
         return False
     import requests
-    g = None
+    frames = []
     try:
-        g = cam.capture()                      # 待機中のカメラでそのまま1枚（切替なし）
-        if not g:
-            return False
-        g = bytes(g)                           # 0..255に固定（符号付きで読まれるのを防ぐ）
-        headers = {"Content-Type": "application/octet-stream"}
-        if SPIRIT_KEY:
-            headers["X-Upload-Key"] = SPIRIT_KEY
-        url = "%s/spirit/arrive?raw=%dx%d" % (SPIRIT_SERVER, W, MH)
-        r = requests.post(url, data=g, headers=headers)
-        body = r.text[:90]
-        r.close()
-        print("[+%ds] ARRIVE-fast %s" % (el(), body))
-        return ('"person"' in body) and ('unknown' not in body)
+        for i in range(shots):                 # ① 撮るだけ撮る（通信しない）
+            if i and presence_empty():
+                break                          # もう居ないなら追わない
+            g = cam.capture()
+            if g:
+                frames.append(bytes(g))
+            time.sleep_ms(gap_ms)
+    except MemoryError:
+        print("[+%ds] BURST memory limit at %d frames" % (el(), len(frames)))
     except Exception as e:
-        print("[+%ds] ARRIVE-fast err:" % el(), e)
+        print("[+%ds] BURST capture err:" % el(), e)
+    if not frames:
         return False
-    finally:
-        del g
-        gc.collect()
+    print("[+%ds] BURST %d frames captured" % (el(), len(frames)))
+
+    headers = {"Content-Type": "application/octet-stream"}
+    if SPIRIT_KEY:
+        headers["X-Upload-Key"] = SPIRIT_KEY
+    url = "%s/spirit/arrive?raw=%dx%d" % (SPIRIT_SERVER, W, MH)
+    found = False
+    while frames:                              # ② 撮り終えてから順に送る
+        g = frames.pop(0)
+        try:
+            r = requests.post(url, data=g, headers=headers)
+            body = r.text[:90]
+            r.close()
+            print("[+%ds] BURST send %s" % (el(), body))
+            if ('"person"' in body) and ('unknown' not in body):
+                found = True
+                break                          # 顔が取れた＝残りは捨てる
+        except Exception as e:
+            print("[+%ds] BURST send err:" % el(), e)
+        finally:
+            del g
+            gc.collect()
+    frames = None
+    gc.collect()
+    return found
 
 
 def spirit_arrival():
@@ -534,7 +560,7 @@ def spirit_arrival():
         if presence_empty():
             print("[+%ds] ARRIVE stop (left, fast phase)" % el())
             return
-        if spirit_arrival_fast():
+        if spirit_arrival_burst():
             return                            # 顔が取れた
         time.sleep_ms(400)
     prev = 0
@@ -563,22 +589,53 @@ def spirit_arrival():
 
 
 def spirit_tick():
-    """見回り。在室はC3からLAN直で届く（/presence・0.3秒級）ので、クラウドに聞かず自分の記憶で判断。
-    人が去った直後は3方向巡回＋無人1時間ごとは持ち場1枚。"""
+    """写真を判断の入口にする（2026-08-31改訂）。
+
+    以前は人感センサーが在室を決めていたが、座って動かない人を見失った
+    （実測：二人が食事中に無人と誤判定）。写真を見れば人が居るかも誰かも
+    同時に分かるので、定期的に撮ってクラウドに任せる。
+
+    返事に person が入っていれば人が居た合図。そのときは間隔を詰めて
+    顔が取れるまで粘る。誰も居なければ間隔を空け、去った直後だけ首を振る。
+    """
     global _sp_dirty
     if not SPIRIT_SERVER:
         return
-    occ = not presence_empty()      # C3のハートビート（15秒鮮度）で判定。C3未接続なら無人扱い
-    if occ:
-        _sp_dirty = True          # 人がいる＝去ったら変化を確かめる
+    saw = spirit_probe()                       # 1枚撮って送る（在室判定も顔照合もクラウド側）
+    if saw:
+        _sp_dirty = True                       # 人が居た＝去ったら変化を確かめる
         return
-    if _sp_dirty:                 # 去った直後＝部屋を見て回る（研究の本命）
+    if _sp_dirty:                              # 去った直後＝部屋を見て回る（研究の本命）
         _sp_dirty = False
         print("[+%ds] SPIRIT sweep (visitor left)" % el())
         spirit_sweep()
-    elif el() - _sp_last_shot >= SPIRIT_HEARTBEAT_S:
-        print("[+%ds] SPIRIT shot (heartbeat)" % el())
-        spirit_send("michi")
+
+
+def spirit_probe():
+    """1枚撮ってクラウドへ。人が写っていた（またはIDが取れた）ならTrue。"""
+    import requests
+    g = None
+    try:
+        g = bytes(cam.capture())
+        if not g:
+            return False
+        headers = {"Content-Type": "application/octet-stream"}
+        if SPIRIT_KEY:
+            headers["X-Upload-Key"] = SPIRIT_KEY
+        url = "%s/spirit/frame?raw=%dx%d" % (SPIRIT_SERVER, W, MH)
+        r = requests.post(url, data=g, headers=headers)
+        body = r.text[:110]
+        r.close()
+        seen = ('"person"' in body) or ('person_seen' in body) or ('person_in_frame' in body)
+        if seen or '"judged": true' in body or '"judged":true' in body:
+            print("[+%ds] PROBE %s" % (el(), body))
+        return seen
+    except Exception as e:
+        print("[+%ds] PROBE err:" % el(), e)
+        return False
+    finally:
+        del g
+        gc.collect()
 
 
 if register_baseline():

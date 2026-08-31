@@ -67,6 +67,9 @@ _BAD = ("汚い", "汚な", "片付", "片づけ", "掃除", "洗っ", "洗い",
         "しましょう", "ましょう", "ください", "してね", "しよう", "すべき", "たほうがいい",
         "だらしな", "ひどい", "最低", "ダメな人", "使えない", "気持ち悪", "サボ")
 
+FACE_ROTATE = 270        # カメラの取り付け向きの補正（2026-08-31の実測で270度が正しいと判明）
+FACE_ENABLED = os.environ.get("FACE_ENABLED", "") == "1"   # 掲示が済むまでは既定でオフ
+
 _state_cache: dict | None = None   # Firestore読み書き削減用（同一インスタンス内）
 
 
@@ -155,19 +158,78 @@ async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
         return {}
 
 
+def _identify(data: bytes):
+    """写真から顔を探して匿名IDに結びつける。顔が無ければ None。
+    実名は扱わない。初めての顔には新しい匿名IDを発行して「卵」にする。"""
+    from server import face
+    crop = face.detect_face(data, rotate=FACE_ROTATE)
+    if crop is None:
+        return None
+    vec = face.embed(crop)
+    if vec is None:
+        return None
+    known = _known_faces()
+    pid, sim = face.match(vec, known)
+    db = get_db()
+    if pid is None:                                  # 初めて見る顔 → 匿名IDを発行
+        pid = _new_person_id()
+        db.collection("faces").document(pid).set(
+            {"vecs": [vec], "born": time.time(), "persona": "", "state": "egg"})
+        _log_event("arrive", {"person": pid, "state": "new_egg", "sim": round(sim, 3)})
+        return {"person": pid, "state": "egg"}
+    doc = db.collection("faces").document(pid).get().to_dict() or {}
+    vecs = doc.get("vecs", [])
+    if len(vecs) < 5:                                # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
+        vecs.append(vec)
+        db.collection("faces").document(pid).update({"vecs": vecs})
+    state = "ready" if doc.get("persona") else "egg"
+    _log_event("arrive", {"person": pid, "state": state, "sim": round(sim, 3)})
+    return {"person": pid, "state": state}
+
+
 @router.post("/frame")
-async def receive_frame(request: Request, pose: str = "", x_upload_key: str = Header(None)):
-    """目からのJPEG。在室中は捨てる。スロットル内なら受け取るだけで判断しない。"""
+async def receive_frame(request: Request, pose: str = "", raw: str = "", x_upload_key: str = Header(None)):
+    """目からの写真1枚を、すべての判断に使う統合窓口（2026-08-31改訂）。
+
+    以前は人感センサーが「人が居る」を判定していたが、座って動かない人を
+    見失った（実測：二人が食事中に無人と誤判定）。写真を見れば人が居るかも
+    誰かも同時に分かるので、判断の入口を写真に一本化する。
+
+    順序:
+      1) 顔が写っているか（無料・その場で）→ 写っていれば誰かを照合して終わり
+      2) 顔が無ければAIに見せる → 人が写っていれば在室と記録（散らかりは測らない）
+      3) 人も居なければ散らかりを判断する
+    """
     if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
     data = await request.body()
     if not data:
         raise HTTPException(status_code=400, detail="empty body")
+    if raw:                                    # 生の白黒（例 raw=640x480）はJPEGへ直す
+        try:
+            w, h = (int(x) for x in raw.lower().split("x"))
+            data = _raw_gray_to_jpeg(data, w, h)
+        except Exception as e:
+            logger.warning("raw decode failed: %s", e)
+            return {"ok": False, "why": "bad_raw"}
 
     st = _load()
     now = time.time()
-    if not st["empty"]:
-        return {"ok": True, "judged": False, "why": "occupied"}
+
+    if FACE_ENABLED:                           # ① 顔があれば、それが在室の証拠かつ本人の手がかり
+        try:
+            res = _identify(data)
+            if res:
+                st["empty"] = False
+                st["cur_person"] = res["person"]
+                st["cur_state"] = res["state"]
+                st["last_seen"] = now
+                _save(st)
+                return {"ok": True, "person": res["person"], "state": res["state"],
+                        "judged": False, "why": "person_seen"}
+        except Exception as e:
+            logger.warning("identify failed: %s", e)
+
     if now - st["last_judge"] < JUDGE_MIN_GAP:
         return {"ok": True, "judged": False, "why": "throttled"}
     if now - st["day_start"] > 86400:
@@ -491,8 +553,6 @@ async def win_bin():
     return Response(content=_win_cache["bin"], media_type="application/octet-stream")
 
 
-FACE_ROTATE = 270        # カメラの取り付け向きの補正（2026-08-31の実測で270度が正しいと判明）
-FACE_ENABLED = os.environ.get("FACE_ENABLED", "") == "1"   # 掲示が済むまでは既定でオフ
 
 
 def _known_faces() -> dict:
@@ -539,13 +599,6 @@ async def arrive(request: Request, raw: str = "", x_upload_key: str = Header(Non
     data = await request.body()
     if not data:
         raise HTTPException(status_code=400, detail="empty body")
-    if raw:                                    # 生の白黒（例 raw=320x240）が来たらJPEGへ直す
-        try:
-            w, h = (int(x) for x in raw.lower().split("x"))
-            data = _raw_gray_to_jpeg(data, w, h)
-        except Exception as e:
-            logger.warning("raw decode failed: %s", e)
-            return {"person": "unknown", "state": "bad_raw"}
     try:
         from server import face
         crop = face.detect_face(data, rotate=FACE_ROTATE)
