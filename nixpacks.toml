@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["python311"]
+nixPkgs = ["python311", "espeak-ng"]   # espeak-ng: 地霊の日本語音声合成
 
 [phases.install]
 cmds = ["pip install -r requirements.txt"]

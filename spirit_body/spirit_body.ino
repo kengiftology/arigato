@@ -326,6 +326,46 @@ static bool httpGet(const char *path, char *body, int bodysz) {
     strncpy(body, b.c_str(), bodysz - 1); body[bodysz - 1] = 0;
     return b.length() > 0;
 }
+// クラウドで作った日本語の声を取りに行って、そのまま流す（2026-08-31）。
+// 一言そのものを喋らせる。母音の合成音とは別系統で、字幕と同じ言葉が耳で届く。
+static bool speakCloud() {
+    if (srcPort != 443 || WiFi.status() != WL_CONNECTED) return false;
+    WiFiClientSecure tls;
+    tls.setInsecure();
+    tls.setTimeout(8000);
+    if (!tls.connect(srcIP.c_str(), 443)) return false;
+    tls.print("GET /spirit/voice.pcm HTTP/1.0\r\nHost: ");
+    tls.print(srcIP);
+    tls.print("\r\nConnection: close\r\n\r\n");
+    uint32_t t0 = millis();
+    String line;
+    bool body = false;
+    while (!body && millis() - t0 < 8000) {
+        if (!tls.available()) { if (!tls.connected()) break; delay(5); continue; }
+        char ch = (char)tls.read();
+        if (ch == '\n') {
+            line.trim();
+            if (line.length() == 0) body = true;
+            line = "";
+        } else if (ch != '\r') line += ch;
+    }
+    if (!body) { tls.stop(); return false; }
+    uint8_t buf[512];
+    size_t total = 0;
+    t0 = millis();
+    while (millis() - t0 < 20000) {
+        int avail = tls.available();
+        if (avail > 0) {
+            int n = tls.read(buf, min(avail, (int)sizeof(buf)));
+            if (n > 0) { i2s.write(buf, n); total += n; t0 = millis(); }
+        } else if (!tls.connected()) break;
+        else delay(5);
+    }
+    tls.stop();
+    Serial.print("VOICE bytes="); Serial.println(total);
+    return total > 1000;
+}
+
 static bool voiceOnce = false;   // murコマンドの1回だけ発声許可
 
 // クラウドの一言の字幕窓（サーバが画像化したものを取りに行く）。取れている間はこちらを表示。
@@ -671,11 +711,12 @@ void loop() {
         else blitWindow(WINS[winIdx]);         // 無ければ持ち歌をローテ
         bool staying = inEpisode && (now - episodeStart >= STAY_MS);   // 通過でなく居続けている
         if (!QUIET && staying && voiceUsed < VOICE_BUDGET) {
-            speak(VOWS[winIdx], VOW_LEN[winIdx], VOW_NOISY[winIdx]);
+            // まずクラウドの日本語で喋る。届かなければ従来のあつ森語で鳴く
+            if (!speakCloud()) speak(VOWS[winIdx], VOW_LEN[winIdx], VOW_NOISY[winIdx]);
             voiceUsed++;
         } else if (voiceOnce) {                // murコマンドの強制発声（テスト用・上限外）
             voiceOnce = false;
-            speak(VOWS[winIdx], VOW_LEN[winIdx], VOW_NOISY[winIdx]);
+            if (!speakCloud()) speak(VOWS[winIdx], VOW_LEN[winIdx], VOW_NOISY[winIdx]);
         }
         nextMurmur = millis() + 12000;
     }

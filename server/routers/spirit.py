@@ -701,6 +701,56 @@ async def faces_summary():
     return {"faces": out, "enabled": FACE_ENABLED}
 
 
+
+# ---- 日本語の声（2026-08-31）----
+# クラウドで一言を音声に変換し、C3が取りに来て流す。
+# C3のI2Sは 16kHz・16bit・モノラル なので、その形の生PCMで返す。
+# 合成の中身は差し替え可能にしてある（質に不満が出たら別の方式へ移す）。
+_voice_cache = {"text": None, "pcm": None}
+
+
+def _synth_ja(text: str) -> bytes | None:
+    """日本語の一言 → 16kHz/16bit/モノラルの生PCM。作れなければ None。"""
+    if not text:
+        return None
+    try:
+        import subprocess, tempfile, os as _os, wave
+        with tempfile.TemporaryDirectory() as d:
+            wav = _os.path.join(d, "v.wav")
+            # espeak-ng: 軽く、追加費用なし。声は素朴だが日本語を読む。
+            subprocess.run(
+                ["espeak-ng", "-v", "ja", "-s", "150", "-p", "60", "-w", wav, text],
+                check=True, timeout=20, capture_output=True)
+            with wave.open(wav, "rb") as w:
+                ch, sw, sr = w.getnchannels(), w.getsampwidth(), w.getframerate()
+                frames = w.readframes(w.getnframes())
+        import audioop
+        if sw != 2:
+            frames = audioop.lin2lin(frames, sw, 2)
+        if ch != 1:
+            frames = audioop.tomono(frames, 2, 0.5, 0.5)
+        if sr != 16000:
+            frames, _ = audioop.ratecv(frames, 2, 1, sr, 16000, None)
+        return frames
+    except Exception as e:
+        logger.warning("ja synth failed: %s", e)
+        return None
+
+
+@router.get("/voice.pcm")
+async def voice_pcm():
+    """C3が取りに来る声。いまの一言を16kHz/16bit/モノラルの生PCMで返す。"""
+    st = _load()
+    text = st.get("comment", "")
+    if _voice_cache["text"] != text or _voice_cache["pcm"] is None:
+        pcm = _synth_ja(text)
+        if pcm is None:
+            raise HTTPException(status_code=503, detail="no voice")
+        _voice_cache["pcm"] = pcm
+        _voice_cache["text"] = text
+    return Response(content=_voice_cache["pcm"], media_type="application/octet-stream")
+
+
 @router.get("/log")
 async def get_log(limit: int = 200):
     """研究データの取り出し口（judge/care/presenceの時系列）。"""
