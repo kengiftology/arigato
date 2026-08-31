@@ -760,6 +760,7 @@ def _synth_ja(text: str) -> bytes | None:
         return frames
     except Exception as e:
         logger.warning("ja synth failed: %s", e)
+        _voice_cache["err"] = "%s: %s" % (type(e).__name__, str(e)[:200])
         return None
 
 
@@ -771,7 +772,7 @@ async def voice_pcm():
     if _voice_cache["text"] != text or _voice_cache["pcm"] is None:
         pcm = _synth_ja(text)
         if pcm is None:
-            raise HTTPException(status_code=503, detail="no voice")
+            raise HTTPException(status_code=503, detail=_voice_cache.get("err") or "no voice")
         _voice_cache["pcm"] = pcm
         _voice_cache["text"] = text
     return Response(content=_voice_cache["pcm"], media_type="application/octet-stream")
