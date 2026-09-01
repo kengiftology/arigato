@@ -81,7 +81,7 @@ _BAD = ("汚い", "汚な", "片付", "片づけ", "掃除", "洗っ", "洗い",
         "しましょう", "ましょう", "ください", "してね", "しよう", "すべき", "たほうがいい",
         "だらしな", "ひどい", "最低", "ダメな人", "使えない", "気持ち悪", "サボ")
 
-FACE_ROTATE = 270        # カメラの取り付け向きの補正（2026-08-31の実測で270度が正しいと判明）
+FACE_ROTATE = 0          # カメラの取り付け向きの補正（2026-08-31の実測で270度が正しいと判明）
 FACE_ENABLED = os.environ.get("FACE_ENABLED", "") == "1"   # 掲示が済むまでは既定でオフ
 
 _state_cache: dict | None = None   # Firestore読み書き削減用（同一インスタンス内）
@@ -176,7 +176,11 @@ def _identify(data: bytes):
     """写真から顔を探して匿名IDに結びつける。顔が無ければ None。
     実名は扱わない。初めての顔には新しい匿名IDを発行して「卵」にする。"""
     from server import face
-    crop = face.detect_face(data, rotate=FACE_ROTATE)
+    crop = None
+    for rot in (FACE_ROTATE, 0, 270, 90, 180):   # 既定→他の向きの順に試す
+        crop = face.detect_face(data, rotate=rot)
+        if crop is not None:
+            break
     if crop is None:
         return None
     vec = face.embed(crop)
