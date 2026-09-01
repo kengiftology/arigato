@@ -735,6 +735,33 @@ async def who():
     return (st.get("cur_person", "unknown") + " " + st.get("cur_state", "none")) + "\n"
 
 
+
+@router.post("/facetest")
+async def facetest(request: Request, x_upload_key: str = Header(None)):
+    """診断用：送った写真で顔が見つかるかだけを返す（記録も保存もしない）。"""
+    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    data = await request.body()
+    out = {"bytes": len(data), "enabled": FACE_ENABLED}
+    try:
+        from server import face
+        out["cv2"] = True
+        for rot in (0, 90, 180, 270):
+            crop = face.detect_face(data, rotate=rot)
+            if crop is not None:
+                out["found_at_rotation"] = rot
+                out["crop"] = list(crop.shape)
+                vec = face.embed(crop)
+                out["embed_ok"] = vec is not None
+                out["vec_len"] = len(vec) if vec else 0
+                break
+        else:
+            out["found_at_rotation"] = None
+    except Exception as e:
+        out["error"] = "%s: %s" % (type(e).__name__, str(e)[:300])
+    return out
+
+
 @router.get("/faces")
 async def faces_summary():
     """登録状況の確認（特徴量そのものは返さない・件数と状態だけ）。"""
