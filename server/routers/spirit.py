@@ -55,7 +55,9 @@ _DEFAULT_PERSONA = "あなたは共有キッチンに宿る『地霊』の感覚
 _SYSTEM = (
     "写真はあなたが見ている場所のいまの姿。"
     "『きれいに保たれているか／散らかっているか』を判断します。\n"
-    "【最初に確認】写真に人が写っていたら、何も判断せず {\"skip\": true} だけを返す。\n"
+    "【人が写っていたら】その人の見た目・服装・行動は一切書かない。"
+    "personフィールドに人数だけ整数で入れ、物の観察は通常どおり続ける。"
+    "誰が何をしているかの描写は禁止（記録に残すのは物の状態だけ）。\n"
     "【scoreの定義】score は散らかり度。0.0=完全にきれい、0.3=少し物がある、"
     "0.6=それなりに散らかっている、1.0=ひどく散らかっている。"
     "きれいなほど0に近い。間違えないこと。\n"
@@ -70,8 +72,8 @@ _SYSTEM = (
     "備え付けの設備（冷蔵庫・シンクそのもの・棚そのもの）は挙げない。"
     "多くても10個まで。\n"
     "必ずJSONだけを返す: "
-    "{\"score\": 0〜1の小数, \"comment\": \"15字以内の独り言\", \"objects\": [...]} "
-    "または {\"skip\": true}"
+    "{\"score\": 0〜1の小数, \"comment\": \"15字以内の独り言\", "
+    "\"objects\": [...], \"person\": 写っている人数}"
 )
 
 # 検閲: 責める・命令・提案の語（憲法違反）。含んだら穏当な既定文へ。
@@ -252,7 +254,9 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
     if st["day_calls"] >= JUDGE_DAILY_CAP:
         return {"ok": True, "judged": False, "why": "daily_cap"}
 
-    try:                                  # 状態ページ用に最新1枚だけ保存（無人時のみの写真・上書き）
+    try:                                  # 状態ページ用の最新1枚。人がいる間は保存しない
+        if not st.get("empty", True):
+            raise RuntimeError("person present: not saving photo")
         url = upload_to("spirit/latest.jpg", data, "image/jpeg")
         st["photo_url"] = url
         st["photo_at"] = now
@@ -262,10 +266,22 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
     r = await _judge_image(data, st.get("persona", ""))
     st["last_judge"] = now
     st["day_calls"] += 1
-    if r.get("skip"):
+    npeople = r.get("person")
+    try:
+        npeople = int(npeople) if npeople is not None else 0
+    except (TypeError, ValueError):
+        npeople = 0
+    if npeople > 0:                       # 人がいても観察は続ける（2026-09-01改訂）
+        st["empty"] = False               # 誰が何を動かしたかを知るため。写真は残さない
+        st["last_seen"] = now
+    elif r.get("skip"):                   # 旧仕様の名残（人がいるとだけ返る場合）
+        st["empty"] = False
+        st["last_seen"] = now
         _log_event("judge", {"skip": True})
         _save(st)
         return {"ok": True, "judged": False, "why": "person_in_frame"}
+    else:
+        st["empty"] = True
     sc = r.get("score")
     try:
         sc = max(0.0, min(1.0, float(sc)))
@@ -292,7 +308,8 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
     if sc is not None:
         _log_event("judge", {"raw": sc, "score": round(st["score"], 3), "pose": pose,
                              "N": round(_calc_n(st, now), 3), "comment": st.get("comment", ""),
-                             "objects": st.get("objects", [])})
+                             "objects": st.get("objects", []), "people": npeople,
+                             "person_id": st.get("cur_person")})
     logger.info("spirit judge: raw=%s smoothed=%.2f comment=%s", sc, st["score"], st.get("comment"))
     return {"ok": True, "judged": sc is not None, "score": st["score"]}
 
