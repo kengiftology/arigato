@@ -84,6 +84,7 @@ _BAD = ("汚い", "汚な", "片付", "片づけ", "掃除", "洗っ", "洗い",
 FACE_ROTATE = 0          # カメラの取り付け向きの補正（2026-08-31の実測で270度が正しいと判明）
 FACE_ENABLED = os.environ.get("FACE_ENABLED", "") == "1"   # 掲示が済むまでは既定でオフ
 
+_identify_err = [""]   # 顔検出の失敗理由（/spirit/facesで確認する）
 _state_cache: dict | None = None   # Firestore読み書き削減用（同一インスタンス内）
 
 
@@ -247,6 +248,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
                         "judged": False, "why": "person_seen"}
         except Exception as e:
             logger.warning("identify failed: %s", e)
+            _identify_err[0] = "%s: %s" % (type(e).__name__, str(e)[:200])
 
     # 人が去った直後（5分以内）は細かく見る。それ以外は間隔を空けて無駄打ちを避ける
     recent_visit = (now - st.get("last_seen", 0)) < 300
@@ -745,7 +747,7 @@ async def faces_summary():
                         "born": v.get("born")})
     except Exception as e:
         return {"faces": [], "error": str(e)}
-    return {"faces": out, "enabled": FACE_ENABLED}
+    return {"faces": out, "enabled": FACE_ENABLED, "last_error": _identify_err[0]}
 
 
 
