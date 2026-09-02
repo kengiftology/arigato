@@ -1435,6 +1435,7 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
 
     quiet＝この間、誰も来ていない。そこで出た変化はすべて誤報とみなす。"""
     zones = _live_zones(st)
+    cared = []                                 # 片づいた方向に変わった区画
     if quiet:                                  # 点検は1区画ずつ順ぐりに（費用のため）
         i = st.get("zone_rotate", 0) % max(1, len(zones))
         zones = zones[i:i + 1]
@@ -1458,6 +1459,10 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
                                 "changes": r.get("changes") or []})
             if not quiet:
                 _tally(z["name"], who, r.get("better"), r.get("changes") or [])
+                if r.get("better"):
+                    cared.append((z["name"], r.get("changes") or []))
+    if cared:
+        _keep_story(before, after, cared, who)
     _save(st)
 
 
@@ -1557,6 +1562,87 @@ async def zones_refresh(key: str = ""):
     _save(st)
     _log_event("zones_set", {"zones": [z["name"] for z in st["zones"]]})
     return {"ok": True, "zones": [z["name"] for z in st["zones"]]}
+
+
+STORY_PREFIX = "spirit/story/"
+
+
+def _keep_story(before: bytes, after: bytes, cared: list, who: list) -> None:
+    """片づいた前後の2枚を、その場所の積み重ねとして残す。
+
+    どちらも「人が居ない」と確かめた1枚なので、写真を残さない決まりに触れない。
+    数を数えないので、物の個数がぶれても記録は揺らがない。
+    ここが「積み重ねが見える→自分もやりたくなる」ための材料になる。"""
+    try:
+        t = int(time.time())
+        a = upload_to(STORY_PREFIX + "%d_a.jpg" % t, before, "image/jpeg")
+        b = upload_to(STORY_PREFIX + "%d_b.jpg" % t, after, "image/jpeg")
+        _log_event("story", {"before": a, "after": b, "who": who,
+                             "zones": [c[0] for c in cared],
+                             "what": [w.get("what") for c in cared
+                                      for w in c[1]][:5]})
+    except Exception as e:
+        logger.warning("keep story failed: %s", e)
+
+
+_STORY_PAGE = """<!doctype html><html lang=ja><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>このばしょの つみかさね</title>
+<style>
+ body{font-family:system-ui,sans-serif;margin:0;padding:18px;background:#faf8f5;color:#3a3630}
+ h1{font-size:19px;margin:0 0 4px}
+ .lead{font-size:13px;color:#7a7268;margin:0 0 20px;line-height:1.7}
+ .item{background:#fff;border-radius:14px;padding:13px;margin-bottom:16px;
+       box-shadow:0 1px 4px rgba(0,0,0,.07)}
+ .pair{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:start}
+ .pair img{width:100%;border-radius:9px;display:block}
+ .cap{font-size:11px;color:#9a9288;margin-top:3px}
+ .when{font-size:12px;color:#7a7268;margin-bottom:8px}
+ .zones{margin-top:9px}
+ .tag{display:inline-block;background:#eef3ec;color:#4a7c59;border-radius:20px;
+      padding:3px 11px;font-size:12px;margin:2px 3px 0 0}
+ .none{color:#9a9288;font-size:14px;text-align:center;padding:40px 0;line-height:1.9}
+</style>
+<h1>このばしょの つみかさね</h1>
+<p class=lead>だれかが てを かけてくれた ときの、まえと あとです。<br>
+なまえは のこりません。かずも かぞえません。</p>
+<div id=list><p class=none>よみこみちゅう…</p></div>
+<script>
+fetch('/spirit/log?limit=300').then(function(r){return r.json()}).then(function(j){
+  var ev=(j.events||[]).filter(function(e){return e.kind==='story'});
+  if(!ev.length){
+    document.getElementById('list').innerHTML =
+      '<p class=none>まだ なにも ありません。<br>だれかが かたづけてくれたら、ここに ならびます。</p>';
+    return;
+  }
+  var h='';
+  ev.forEach(function(e){
+    var d=new Date(e.t*1000);
+    h+='<div class=item><div class=when>'
+      +(d.getMonth()+1)+'がつ'+d.getDate()+'にち '
+      +('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+'</div>'
+      +'<div class=pair><div><img src="'+e.before+'" loading=lazy><div class=cap>まえ</div></div>'
+      +'<div><img src="'+e.after+'" loading=lazy><div class=cap>あと</div></div></div>';
+    if(e.zones&&e.zones.length){
+      h+='<div class=zones>';
+      e.zones.forEach(function(z){h+='<span class=tag>'+z+'</span>'});
+      h+='</div>';
+    }
+    h+='</div>';
+  });
+  document.getElementById('list').innerHTML=h;
+});
+</script></html>"""
+
+
+@router.get("/story", response_class=HTMLResponse)
+async def story_page():
+    """積み重ねのページ。だれの名前も、いくつという数も出さない。
+
+    研究の狙いは「積み重ねが見える→自分もやりたくなる」という
+    もうひとつの流れを起こすこと。ここは順位表ではないので、
+    誰が何回やったかは決して出さない。"""
+    return _STORY_PAGE
 
 
 @router.get("/log")
