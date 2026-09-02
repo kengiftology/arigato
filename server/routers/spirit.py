@@ -95,6 +95,25 @@ def _doc():
     return get_db().collection("spirit").document("state")
 
 
+def _vec_list(raw) -> list:
+    """保存された特徴量を、素の数値の並びに戻す。
+
+    Firestoreは配列の中に配列を入れられない。特徴量は128個の数値の並びで、
+    それを人ごとに何本か持つので、素直に書くと配列の入れ子になって拒否される
+    （実際に本番で顔IDが一度も発行されず、原因が見えないままだった）。
+    そこで1本ずつ {"v": [...]} という連想配列に包んで保存する。
+    ここは古い形（素の並び）で入っているものも読めるようにしてある。"""
+    out = []
+    for item in raw or []:
+        if isinstance(item, dict):
+            v = item.get("v")
+            if v:
+                out.append(v)
+        elif isinstance(item, list):
+            out.append(item)
+    return out
+
+
 def _log_event(kind: str, data: dict):
     """研究用の時系列ログ（spirit_log）。失敗しても本体を止めない。"""
     try:
@@ -205,13 +224,13 @@ def _identify(data: bytes):
     if pid is None:                                  # 初めて見る顔 → 匿名IDを発行
         pid = _new_person_id()
         db.collection("faces").document(pid).set(
-            {"vecs": [vec], "born": time.time(), "persona": "", "state": "egg"})
+            {"vecs": [{"v": vec}], "born": time.time(), "persona": "", "state": "egg"})
         _log_event("arrive", {"person": pid, "state": "new_egg", "sim": round(sim, 3)})
         return {"person": pid, "state": "egg"}
     doc = db.collection("faces").document(pid).get().to_dict() or {}
     vecs = doc.get("vecs", [])
     if len(vecs) < 5:                                # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
-        vecs.append(vec)
+        vecs.append({"v": vec})
         db.collection("faces").document(pid).update({"vecs": vecs})
     state = "ready" if doc.get("persona") else "egg"
     _log_event("arrive", {"person": pid, "state": state, "sim": round(sim, 3)})
@@ -623,7 +642,7 @@ def _known_faces() -> dict:
     """登録済みの特徴量 {匿名ID: [ベクトル,...]}。実名は一切持たない。"""
     try:
         docs = get_db().collection("faces").stream()
-        return {d.id: (d.to_dict() or {}).get("vecs", []) for d in docs}
+        return {d.id: _vec_list((d.to_dict() or {}).get("vecs", [])) for d in docs}
     except Exception as e:
         logger.warning("known faces load failed: %s", e)
         return {}
@@ -678,13 +697,13 @@ async def arrive(request: Request, raw: str = "", x_upload_key: str = Header(Non
         if pid is None:                                  # 初めて見る顔 → 匿名IDを発行
             pid = _new_person_id()
             db.collection("faces").document(pid).set(
-                {"vecs": [vec], "born": time.time(), "persona": "", "state": "egg"})
+                {"vecs": [{"v": vec}], "born": time.time(), "persona": "", "state": "egg"})
             _log_event("arrive", {"person": pid, "state": "new_egg", "sim": round(sim, 3)})
             return {"person": pid, "state": "egg"}
         doc = db.collection("faces").document(pid).get().to_dict() or {}
         vecs = doc.get("vecs", [])
         if len(vecs) < 5:                                # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
-            vecs.append(vec)
+            vecs.append({"v": vec})
             db.collection("faces").document(pid).update({"vecs": vecs})
         state = "ready" if doc.get("persona") else "egg"
         _log_event("arrive", {"person": pid, "state": state, "sim": round(sim, 3)})
