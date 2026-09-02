@@ -407,6 +407,13 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
                 st["cur_person"] = res["person"]
                 st["cur_state"] = res["state"]
                 st["last_seen"] = now
+                # 前回の判断からこちら、誰が居たかを溜めておく。
+                # 判断の時点で cur_person を見ると、とうに帰った人の名が残り、
+                # 無人の記録にまで同じIDが付いていた（2026-09-02に実際に起きた）。
+                seen = st.get("seen_people") or []
+                if res["person"] not in seen:
+                    seen.append(res["person"])
+                    st["seen_people"] = seen[-8:]
                 _keep_shot(st, now, data, res["person"])
                 _save(st)
                 return {"ok": True, "person": res["person"], "state": res["state"],
@@ -484,7 +491,9 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
         _log_event("judge", {"raw": sc, "score": round(st["score"], 3), "pose": pose,
                              "N": round(_calc_n(st, now), 3), "comment": st.get("comment", ""),
                              "objects": st.get("objects", []), "people": npeople,
-                             "person_id": st.get("cur_person")})
+                             "who": st.get("seen_people") or []})
+    st["seen_people"] = []                # ここまでを1区間として締める
+    _save(st)
     logger.info("spirit judge: raw=%s smoothed=%.2f comment=%s", sc, st["score"], st.get("comment"))
     return {"ok": True, "judged": sc is not None, "score": st["score"]}
 
