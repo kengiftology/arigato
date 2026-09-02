@@ -1007,6 +1007,27 @@ async def faces_summary():
     return {"faces": out, "enabled": FACE_ENABLED, "last_error": _identify_err[0]}
 
 
+@router.get("/people")
+async def people():
+    """人ごとの積み重ね（研究用の取り出し口）。
+
+    ここは研究者が読むためのもので、地霊はここの数を口に出さない。
+    数や順位が本人や周りに見えた時点で、ありがとうは制度になる。"""
+    out = []
+    try:
+        for d in get_db().collection("faces").stream():
+            v = d.to_dict() or {}
+            out.append({"id": d.id,
+                        "cares": v.get("cares", 0),      # 片づいた方向の変化に居合わせた
+                        "uses": v.get("uses", 0),        # 散らかった方向の変化に居合わせた
+                        "shots": len(v.get("vecs", [])),
+                        "born": v.get("born"), "last_at": v.get("last_at")})
+    except Exception as e:
+        return {"people": [], "error": str(e)}
+    out.sort(key=lambda x: x.get("born") or 0)
+    return {"people": out}
+
+
 @router.post("/faces/clear")
 async def clear_faces(key: str = ""):
     """覚えた顔をすべて忘れる。
@@ -1435,7 +1456,36 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
             _log_event("zone", {"zone": z["name"], "who": who,
                                 "quiet": quiet, "better": r.get("better"),
                                 "changes": r.get("changes") or []})
+            if not quiet:
+                _tally(z["name"], who, r.get("better"), r.get("changes") or [])
     _save(st)
+
+
+def _tally(zone: str, who: list, better, changes: list) -> None:
+    """変化を「世話」か「利用」として数え、人ごとの覚えに足す。
+
+    散らかったことは失敗ではない。その場所が使われた証拠である。
+    世話だけ数えると「誰も使わない綺麗な場所」と「よく世話される場所」が
+    区別できない。二つを対にして初めて場所の生き死にが見える。
+
+    人ごとの数は、あとで地霊の態度に使う。ただし数そのものは誰にも見せない。
+    順位や点数が見えた時点で、それは制度になる（台帳#12）。"""
+    if better is None:
+        return                                   # どちらとも言えない変化は数えない
+    kind = "care" if better else "use"
+    _log_event(kind, {"zone": zone, "who": who,
+                      "what": [c.get("what") for c in changes][:5]})
+    if not who:
+        return                                   # 誰が居たか分からない変化は人に付けない
+    try:
+        db = get_db()
+        for pid in who:
+            ref = db.collection("faces").document(pid)
+            doc = ref.get().to_dict() or {}
+            ref.update({kind + "s": (doc.get(kind + "s") or 0) + 1,
+                        "last_at": time.time()})
+    except Exception as e:
+        logger.warning("tally failed: %s", e)
 
 
 _zone_busy = [False]       # 突き合わせが二重に走らないようにする札
