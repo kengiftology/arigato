@@ -19,10 +19,29 @@ SETTLE = 2.5           # 首が動き終わるのを待つ
 _ptz = [None, None]    # 繋ぎ直しを避けて使い回す
 
 
+def _wsdl_dir() -> str | None:
+    """ONVIFの定義ファイルの置き場を探す。
+
+    onvif-zeep は定義ファイルを python3.4 用の場所へ入れてしまうことがあり
+    （実際にラズパイでそうなった）、既定の場所を見にいくと見つからない。
+    見つけた場所を渡してやれば動く。"""
+    import glob
+    import sys
+    for pat in ("/*/lib/*/site-packages/wsdl", "/*/site-packages/wsdl"):
+        for base in (sys.prefix, "/usr", "/usr/local"):
+            hits = glob.glob(base + pat.replace("/*/", "/", 1)) or glob.glob(base + pat)
+            for h in hits:
+                if glob.glob(h + "/devicemgmt.wsdl"):
+                    return h
+    return None
+
+
 def _connect():
     if _ptz[0] is None:
         from onvif import ONVIFCamera
-        cam = ONVIFCamera(HOST, PORT, USER, PWD)
+        d = _wsdl_dir()
+        args = (HOST, PORT, USER, PWD)
+        cam = ONVIFCamera(*args, wsdl_dir=d) if d else ONVIFCamera(*args)
         media = cam.create_media_service()
         _ptz[0] = cam.create_ptz_service()
         _ptz[1] = media.GetProfiles()[0].token

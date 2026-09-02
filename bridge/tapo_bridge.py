@@ -60,6 +60,7 @@ HINT_GAP = 3.0        # 「探しに行け」の札を覗きにいく間隔
 SWEEP_COOLDOWN = 90.0 # 一度探したら、しばらくは探し直さない
 STILL_HOLD = 20.0     # 最後に動いてからこの秒数は「まだ居る」とみなす
 CALIB_FRAMES = 20     # 最初のこの枚数で、その部屋の「静かさ」を測る
+SETTLE_FRAMES = 8     # 首を振った直後、揺れが収まるまで捨てるコマ数
 
 
 def watch_stream():
@@ -103,7 +104,7 @@ class Watcher(threading.Thread):
 
     def run(self):
         prev = None
-        quiet, seen = 0.0, 0
+        quiet, seen, settle = 0.0, 0, SETTLE_FRAMES
         while True:
             buf = self.proc.stdout.read(FRAME_BYTES)
             if not buf or len(buf) < FRAME_BYTES:
@@ -112,7 +113,15 @@ class Watcher(threading.Thread):
             if self.reset:                       # 向きが変わった＝別の景色
                 self.reset = False
                 prev, quiet, seen = None, 0.0, 0
+                settle = SETTLE_FRAMES
                 self.ready = False
+            if settle > 0:
+                # 止まった直後はまだ首が揺れている。ここを基準に混ぜると
+                # 「静かさ」が跳ね上がり（実測0.45→3.98）、本物の人を
+                # 見逃すしきい値になってしまう。収まるまで数えない。
+                settle -= 1
+                prev = buf
+                continue
             if prev is not None:
                 d = diff(prev, buf)
                 if seen < CALIB_FRAMES:          # 最初は黙って基準を測る
