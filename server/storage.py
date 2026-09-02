@@ -36,3 +36,25 @@ def photo_url(name: str) -> str:
     if name.startswith("http"):
         return name
     return f"https://storage.googleapis.com/{BUCKET_NAME}/{name}"
+
+
+def list_prefix(prefix: str) -> list:
+    """その置き場にあるものを一覧する（名前・大きさ・作られた時刻）。"""
+    out = []
+    for b in get_client().bucket(BUCKET_NAME).list_blobs(prefix=prefix):
+        out.append({"name": b.name, "size": b.size,
+                    "at": b.time_created.timestamp() if b.time_created else None,
+                    "url": photo_url(b.name)})
+    return out
+
+
+def delete_prefix(prefix: str) -> int:
+    """その置き場を丸ごと消す。消した数を返す。
+
+    人が写る写真は「確かめが済んだら消す」約束で残すものなので、
+    消す手段を最初から用意しておく。手で消し忘れるのが一番まずい。"""
+    n = 0
+    for b in get_client().bucket(BUCKET_NAME).list_blobs(prefix=prefix):
+        b.delete()
+        n += 1
+    return n

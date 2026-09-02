@@ -28,7 +28,7 @@ from fastapi import APIRouter, Request, Header, HTTPException
 from fastapi.responses import PlainTextResponse, HTMLResponse, Response
 
 from server.database import get_db
-from server.storage import upload_to
+from server.storage import upload_to, list_prefix, delete_prefix
 
 router = APIRouter(prefix="/spirit", tags=["spirit"])
 logger = logging.getLogger("spirit")
@@ -85,6 +85,13 @@ FACE_ROTATE = 0          # カメラの取り付け向きの補正（2026-08-31�
 FACE_ENABLED = os.environ.get("FACE_ENABLED", "") == "1"   # 掲示が済むまでは既定でオフ
 
 _identify_err = [""]   # 顔検出の失敗理由（/spirit/facesで確認する）
+# 人が写る写真を一時的に残す置き場（2026-09-02・研究室の承諾のもと）。
+# 通常は残さない決まりだが、顔の分裂などは写真がないと詰められない。
+# ・専用の置き場にまとめる（他の写真と混ざらないので、まとめて消せる）
+# ・期限つきでしか入らない（消し忘れではなく、切り忘れが一番こわい）
+VERIFY_PREFIX = "spirit/verify/"
+VERIFY_GAP = 10.0      # 同じ滞在で撮りすぎないための間隔（秒）
+
 _judge_err = [""]      # 判断の失敗理由（/spirit/fullで確認する）
                        # 判断が黙って失敗すると、古い一言が残り続けるだけで
                        # 表からは動いているように見える。実際に40時間気づけなかった。
@@ -237,6 +244,71 @@ def _identify(data: bytes):
     return {"person": pid, "state": state}
 
 
+def _keep_shot(st: dict, now: float, data: bytes, pid: str) -> None:
+    """確かめ期間中だけ、人の写った1枚を専用の置き場に残す。
+
+    期限が切れていれば何もしない。撮りすぎないよう間隔を空ける
+    （11分の滞在で100枚溜まっても、確かめの役には立たない）。"""
+    if now >= st.get("verify_until", 0):
+        return
+    if now - st.get("last_shot", 0) < VERIFY_GAP:
+        return
+    try:
+        name = VERIFY_PREFIX + "%d_%s.jpg" % (int(now), pid or "unknown")
+        url = upload_to(name, data, "image/jpeg")
+        st["last_shot"] = now
+        _log_event("shot", {"person": pid, "url": url})
+    except Exception as e:
+        logger.warning("verify shot failed: %s", e)
+
+
+@router.post("/verify")
+async def verify_mode(minutes: int = 0, key: str = ""):
+    """人の写った写真を残す期間を決める（0で即停止）。
+
+    期限式にしてあるのは、切り忘れを防ぐため。承諾を得た確かめのために
+    開けた窓が、そのまま開きっぱなしになるのが一番まずい。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    st = _load()
+    minutes = max(0, min(int(minutes), 240))
+    st["verify_until"] = time.time() + minutes * 60 if minutes else 0
+    _save(st)
+    _log_event("verify", {"minutes": minutes})
+    return {"ok": True, "minutes": minutes,
+            "until": st["verify_until"] or None,
+            "note": "0にすると即座に止まります。撮った写真は /spirit/shots で見られます"}
+
+
+@router.get("/shots")
+async def list_shots():
+    """確かめ用に残した写真の一覧。"""
+    st = _load()
+    try:
+        shots = sorted(list_prefix(VERIFY_PREFIX), key=lambda x: -(x.get("at") or 0))
+    except Exception as e:
+        return {"shots": [], "error": str(e)}
+    left = st.get("verify_until", 0) - time.time()
+    return {"shots": shots, "count": len(shots),
+            "recording": left > 0, "minutes_left": round(left / 60, 1) if left > 0 else 0}
+
+
+@router.post("/shots/clear")
+async def clear_shots(key: str = ""):
+    """確かめ用の写真を全部消す。技術的な確認が済んだらこれを叩く。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    try:
+        n = delete_prefix(VERIFY_PREFIX)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    st = _load()
+    st["verify_until"] = 0
+    _save(st)
+    _log_event("verify_clear", {"deleted": n})
+    return {"ok": True, "deleted": n}
+
+
 @router.post("/frame")
 async def receive_frame(request: Request, pose: str = "", raw: str = "", x_upload_key: str = Header(None)):
     """目からの写真1枚を、すべての判断に使う統合窓口（2026-08-31改訂）。
@@ -274,6 +346,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
                 st["cur_person"] = res["person"]
                 st["cur_state"] = res["state"]
                 st["last_seen"] = now
+                _keep_shot(st, now, data, res["person"])
                 _save(st)
                 return {"ok": True, "person": res["person"], "state": res["state"],
                         "judged": False, "why": "person_seen"}
@@ -309,8 +382,11 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
     except (TypeError, ValueError):
         npeople = 0
     if npeople > 0:                       # 人がいても観察は続ける（2026-09-01改訂）
-        st["empty"] = False               # 誰が何を動かしたかを知るため。写真は残さない
+        st["empty"] = False               # 誰が何を動かしたかを知るため
         st["last_seen"] = now
+        # 顔は取れなかったのに人は写っている＝顔検出が取りこぼした場面。
+        # 確かめたいのはまさにここなので、期間中はこれも残す。
+        _keep_shot(st, now, data, "noface")
     elif r.get("skip"):                   # 旧仕様の名残（人がいるとだけ返る場合）
         st["empty"] = False
         st["last_seen"] = now
