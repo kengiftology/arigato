@@ -66,11 +66,17 @@ def diff(a: bytes, b: bytes) -> float:
 
 
 def grab() -> bytes | None:
-    """RTSPから静止画を1枚。失敗したらNone。"""
+    """RTSPから静止画を1枚。失敗したらNone。
+
+    カメラは梁に逆さに吊ってあるので、そのままだと絵が上下逆になる。
+    ここで180度回してから送る。こうすればクラウド側のAIも顔検出も
+    保存される写真も、すべて人が見たままの向きで揃う。
+    見張り用の映像は回さない（差を測るだけなので向きは関係ない）。"""
     try:
         subprocess.run(
             ["ffmpeg", "-y", "-v", "error", "-rtsp_transport", "tcp",
-             "-i", CAM_URL, "-frames:v", "1", "-q:v", "3", SHOT],
+             "-i", CAM_URL, "-frames:v", "1", "-vf", "hflip,vflip",
+             "-q:v", "3", SHOT],
             check=True, timeout=25, capture_output=True)
         with open(SHOT, "rb") as f:
             return f.read()
