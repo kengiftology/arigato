@@ -70,8 +70,8 @@ _SYSTEM = (
     "nameは日本語の一般名詞（皿・コップ・鍋・箱・袋・布巾など）。"
     "whereは写真内の位置を大まかに（テーブル・シンク・コンロ・床・棚）。"
     "備え付けの設備（冷蔵庫・シンクそのもの・棚そのもの）は挙げない。"
-    "多くても10個まで。\n"
-    "必ずJSONだけを返す: "
+    "多くても8個まで。\n"
+    "必ずJSONだけを返す。改行や字下げを入れず1行で書く: "
     "{\"score\": 0〜1の小数, \"comment\": \"15字以内の独り言\", "
     "\"objects\": [...], \"person\": 写っている人数}"
 )
@@ -163,7 +163,10 @@ async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
         b64 = base64.standard_b64encode(image_bytes).decode()
         system = (persona or _DEFAULT_PERSONA) + "\n" + _SYSTEM
         msg = await client.messages.create(
-            model=MODEL, max_tokens=200, system=system,
+            # 物の一覧を返させるようになってから、200では足りず返事が途中で
+            # 切れていた。壊れたJSONは黙って捨てられ、古い一言が残るので
+            # 表からは動いて見えたまま40時間気づけなかった（2026-09-02）。
+            model=MODEL, max_tokens=1000, system=system,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
                 {"type": "text", "text": "いまのあなたの見た景色です。判断をJSONで。"},
