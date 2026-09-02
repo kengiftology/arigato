@@ -811,6 +811,37 @@ async def faces_summary():
     return {"faces": out, "enabled": FACE_ENABLED, "last_error": _identify_err[0]}
 
 
+@router.get("/similar")
+async def faces_similar():
+    """発行済みのID同士がどれだけ似ているかを返す（2026-09-02）。
+
+    人が写っている間は写真を残さない決まりなので、「このIDとこのIDは
+    同じ人だったのか」を後から目で確かめることはできない。だが顔を覚えた
+    数値そのものは残っているので、それ同士を比べれば写真なしで確かめられる。
+
+    ここでも数値は外に出さない。出すのは似ている度だけ。
+    1.0に近いほど同じ人、0.42が別人と判断される境目。"""
+    import numpy as np
+    try:
+        known = _known_faces()
+    except Exception as e:
+        return {"pairs": [], "error": str(e)}
+    ids = sorted(known)
+    pairs = []
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            best = 0.0
+            for va in known[a]:
+                for vb in known[b]:
+                    sc = float(np.dot(np.asarray(va, dtype=np.float32),
+                                      np.asarray(vb, dtype=np.float32)))
+                    best = max(best, sc)
+            pairs.append({"a": a, "b": b, "similarity": round(best, 3),
+                          "same_person": best >= 0.42})
+    pairs.sort(key=lambda x: -x["similarity"])
+    return {"pairs": pairs, "threshold": 0.42}
+
+
 
 # ---- 日本語の声（2026-08-31）----
 # クラウドで一言を音声に変換し、C3が取りに来て流す。
