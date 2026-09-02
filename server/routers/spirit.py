@@ -24,7 +24,7 @@ import time
 import base64
 import logging
 
-from fastapi import APIRouter, Request, Header, HTTPException
+from fastapi import APIRouter, Request, Header, HTTPException, UploadFile, File
 from fastapi.responses import PlainTextResponse, HTMLResponse, Response
 
 from server.database import get_db
@@ -1180,6 +1180,65 @@ async def panel_page():
     記録の入切と消去はcurlでしか叩けず、外に出ていると手が出せなかった。
     人の写る写真を扱う操作こそ、その場ですぐ止められる必要がある。"""
     return _PANEL
+
+
+_COMPARE_SYSTEM = (
+    "あなたは同じ場所を2枚の写真で見比べる係です。"
+    "1枚目が『前』、2枚目が『後』。同じカメラ・同じ向きで撮られています。\n"
+    "【最も大事な掟】変わっていないなら、変わっていないと言う。"
+    "何か答えなければと思って、ありもしない変化を作らないこと。"
+    "光の当たり方・影・画質のちらつき・撮る角度のわずかな差は変化ではない。\n"
+    "【何を変化とみなすか】物が増えた・減った・別の場所へ移った、それだけ。\n"
+    "【書き方】changesは各項目 {\"what\":\"もの\", \"how\":\"増えた|減った|移った\", "
+    "\"where\":\"場所\", \"note\":\"ひとこと\"}。多くても5個。"
+    "確信が持てないものは書かない。\n"
+    "必ずJSONだけを1行で返す: "
+    "{\"same\": 変化なしならtrue, \"changes\": [...], "
+    "\"better\": 片づいた方向ならtrue・散らかった方向ならfalse・どちらでもなければnull}"
+)
+
+
+async def _compare_images(a: bytes, b: bytes) -> dict:
+    """同じ場所の前後2枚を見比べて、何が変わったかを返す。
+
+    一覧を2回作って引き算する方法は、誰も居ない台所でも欄の67%が動いて
+    使いものにならなかった（2026-09-02実測）。数を言い当てるのは難しいが、
+    2枚を並べて違いを探すのはずっとやさしい。人間も同じ。"""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return {"error": "no api key"}
+    try:
+        from anthropic import AsyncAnthropic
+        client = AsyncAnthropic()
+
+        def img(d):
+            return {"type": "image",
+                    "source": {"type": "base64", "media_type": "image/jpeg",
+                               "data": base64.standard_b64encode(d).decode()}}
+
+        msg = await client.messages.create(
+            model=MODEL, max_tokens=700, system=_COMPARE_SYSTEM,
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": "前:"}, img(a),
+                {"type": "text", "text": "後:"}, img(b),
+                {"type": "text", "text": "違いをJSONで。無ければsameだけtrueに。"},
+            ]}])
+        text = "".join(x.text for x in msg.content if x.type == "text")
+        i, j = text.find("{"), text.rfind("}")
+        if i < 0 or j <= i:
+            return {"error": "not json: " + text[:160]}
+        return json.loads(text[i:j + 1])
+    except Exception as e:
+        return {"error": "%s: %s" % (type(e).__name__, str(e)[:200])}
+
+
+@router.post("/compare")
+async def compare(before: UploadFile = File(...), after: UploadFile = File(...),
+                  x_upload_key: str = Header(None)):
+    """前後2枚を見比べる（試験用の窓口）。記録も保存もしない。"""
+    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    a, b = await before.read(), await after.read()
+    return await _compare_images(a, b)
 
 
 @router.get("/log")
