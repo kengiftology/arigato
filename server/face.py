@@ -22,7 +22,11 @@ logger = logging.getLogger("face")
 _MODEL_URL = "https://github.com/onnx/models/raw/main/validated/vision/body_analysis/arcface/model/arcfaceresnet100-8.onnx"
 _MODEL_PATH = "/tmp/arcface.onnx"
 _SIM_THRESHOLD = 0.42        # これ以上似ていたら同一人物とみなす（低いほど緩い）
-_MIN_FACE_PX = 60            # これより小さく写った顔は「見えなかった」扱い
+_MIN_FACE_PX = 70            # これより小さく写った顔は「見えなかった」扱い
+# 顔だと言い切る自信の下限。0.60では誰も居ない台所の棚を83x83の顔と見て
+# 匿名IDを発行してしまった（2026-09-02・確信度ちょうど0.60）。
+# 本物の顔は実測で0.76〜0.94に出るので、この間に線を引く。
+_DET_CONF = 0.80
 
 _session = None
 _detector = None
@@ -44,7 +48,7 @@ def _get_detector():
     global _detector
     if _detector is None:
         import cv2
-        _detector = cv2.FaceDetectorYN.create(_YUNET_PATH, "", (320, 320), 0.6, 0.3, 5000)
+        _detector = cv2.FaceDetectorYN.create(_YUNET_PATH, "", (320, 320), _DET_CONF, 0.3, 5000)
     return _detector
 
 

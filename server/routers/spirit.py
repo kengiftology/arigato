@@ -115,6 +115,32 @@ def _doc():
     return get_db().collection("spirit").document("state")
 
 
+_pending = {"vec": None, "t": 0.0}      # まだIDを与えていない「知らない顔」
+
+
+def _confirm_new(vec: list) -> bool:
+    """知らない顔にIDを出してよいかを決める（2026-09-02）。
+
+    1コマ見ただけで卵を作っていたため、1時間で8つのIDが生まれた。
+    うち少なくとも1つは、誰も居ない台所の棚を顔と見た誤検出だった。
+
+    誤検出はその場限りのゴミなので、続けて似た顔がもう一度出ることはない。
+    そこで「知らない顔を、短い間に2回、しかも互いに似た形で見た」ときだけ
+    新しいIDを出す。本物の人はカメラの前に数秒は留まるので、この条件を通る。"""
+    import numpy as np
+    now = time.time()
+    prev, prev_t = _pending["vec"], _pending["t"]
+    _pending["vec"], _pending["t"] = vec, now
+    if prev is None or now - prev_t > 30:            # 前の心当たりが古ければやり直し
+        return False
+    sim = float(np.dot(np.asarray(vec, dtype=np.float32),
+                       np.asarray(prev, dtype=np.float32)))
+    if sim < 0.42:                                   # 2回が別物＝たまたま拾ったゴミ
+        return False
+    _pending["vec"], _pending["t"] = None, 0.0
+    return True
+
+
 def _clean_objects(raw) -> list:
     """決めた語だけを残し、同じ名前・場所をまとめる。
 
@@ -250,11 +276,9 @@ def _identify(data: bytes):
     """写真から顔を探して匿名IDに結びつける。顔が無ければ None。
     実名は扱わない。初めての顔には新しい匿名IDを発行して「卵」にする。"""
     from server import face
-    crop = None
-    for rot in (FACE_ROTATE, 0, 270, 90, 180):   # 既定→他の向きの順に試す
-        crop = face.detect_face(data, rotate=rot)
-        if crop is not None:
-            break
+    # 向きは橋渡しの段階で正しく直してから届くので、1通りだけ見る。
+    # 5通り試していた頃は、そのぶん誤検出の機会も5倍あった。
+    crop = face.detect_face(data, rotate=FACE_ROTATE)
     if crop is None:
         return None
     vec = face.embed(crop)
@@ -263,7 +287,9 @@ def _identify(data: bytes):
     known = _known_faces()
     pid, sim = face.match(vec, known)
     db = get_db()
-    if pid is None:                                  # 初めて見る顔 → 匿名IDを発行
+    if pid is None:                                  # 初めて見る顔
+        if not _confirm_new(vec):
+            return None                              # 一度きりの見え方は信用しない
         pid = _new_person_id()
         db.collection("faces").document(pid).set(
             {"vecs": [{"v": vec}], "born": time.time(), "persona": "", "state": "egg"})
@@ -528,7 +554,14 @@ h1{font-size:20px} .card{background:#fff;border-radius:12px;padding:16px;margin:
 <div class="card"><div class="lbl">いま見えているもの</div><div id="objs">…</div></div>
 <div class="card"><div class="lbl">できごと</div><div id="log"></div></div>
 <script>
-async function load(){
+async function forget(){
+  if(!confirm('覚えた顔をすべて忘れます。元に戻せません。'))return;
+  post('/spirit/faces/clear').then(function(j){
+    if(j.detail){alert('合言葉がちがいます');return}
+    alert(j.deleted+'件 忘れました'); load();
+  });
+}
+function load(){
  const f=await (await fetch('/spirit/full')).json();
  const face = !f.empty ? '👀' : (f.N>=0.5 ? '😔' : (f.score<0.3 ? '😊' : '😐'));
  document.getElementById('face').textContent = face;
@@ -804,7 +837,9 @@ async def arrive(request: Request, raw: str = "", x_upload_key: str = Header(Non
         known = _known_faces()
         pid, sim = face.match(vec, known)
         db = get_db()
-        if pid is None:                                  # 初めて見る顔 → 匿名IDを発行
+        if pid is None:                                  # 初めて見る顔
+            if not _confirm_new(vec):                    # 一度きりの見え方は信用しない
+                return {"person": "unknown", "state": "not_sure"}
             pid = _new_person_id()
             db.collection("faces").document(pid).set(
                 {"vecs": [{"v": vec}], "born": time.time(), "persona": "", "state": "egg"})
@@ -919,6 +954,29 @@ async def faces_summary():
     except Exception as e:
         return {"faces": [], "error": str(e)}
     return {"faces": out, "enabled": FACE_ENABLED, "last_error": _identify_err[0]}
+
+
+@router.post("/faces/clear")
+async def clear_faces(key: str = ""):
+    """覚えた顔をすべて忘れる。
+
+    誤検出でできたIDが混ざると、以後の照合がその分だけ狂う。
+    数が少ないうちは、選んで消すより一度まっさらにするほうが確実。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    n = 0
+    try:
+        for d in get_db().collection("faces").stream():
+            d.reference.delete()
+            n += 1
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    st = _load()
+    st["cur_person"] = None
+    st["cur_state"] = None
+    _save(st)
+    _log_event("faces_clear", {"deleted": n})
+    return {"ok": True, "deleted": n}
 
 
 @router.get("/similar")
@@ -1051,6 +1109,7 @@ _PANEL = """<!doctype html><html lang=ja><meta charset=utf-8>
   <h2 style="margin-top:0">IDは同じ人か</h2>
   <table id=sim></table>
   <button class=gray onclick="load()">読み直す</button>
+  <button class=off onclick="forget()">覚えた顔を忘れる</button>
 </div>
 
 <script>
