@@ -21,6 +21,7 @@ import json
 import os
 import re
 import time
+import asyncio
 import base64
 import logging
 
@@ -28,7 +29,7 @@ from fastapi import APIRouter, Request, Header, HTTPException, UploadFile, File
 from fastapi.responses import PlainTextResponse, HTMLResponse, Response
 
 from server.database import get_db
-from server.storage import upload_to, list_prefix, delete_prefix
+from server.storage import upload_to, list_prefix, delete_prefix, read_object
 
 router = APIRouter(prefix="/spirit", tags=["spirit"])
 logger = logging.getLogger("spirit")
@@ -414,6 +415,10 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
                 if res["person"] not in seen:
                     seen.append(res["person"])
                     st["seen_people"] = seen[-8:]
+                vis = st.get("visit_people") or []       # 前後比較に添える顔ぶれ
+                if res["person"] not in vis:
+                    vis.append(res["person"])
+                    st["visit_people"] = vis[-8:]
                 _keep_shot(st, now, data, res["person"])
                 _save(st)
                 return {"ok": True, "person": res["person"], "state": res["state"],
@@ -494,6 +499,14 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
                              "who": st.get("seen_people") or []})
     st["seen_people"] = []                # ここまでを1区間として締める
     _save(st)
+    # 人が去って落ち着いてから突き合わせる。居る間の1枚を「後」にすると
+    # 本人が写り込んでしまい、物の変化と見分けがつかない。
+    if npeople == 0 and now - st.get("last_seen", 0) > VISIT_END_GAP:
+        # 区画の数だけAIに問い合わせるので、返事を待たせると橋渡しが
+        # 待ちきれずに切れる。返事は先に返し、突き合わせは裏で走らせる。
+        if not _zone_busy[0]:
+            _zone_busy[0] = True
+            asyncio.create_task(_zone_cycle_bg(st, data, now))
     logger.info("spirit judge: raw=%s smoothed=%.2f comment=%s", sc, st["score"], st.get("comment"))
     return {"ok": True, "judged": sc is not None, "score": st["score"]}
 
@@ -1296,6 +1309,170 @@ async def map_zones(request: Request, x_upload_key: str = Header(None)):
         return json.loads(text[i:j + 1])
     except Exception as e:
         return {"error": "%s: %s" % (type(e).__name__, str(e)[:200])}
+
+
+# ---- 区画の自動運用（2026-09-02）----
+# 区画を人が決めると、カメラを動かすたびに決め直しになる。かといって
+# AIに座標を描かせたら、調理台として床を、棚として窓を囲った。
+# 見えてはいるが、どこにあるかは言えない。
+#
+# そこで座標を捨て、名前だけを使う。「シンクのあたりだけ見比べて」と
+# 名前で頼めば、切り出したのと同じだけ当たることを実測で確かめた。
+#
+# 良し悪しの判定も自分でやる。誰も来ていない時間帯の前後を比べて出た
+# 「変化」は、定義上すべて誤報である。それを数えれば、どの区画が
+# 信用できるかは人が決めなくても分かる。
+BASELINE_OBJ = "spirit/zonecheck/baseline.jpg"
+VISIT_END_GAP = 90.0        # 最後に人を見てからこれだけ経てば「去った」
+IDLE_CHECK_GAP = 7200.0     # 誰も来ないときの自己点検の間隔
+ZONE_MIN_TRIALS = 6         # これだけ試すまでは見送りにしない
+ZONE_MAX_FALSE = 0.4        # 誤報がこの割合を超えたら見送り
+
+
+def _live_zones(st: dict) -> list:
+    return [z for z in st.get("zones", []) if z.get("state") != "見送り"]
+
+
+async def _derive_zones(data: bytes) -> list:
+    """画角を見て、見張るべき区画の名前を起こす。座標は受け取らない。"""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return []
+    try:
+        from anthropic import AsyncAnthropic
+        client = AsyncAnthropic()
+        msg = await client.messages.create(
+            model=MODEL, max_tokens=500, system=_ZONE_SYSTEM,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64",
+                 "media_type": "image/jpeg",
+                 "data": base64.standard_b64encode(data).decode()}},
+                {"type": "text", "text": "この台所の区画をJSONで。"},
+            ]}])
+        text = "".join(x.text for x in msg.content if x.type == "text")
+        i, j = text.find("{"), text.rfind("}")
+        if i < 0 or j <= i:
+            return []
+        zs = json.loads(text[i:j + 1]).get("zones") or []
+        out = []
+        for z in zs[:6]:
+            nm = (z.get("name") or "").strip()
+            if nm and nm not in [o["name"] for o in out]:
+                out.append({"name": nm, "trials": 0, "hits": 0,
+                            "false": 0, "state": "試用中"})
+        return out
+    except Exception as e:
+        logger.warning("derive zones failed: %s", e)
+        return []
+
+
+def _score_zone(z: dict) -> None:
+    """試した数と誤報の数から、その区画を続けるか決める。"""
+    if z["trials"] < ZONE_MIN_TRIALS:
+        z["state"] = "試用中"
+        return
+    rate = z["false"] / max(1, z["trials"])
+    z["state"] = "見送り" if rate > ZONE_MAX_FALSE else "採用"
+
+
+async def _zone_pass(st: dict, before: bytes, after: bytes,
+                     who: list, quiet: bool) -> None:
+    """区画ごとに前後を見比べて、結果を記録する。
+
+    quiet＝この間、誰も来ていない。そこで出た変化はすべて誤報とみなす。"""
+    zones = _live_zones(st)
+    if quiet:                                  # 点検は1区画ずつ順ぐりに（費用のため）
+        i = st.get("zone_rotate", 0) % max(1, len(zones))
+        zones = zones[i:i + 1]
+        st["zone_rotate"] = i + 1
+    for z in zones:
+        r = await _compare_images(before, after, z["name"])
+        if r.get("error"):
+            logger.warning("zone compare failed (%s): %s", z["name"], r["error"])
+            continue
+        changed = not r.get("same")
+        z["trials"] = z.get("trials", 0) + 1
+        if quiet:
+            if changed:
+                z["false"] = z.get("false", 0) + 1
+        elif changed:
+            z["hits"] = z.get("hits", 0) + 1
+        _score_zone(z)
+        if changed:
+            _log_event("zone", {"zone": z["name"], "who": who,
+                                "quiet": quiet, "better": r.get("better"),
+                                "changes": r.get("changes") or []})
+    _save(st)
+
+
+_zone_busy = [False]       # 突き合わせが二重に走らないようにする札
+
+
+async def _zone_cycle_bg(st: dict, data: bytes, now: float) -> None:
+    """裏で突き合わせを回し、終わったら札を下ろす。"""
+    try:
+        await _zone_cycle(st, data, now)
+    finally:
+        _zone_busy[0] = False
+
+
+async def _zone_cycle(st: dict, data: bytes, now: float) -> None:
+    """人が去った直後、または長く静かなときに、前後を突き合わせる。
+
+    「前」は最後に無人と確かめた1枚。「後」はいま届いた1枚。
+    突き合わせが済んだら、いまの1枚が次の「前」になる。"""
+    try:
+        if not st.get("zones"):
+            st["zones"] = await _derive_zones(data)
+            if st["zones"]:
+                _log_event("zones_set", {"zones": [z["name"] for z in st["zones"]]})
+        base = read_object(BASELINE_OBJ)
+        if base is None:                       # まだ「前」が無い→いまの1枚を置く
+            upload_to(BASELINE_OBJ, data, "image/jpeg")
+            st["baseline_at"] = now
+            _save(st)
+            return
+        who = st.get("visit_people") or []
+        quiet = not who
+        if quiet and now - st.get("baseline_at", 0) < IDLE_CHECK_GAP:
+            return                             # 静かな時は、そう何度も点検しない
+        await _zone_pass(st, base, data, who, quiet)
+        upload_to(BASELINE_OBJ, data, "image/jpeg")
+        st["baseline_at"] = now
+        st["visit_people"] = []
+        _save(st)
+    except Exception as e:
+        logger.warning("zone cycle failed: %s", e)
+
+
+@router.get("/zones")
+async def zones_status():
+    """区画の一覧と、それぞれの信用度。"""
+    st = _load()
+    out = []
+    for z in st.get("zones", []):
+        t = z.get("trials", 0)
+        out.append({"name": z["name"], "state": z.get("state"),
+                    "trials": t, "hits": z.get("hits", 0),
+                    "false_alarms": z.get("false", 0),
+                    "false_rate": round(z.get("false", 0) / t, 2) if t else None})
+    return {"zones": out, "baseline_age": round(time.time() - st.get("baseline_at", 0))
+            if st.get("baseline_at") else None}
+
+
+@router.post("/zones/refresh")
+async def zones_refresh(key: str = ""):
+    """画角を変えたときに、区画を立て直す。成績もやり直す。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    data = read_object("spirit/latest.jpg")
+    if data is None:
+        return {"ok": False, "error": "まだ写真がありません"}
+    st = _load()
+    st["zones"] = await _derive_zones(data)
+    st["zone_rotate"] = 0
+    _save(st)
+    _log_event("zones_set", {"zones": [z["name"] for z in st["zones"]]})
+    return {"ok": True, "zones": [z["name"] for z in st["zones"]]}
 
 
 @router.get("/log")

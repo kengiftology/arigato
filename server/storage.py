@@ -58,3 +58,11 @@ def delete_prefix(prefix: str) -> int:
         b.delete()
         n += 1
     return n
+
+
+def read_object(object_name: str) -> bytes | None:
+    """置いてある1つを読み出す。無ければNone。"""
+    blob = get_client().bucket(BUCKET_NAME).blob(object_name)
+    if not blob.exists():
+        return None
+    return blob.download_as_bytes()
