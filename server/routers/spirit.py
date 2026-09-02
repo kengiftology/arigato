@@ -1198,8 +1198,12 @@ _COMPARE_SYSTEM = (
 )
 
 
-async def _compare_images(a: bytes, b: bytes) -> dict:
+async def _compare_images(a: bytes, b: bytes, focus: str = "") -> dict:
     """同じ場所の前後2枚を見比べて、何が変わったかを返す。
+
+    focus＝「シンク」のように見るべき場所の名前。切り出さずに名前で絞る。
+    座標で切り出す方式は、区画の座標そのものが当てにならないので避けたい
+    （AIに区画を描かせたら、調理台として床を、棚として窓を囲った）。
 
     一覧を2回作って引き算する方法は、誰も居ない台所でも欄の67%が動いて
     使いものにならなかった（2026-09-02実測）。数を言い当てるのは難しいが、
@@ -1215,12 +1219,17 @@ async def _compare_images(a: bytes, b: bytes) -> dict:
                     "source": {"type": "base64", "media_type": "image/jpeg",
                                "data": base64.standard_b64encode(d).decode()}}
 
+        ask = "違いをJSONで。無ければsameだけtrueに。"
+        if focus:
+            ask = ("写真の中の「" + focus + "」のあたりだけを見比べてください。"
+                   "そこを拡大したつもりで、隅から隅まで一つずつ照らし合わせる。"
+                   "それ以外の場所の違いは無視する。" + ask)
         msg = await client.messages.create(
             model=MODEL, max_tokens=700, system=_COMPARE_SYSTEM,
             messages=[{"role": "user", "content": [
                 {"type": "text", "text": "前:"}, img(a),
                 {"type": "text", "text": "後:"}, img(b),
-                {"type": "text", "text": "違いをJSONで。無ければsameだけtrueに。"},
+                {"type": "text", "text": ask},
             ]}])
         text = "".join(x.text for x in msg.content if x.type == "text")
         i, j = text.find("{"), text.rfind("}")
@@ -1233,12 +1242,13 @@ async def _compare_images(a: bytes, b: bytes) -> dict:
 
 @router.post("/compare")
 async def compare(before: UploadFile = File(...), after: UploadFile = File(...),
-                  x_upload_key: str = Header(None)):
-    """前後2枚を見比べる（試験用の窓口）。記録も保存もしない。"""
+                  focus: str = "", x_upload_key: str = Header(None)):
+    """前後2枚を見比べる（試験用の窓口）。記録も保存もしない。
+    focusに場所の名前を渡すと、そこだけを見比べる。"""
     if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
     a, b = await before.read(), await after.read()
-    return await _compare_images(a, b)
+    return await _compare_images(a, b, focus)
 
 
 _ZONE_SYSTEM = (
