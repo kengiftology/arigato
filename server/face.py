@@ -29,41 +29,31 @@ _detector = None
 _lock = threading.Lock()
 
 
-_YUNET_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
-_YUNET_PATH = "/tmp/yunet.onnx"
+_MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
+_YUNET_PATH = os.path.join(_MODEL_DIR, "yunet.onnx")
+_SFACE_PATH = os.path.join(_MODEL_DIR, "sface.onnx")
 
 
 def _get_detector():
-    """顔検出器（YuNet）。
-    2026-08-31: 旧来のカスケード方式は、斜めを向いた顔を見落とす一方で
-    床の木目を顔と誤検出した（実測: 本物0件・誤検出10件）。YuNetに交換して
-    本物のみ検出（確信度0.76〜0.89・誤検出0件）になった。"""
+    """顔検出器（YuNet）。モデルは同梱（2026-09-02）。
+
+    以前は起動時にダウンロードしていたが、クラウド上で取得に失敗し、
+    顔が一切検出されない状態になった。手元では動くのに本番だけ落ちるため
+    原因の特定に時間を要した。取りに行かず、持っていく方式に改めた。
+    2026-08-31: 旧来のカスケード方式は本物0件・床の木目を10件誤検出したためYuNetへ交換。"""
     global _detector
     if _detector is None:
         import cv2
-        if not os.path.exists(_YUNET_PATH):
-            import urllib.request
-            logger.info("downloading yunet...")
-            urllib.request.urlretrieve(_YUNET_URL, _YUNET_PATH)
         _detector = cv2.FaceDetectorYN.create(_YUNET_PATH, "", (320, 320), 0.6, 0.3, 5000)
     return _detector
 
 
 def _get_session():
-    """特徴量モデル。無ければ取得してから読み込む（初回だけ時間がかかる）。"""
+    """顔の特徴量を作る器（SFace）。同梱モデルを読むだけで、外部取得はしない。"""
     global _session
-    if _session is not None:
-        return _session
-    with _lock:
-        if _session is not None:
-            return _session
-        if not os.path.exists(_MODEL_PATH):
-            import urllib.request
-            logger.info("downloading face model...")
-            urllib.request.urlretrieve(_MODEL_URL, _MODEL_PATH)
-        import onnxruntime
-        _session = onnxruntime.InferenceSession(
-            _MODEL_PATH, providers=["CPUExecutionProvider"])
+    if _session is None:
+        import cv2
+        _session = cv2.FaceRecognizerSF.create(_SFACE_PATH, "")
     return _session
 
 
@@ -96,15 +86,14 @@ def detect_face(image_bytes: bytes, rotate: int = 0):
 
 
 def embed(face_img) -> list | None:
-    """顔の切り抜き → 特徴量（512個の数値）。この数値から顔は復元できない。"""
+    """顔の切り抜き → 特徴量（128個の数値）。この数値から顔は復元できない。"""
     try:
         import cv2
-        blob = cv2.resize(face_img, (112, 112)).astype(np.float32)
-        blob = (blob - 127.5) / 128.0
-        blob = np.transpose(blob, (2, 0, 1))[np.newaxis, :]
-        sess = _get_session()
-        out = sess.run(None, {sess.get_inputs()[0].name: blob})[0][0]
-        v = out / (np.linalg.norm(out) + 1e-9)              # 長さを1に揃える（距離を比べやすく）
+        import numpy as np
+        rec = _get_session()
+        img = cv2.resize(face_img, (112, 112))
+        v = rec.feature(img)[0]
+        v = v / (np.linalg.norm(v) + 1e-9)          # 長さを1に揃える（距離を比べやすく）
         return [float(x) for x in v]
     except Exception as e:
         logger.warning("embed failed: %s", e)
