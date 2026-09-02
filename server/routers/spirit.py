@@ -544,9 +544,36 @@ async def presence(state: str | None = None):
         st["empty"] = (state == "empty")
         if prev != st["empty"]:
             _log_event("presence", {"empty": st["empty"]})   # 在室の変化も研究データ
+        if state == "occupied":
+            # 人感は部屋のどこで動いても反応するが、カメラは一方向しか
+            # 見ていない。実際、人感が気づいた5分後にようやく顔が取れた。
+            # 目に「探しに行け」と伝える札を立てる。
+            st["hint_until"] = time.time() + SWEEP_HINT_SEC
         _save(st)
         return "ok\n"
     return ("empty" if st["empty"] else "occupied") + "\n"
+
+
+@router.get("/hint", response_class=PlainTextResponse)
+async def hint():
+    """目が数秒おきに覗きにくる札。探すべきなら sweep、でなければ空。
+
+    人感が鳴ったことを目へ伝える手立てが他にない。クラウドから宅内へは
+    押し込めないので、目のほうから軽く覗きにくる形にした。
+    返すのは数バイトなので、3秒おきでも負担にならない。"""
+    st = _load()
+    if not st.get("empty", True):
+        return ""                              # もう見えているなら探す必要はない
+    return "sweep\n" if time.time() < st.get("hint_until", 0) else ""
+
+
+@router.post("/hint/clear", response_class=PlainTextResponse)
+async def hint_clear():
+    """探し終わったら目が札を下ろす。"""
+    st = _load()
+    st["hint_until"] = 0
+    _save(st)
+    return "ok\n"
 
 
 @router.get("/care", response_class=PlainTextResponse)
@@ -1323,6 +1350,7 @@ async def map_zones(request: Request, x_upload_key: str = Header(None)):
 # 「変化」は、定義上すべて誤報である。それを数えれば、どの区画が
 # 信用できるかは人が決めなくても分かる。
 BASELINE_OBJ = "spirit/zonecheck/baseline.jpg"
+SWEEP_HINT_SEC = 120.0      # 人感が鳴ってから、目が探しに行く猶予
 VISIT_END_GAP = 90.0        # 最後に人を見てからこれだけ経てば「去った」
 # 誰も来ないときの自己点検の間隔。1回につき1区画しか見ないので、
 # 5区画あれば1周に2時間半かかる。判定に必要な6回分を貯めるには
