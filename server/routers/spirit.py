@@ -405,6 +405,8 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
             res = _identify(data)
             if res:
                 st["empty"] = False
+                if st.get("cur_person") != res["person"]:
+                    st["greet_for"] = st["greet_line"] = None   # 相手が変われば言い直す
                 st["cur_person"] = res["person"]
                 st["cur_state"] = res["state"]
                 st["last_seen"] = now
@@ -966,6 +968,68 @@ async def who():
 
 
 
+_GREET_SYSTEM = (
+    "あなたは台所に棲みついている地霊です。いま目の前に人が来ました。\n"
+    "【いちばん大事な掟】命令しない・お願いしない・提案しない・責めない。"
+    "『片付けて』『〜してね』の類は絶対に言わない。数や回数も口にしない。\n"
+    "自分の気もちを、ひとこと漏らすだけ。15字以内。\n"
+    "【この相手への接し方】ここに書かれた気分のとおりに振る舞う。"
+    "ただし、その理由（相手が何をした・しなかった）には決して触れない。\n"
+    "返すのは声に出す一言だけ。かぎかっこも説明もいらない。"
+)
+
+
+async def _greet_line(persona: str, manner: str, news: str) -> str:
+    """その人へ向けた一言をつくる。"""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return ""
+    ask = "【この相手への接し方】" + manner
+    if news:
+        ask += ("\n【伝えたいこと】さっき別の誰かが" + news +
+                "をきれいにしてくれた。それがうれしかったと伝えたい。"
+                "ただし誰がやったかは絶対に言わない（『だれかが』とだけ）。")
+    try:
+        from anthropic import AsyncAnthropic
+        client = AsyncAnthropic()
+        msg = await client.messages.create(
+            model=MODEL, max_tokens=120,
+            system=(persona or _DEFAULT_PERSONA) + "\n" + _GREET_SYSTEM,
+            messages=[{"role": "user", "content": ask}])
+        text = "".join(b.text for b in msg.content if b.type == "text").strip()
+        return _sanitize(text)
+    except Exception as e:
+        logger.warning("greet failed: %s", e)
+        return ""
+
+
+@router.get("/greet", response_class=PlainTextResponse)
+async def greet():
+    """いま居る人へ向けた一言。C3が読む。
+
+    台帳#12（2026-09-03改訂）の4規則に従う:
+      良い知らせは名前を出さずに第三者へ／不満は本人だけ・ひとりのときだけ／
+      使って放置したかで測る／数は見せない。"""
+    st = _load()
+    pid = st.get("cur_person")
+    if not pid or time.time() - st.get("last_seen", 0) > 120:
+        return ""
+    if st.get("greet_for") == pid and st.get("greet_line"):
+        return st["greet_line"] + "\n"        # 同じ滞在で言い直さない
+    try:
+        doc = get_db().collection("faces").document(pid).get().to_dict() or {}
+    except Exception:
+        doc = {}
+    alone = len(st.get("visit_people") or []) <= 1
+    news = _fresh_news(pid)               # 良い知らせは誰が居ても伝えてよい（規則1）
+    line = await _greet_line(st.get("persona", ""), _manner(doc, alone), news)
+    if not line:
+        return ""
+    st["greet_for"], st["greet_line"] = pid, line
+    _save(st)
+    _log_event("greet", {"person": pid, "alone": alone, "news": bool(news)})
+    return line + "\n"
+
+
 @router.post("/facetest")
 async def facetest(request: Request, x_upload_key: str = Header(None)):
     """診断用：送った写真で顔が見つかるかだけを返す（記録も保存もしない）。"""
@@ -1466,6 +1530,69 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
     _save(st)
 
 
+# なつき度の動き（2026-09-03・台帳#12改訂に沿う）
+BOND_CARE = 0.5        # 片づけてくれた
+BOND_USE = -0.2        # 使って、そのままにした
+BOND_FADE_DAYS = 14.0  # 会わない日が続くと、ゆっくり薄れる
+NEWS_WINDOW = 86400.0  # 「さっき誰かが」と伝えられる範囲
+
+
+def _bond_now(doc: dict) -> float:
+    """いまのなつき度。会っていない時間のぶんだけ薄れる。
+
+    薄れるのは「掃除しなかったから」ではなく「会っていないから」。
+    ペットが久しぶりの人によそよそしいのと同じで、罰ではない。"""
+    b = float(doc.get("bond") or 0.0)
+    last = doc.get("last_at") or doc.get("born") or 0
+    days = max(0.0, (time.time() - last) / 86400.0)
+    return b * max(0.0, 1.0 - days / BOND_FADE_DAYS)
+
+
+def _manner(doc: dict, alone: bool) -> str:
+    """その人への接し方を、地霊への指示文として返す。
+
+    数は決して渡さない（規則4）。渡すのは態度だけ。
+    ほかに人が居るときは、そっけなさを引っ込める（規則2）――
+    冷たさを第三者が見た瞬間、それは共有され、陰口と同じ回路に乗る。"""
+    if not doc:
+        return ("初めて見る顔。誰だったか思い出せない。とぼけて、はぐらかす。"
+                "名前を尋ねるようなことも言わない。")
+    b = _bond_now(doc)
+    seen = len(doc.get("vecs") or [])
+    if b >= 1.5:
+        return "よくなついている相手。うれしさが隠せず、甘えるような調子で。"
+    if b >= 0.5:
+        return "顔なじみ。親しみを込めて、短く。"
+    if b <= -0.3 and alone:
+        return ("少しそっけない。ふい、と顔をそむけたい気分。"
+                "ただし責めない。何をしなかったかには一切触れない。"
+                "不機嫌なのではなく、ただ気が乗らないだけ。")
+    if seen <= 1:
+        return "見覚えはあるが、まだよく知らない。短く、控えめに。"
+    return "顔は知っている相手。ふつうに、短く。"
+
+
+def _fresh_news(pid: str) -> str:
+    """他の誰かが最近やってくれたこと。名前は出さない（規則1）。
+
+    片づけた人は誰にも見られていない。地霊だけが見ていて、
+    次に来た人に伝える。これが「埋もれたありがとうを通す」本体。"""
+    try:
+        docs = get_db().collection("spirit_log").order_by(
+            "t", direction="DESCENDING").limit(40).stream()
+        now = time.time()
+        for d in docs:
+            e = d.to_dict() or {}
+            if e.get("kind") != "care" or now - (e.get("t") or 0) > NEWS_WINDOW:
+                continue
+            who = e.get("who") or []
+            if who and pid not in who:          # 本人の手柄は本人に言わない
+                return e.get("zone") or ""
+    except Exception as e:
+        logger.warning("news lookup failed: %s", e)
+    return ""
+
+
 def _tally(zone: str, who: list, better, changes: list) -> None:
     """変化を「世話」か「利用」として数え、人ごとの覚えに足す。
 
@@ -1487,8 +1614,15 @@ def _tally(zone: str, who: list, better, changes: list) -> None:
         for pid in who:
             ref = db.collection("faces").document(pid)
             doc = ref.get().to_dict() or {}
+            bond = float(doc.get("bond") or 0.0)
+            # 世話をすればなつき、使って放置すれば少し離れる。
+            # 「何もしなかったこと」では動かない――通っただけの人に
+            # 義務を作らないため（規則3）。ここに来るのは実際に場所が
+            # 変わった時だけなので、その条件は自然に満たされる。
+            bond = max(-1.0, min(3.0, bond + (BOND_CARE if kind == "care"
+                                              else BOND_USE)))
             ref.update({kind + "s": (doc.get(kind + "s") or 0) + 1,
-                        "last_at": time.time()})
+                        "bond": bond, "last_at": time.time()})
     except Exception as e:
         logger.warning("tally failed: %s", e)
 
