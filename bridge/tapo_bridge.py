@@ -8,17 +8,19 @@ Tapoは家のネットワークの中にいるので、クラウドから直接�
 「人が居るか・誰か・散らかり具合」をすべて判断する（2026-08-31の統合）ので、
 橋渡しは撮って送るだけでよい。
 
-■ 2026-09-02の改訂：見張りと判断を分ける
-  旧方式は30秒おきに1枚ずつクラウドへ送っていた。これだと人が入ってきても
-  最悪30秒気づかない。かといって短くすると、誰も居ない台所を何百回も
-  クラウドに見せることになる（費用も上限も無駄になる）。
+■ 見張りと判断を分ける
+  30秒おきに1枚ずつ送っていた頃は、人が入ってきても最悪30秒気づかなかった。
+  かといって短くすると、誰も居ない台所を何百回もクラウドに見せることになる。
 
-  そこで、ラズパイ自身がずっと映像を見張るようにした。
-  映像をごく小さな白黒（80x45）で流しっぱなしにして、前のコマとの差を測る。
-  差が出た＝何かが動いた時だけ、大きな写真を撮ってクラウドへ送る。
+  そこでラズパイ自身がずっと映像を見張る。ごく小さな白黒（80x45）で流し、
+  前のコマとの差を測る。差が出た＝何かが動いた時だけクラウドへ送る。
+  足し算と引き算だけなので外部の部品も要らず、CPUもほとんど食わない。
 
-  見張りは足し算と引き算だけなので、外部の部品も要らず、CPUもほぼ食わない。
-  クラウドへ送るのは「動いた時」と「たまの定時報告」だけになる。
+■ 映像は開いたままにする（2026-09-02の改訂）
+  写真が要るたびにffmpegを起こしていたが、1枚あたり2.8秒かかっていた。
+  中身は接続の手続きで、解像度を落としても縮まらない（主2.87秒／副2.78秒）。
+  そこで同じ1本の接続から、見張り用の小さな白黒と、送る用のJPEGを
+  同時に出しつづける。写真が要るときはできあがったものを読むだけになる。
 """
 import json
 import os
@@ -29,16 +31,16 @@ import urllib.request
 CAM_URL = os.environ.get("TAPO_URL", "rtsp://thankU:39Kitchen@192.168.0.230:554/stream1")
 SERVER = os.environ.get("SPIRIT_SERVER", "https://arigato-3ipecjbnha-an.a.run.app")
 KEY = os.environ.get("SPIRIT_KEY", "06dc964a3cdd2c4f4c5c1d8592dff543")
-SHOT = "/tmp/tapo.jpg"
+SHOT = "/tmp/tapo.jpg"          # 常に最新の1枚が置かれる（ffmpegが書き替えつづける）
 
-# 見張りは副ストリーム（1280x720）を使う。主ストリーム（2304x1296）を
-# 流しっぱなしにするとラズパイのCPUを1コア食い切ってしまうため。
-# 写真としてクラウドへ送るのは、今までどおり主ストリームの1枚。
+# 副ストリーム（1280x720）から取る。主ストリーム（2304x1296）を流しっぱなしに
+# するとラズパイのCPUを1コア食い切ってしまう。顔は720pでも十分な大きさで写る。
 WATCH_URL = os.environ.get("TAPO_WATCH_URL", CAM_URL.replace("/stream1", "/stream2"))
 
-# 見張り用の小さな映像（人かどうかまでは分からないが、動いたことは分かる）
-WATCH_W, WATCH_H, WATCH_FPS = 80, 45, 2
+WATCH_W, WATCH_H, WATCH_FPS = 80, 45, 2      # 見張り用の小さな白黒
 FRAME_BYTES = WATCH_W * WATCH_H
+SHOT_FPS = 1                                 # 送る用のJPEGを作り替える速さ
+SHOT_MAX_AGE = 4.0                           # これより古い1枚は使わない
 
 GAP_BUSY = 3.0        # 動きがある間、クラウドへ送る最短間隔
 GAP_HEARTBEAT = 300.0 # 何も起きなくても、これだけ経ったら1枚送る（定時報告）
@@ -48,11 +50,18 @@ CALIB_FRAMES = 20     # 最初のこの枚数で、その部屋の「静かさ�
 
 
 def watch_stream():
-    """小さな白黒映像を流しっぱなしにする。読むのは生のバイト列。"""
+    """1本の接続から2つを同時に出す。
+
+    ひとつは見張り用の小さな白黒（標準出力へ流しっぱなし）。
+    もうひとつは送る用のJPEG（同じ名前を上書きしつづける）。
+    カメラは梁に逆さに吊ってあるので、JPEGはここで180度回しておく。
+    見張り用は回さない（差を測るだけなので向きは関係ない）。"""
     return subprocess.Popen(
         ["ffmpeg", "-v", "error", "-rtsp_transport", "tcp", "-i", WATCH_URL,
-         "-vf", "fps=%d,scale=%d:%d,format=gray" % (WATCH_FPS, WATCH_W, WATCH_H),
-         "-f", "rawvideo", "-"],
+         "-an", "-vf", "fps=%d,scale=%d:%d,format=gray" % (WATCH_FPS, WATCH_W, WATCH_H),
+         "-f", "rawvideo", "pipe:1",
+         "-an", "-vf", "fps=%d,hflip,vflip" % SHOT_FPS, "-q:v", "3",
+         "-update", "1", "-y", SHOT],
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
 
@@ -66,20 +75,13 @@ def diff(a: bytes, b: bytes) -> float:
 
 
 def grab() -> bytes | None:
-    """RTSPから静止画を1枚。失敗したらNone。
-
-    カメラは梁に逆さに吊ってあるので、そのままだと絵が上下逆になる。
-    ここで180度回してから送る。こうすればクラウド側のAIも顔検出も
-    保存される写真も、すべて人が見たままの向きで揃う。
-    見張り用の映像は回さない（差を測るだけなので向きは関係ない）。"""
+    """できあがっている最新の1枚を読む。新しくなければNone。"""
     try:
-        subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-rtsp_transport", "tcp",
-             "-i", CAM_URL, "-frames:v", "1", "-vf", "hflip,vflip",
-             "-q:v", "3", SHOT],
-            check=True, timeout=25, capture_output=True)
+        if time.time() - os.path.getmtime(SHOT) > SHOT_MAX_AGE:
+            return None                       # 映像が止まっている
         with open(SHOT, "rb") as f:
-            return f.read()
+            data = f.read()
+        return data if data[-2:] == b"\xff\xd9" else None   # 書きかけは捨てる
     except Exception as e:
         print("grab failed:", e, flush=True)
         return None
@@ -94,15 +96,16 @@ def send(jpg: bytes) -> dict:
         return json.loads(r.read().decode())
 
 
-def report(jpg: bytes, why: str) -> None:
-    """1枚送って、意味のある返事だけ記録する。"""
+def report(jpg: bytes, why: str) -> bool:
+    """1枚送って、意味のある返事だけ記録する。人が写っていたらTrue。"""
     try:
         res = send(jpg)
     except Exception as e:
         print("send failed:", e, flush=True)
-        return
+        return False
     if res.get("person") or res.get("judged"):
         print(time.strftime("%H:%M:%S"), why, res, flush=True)
+    return bool(res.get("person"))
 
 
 def main():
@@ -141,9 +144,12 @@ def main():
                     last_sent = now
                     jpg = grab()
                     if jpg is None:
-                        time.sleep(GAP_ERROR)
-                        continue
-                    report(jpg, "動き" if busy else "定時")
+                        continue                     # 次のコマで撮り直せばよい
+                    if report(jpg, "動き" if busy else "定時"):
+                        # 座って動かない人を見失わないため、クラウドが人を
+                        # 見たと言う間は「まだ居る」として見張りを続ける。
+                        # 動きだけを頼りにすると、じっとしている人が消える。
+                        last_move = now
         except Exception as e:
             print("watch failed:", e, flush=True)
         finally:
