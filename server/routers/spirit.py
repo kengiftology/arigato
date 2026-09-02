@@ -52,6 +52,15 @@ MAX_COMMENT = 24
 # ルール部（score定義・JSON形式・指図禁止）は人格に関わらず常に適用する。
 _DEFAULT_PERSONA = "あなたは共有キッチンに宿る『地霊』の感覚です。"
 
+# 物の呼び名と場所は決まった語からしか選ばせない（2026-09-02）。
+# 自由に書かせると、何も動いていない同じ景色を90秒で6回見ただけで
+# 「かご/籠/ざる」「ボトル/ボトル類/スプレー缶」と毎回違う語が返り、
+# 前後を比べても物が動いたのか言葉が変わっただけなのか区別できなかった。
+OBJ_NAMES = ("皿", "コップ", "鍋", "フライパン", "ボウル", "かご", "ボトル",
+             "袋", "箱", "タッパー", "布巾", "まな板", "包丁", "食材",
+             "調理器具", "書類", "ケーブル", "ごみ")
+OBJ_PLACES = ("テーブル", "シンク", "コンロ", "調理台", "棚", "床", "窓辺")
+
 _SYSTEM = (
     "写真はあなたが見ている場所のいまの姿。"
     "『きれいに保たれているか／散らかっているか』を判断します。\n"
@@ -65,11 +74,15 @@ _SYSTEM = (
     "人に指図・お願い・提案は絶対にしない（『片付けましょう』『〜してね』は禁止）。"
     "『そわそわするなあ』『すっきりして気持ちいいなあ』のように自分の心もちだけ。"
     "責めない・皮肉らない・数字を言わない。\n"
-    "【objectsの書き方】写真に写っている物を、本来の置き場から出ているものを中心に挙げる。"
+    "【objectsの書き方】写真に写っている物を挙げる。"
     "各項目は {\"name\":\"もの\", \"where\":\"場所\", \"n\":個数} の形。"
-    "nameは日本語の一般名詞（皿・コップ・鍋・箱・袋・布巾など）。"
-    "whereは写真内の位置を大まかに（テーブル・シンク・コンロ・床・棚）。"
+    "nameは次の語だけを使う（言い換え・造語は禁止）: " + "・".join(OBJ_NAMES) + "。"
+    "どれにも当てはまらなければ挙げない。"
+    "ざる・籠は『かご』、瓶・缶・スプレーは『ボトル』と書く。"
+    "whereも次の語だけを使う（『棚下』『左棚』のような細かい言い方は禁止）: "
+    + "・".join(OBJ_PLACES) + "。"
     "備え付けの設備（冷蔵庫・シンクそのもの・棚そのもの）は挙げない。"
+    "同じ名前・同じ場所のものは1項目にまとめ、nに個数を入れる。"
     "多くても8個まで。\n"
     "必ずJSONだけを返す。改行や字下げを入れず1行で書く: "
     "{\"score\": 0〜1の小数, \"comment\": \"15字以内の独り言\", "
@@ -100,6 +113,28 @@ _state_cache: dict | None = None   # Firestore読み書き削減用（同一イ�
 
 def _doc():
     return get_db().collection("spirit").document("state")
+
+
+def _clean_objects(raw) -> list:
+    """決めた語だけを残し、同じ名前・場所をまとめる。
+
+    言い方の揺れを頼み込みだけで抑えるのは無理があるので、受け取った側でも
+    ふるいにかける。ここを通ったものだけが前後の比較に使える。"""
+    bucket = {}
+    for o in raw or []:
+        if not isinstance(o, dict):
+            continue
+        name, where = o.get("name"), o.get("where")
+        if name not in OBJ_NAMES or where not in OBJ_PLACES:
+            continue
+        try:
+            n = max(1, int(o.get("n") or 1))
+        except (TypeError, ValueError):
+            n = 1
+        bucket[(name, where)] = bucket.get((name, where), 0) + n
+    out = [{"name": k[0], "where": k[1], "n": v} for k, v in bucket.items()]
+    out.sort(key=lambda x: (x["where"], x["name"]))
+    return out[:10]
 
 
 def _vec_list(raw) -> list:
@@ -415,8 +450,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
             st["comment"] = c
     objs = r.get("objects")
     if isinstance(objs, list):
-        objs = [o for o in objs if isinstance(o, dict) and o.get("name")][:10]
-        st["objects"] = objs
+        st["objects"] = _clean_objects(objs)
     _save(st)                             # 物の一覧を入れてから保存する。
                                           # 逆順だと一覧はこの場限りで消え、
                                           # 状態ページには何も出ないままになる。
@@ -967,6 +1001,117 @@ async def voice_pcm():
         _voice_cache["pcm"] = pcm
         _voice_cache["text"] = text
     return Response(content=_voice_cache["pcm"], media_type="application/octet-stream")
+
+
+_PANEL = """<!doctype html><html lang=ja><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>確かめ用パネル</title>
+<style>
+ body{font-family:system-ui,sans-serif;margin:0;padding:16px;background:#faf8f5;color:#333}
+ h1{font-size:17px;margin:0 0 14px}
+ h2{font-size:14px;margin:22px 0 8px;color:#666;font-weight:600}
+ .card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;
+       box-shadow:0 1px 3px rgba(0,0,0,.07)}
+ button{font-size:15px;padding:11px 14px;border-radius:9px;border:0;
+        background:#4a7c59;color:#fff;margin:3px 3px 3px 0}
+ button.off{background:#a0522d} button.gray{background:#888}
+ input{font-size:15px;padding:9px;border:1px solid #ccc;border-radius:8px;width:100%;
+       box-sizing:border-box;margin-bottom:8px}
+ .st{font-size:14px;line-height:1.7}
+ .rec{color:#c0392b;font-weight:700}
+ .shots{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+ .shots img{width:100%;border-radius:8px;display:block}
+ .shots div{font-size:11px;color:#777;margin-top:2px}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ td{padding:5px 3px;border-bottom:1px solid #eee}
+ .same{color:#c0392b;font-weight:600}
+</style>
+<h1>確かめ用パネル</h1>
+
+<div class=card>
+  <input id=key placeholder="合言葉（1度入れれば覚えます）">
+  <div class=st id=state>…</div>
+</div>
+
+<div class=card>
+  <h2 style="margin-top:0">人の写る写真を残す</h2>
+  <button onclick="rec(30)">30分</button>
+  <button onclick="rec(60)">60分</button>
+  <button onclick="rec(120)">120分</button>
+  <button class=off onclick="rec(0)">いま止める</button>
+</div>
+
+<div class=card>
+  <h2 style="margin-top:0">残っている写真</h2>
+  <div class=shots id=shots></div>
+  <button class=off onclick="wipe()" style="margin-top:10px">ぜんぶ消す</button>
+</div>
+
+<div class=card>
+  <h2 style="margin-top:0">IDは同じ人か</h2>
+  <table id=sim></table>
+  <button class=gray onclick="load()">読み直す</button>
+</div>
+
+<script>
+var K=document.getElementById('key');
+K.value=localStorage.getItem('k')||'';
+K.onchange=function(){localStorage.setItem('k',K.value)};
+
+function post(u){
+  return fetch(u+(u.indexOf('?')<0?'?':'&')+'key='+encodeURIComponent(K.value),
+               {method:'POST',headers:{'Content-Length':'0'}}).then(function(r){return r.json()});
+}
+function rec(m){
+  if(m>0 && !confirm(m+'分のあいだ、人の写った写真を残します。よろしいですか？'))return;
+  post('/spirit/verify?minutes='+m).then(function(j){
+    if(j.detail){alert('合言葉がちがいます');return}
+    load();
+  });
+}
+function wipe(){
+  if(!confirm('残っている写真をすべて消します。元に戻せません。'))return;
+  post('/spirit/shots/clear').then(function(j){
+    if(j.detail){alert('合言葉がちがいます');return}
+    alert(j.deleted+'枚 消しました'); load();
+  });
+}
+function load(){
+  fetch('/spirit/shots').then(function(r){return r.json()}).then(function(j){
+    document.getElementById('state').innerHTML =
+      (j.recording ? '<span class=rec>記録中</span>　あと '+j.minutes_left+' 分'
+                   : '記録していません')
+      + '<br>残っている写真 '+j.count+' 枚';
+    var h='';
+    (j.shots||[]).slice(0,40).forEach(function(s){
+      var n=s.name.split('/').pop().replace('.jpg','').split('_');
+      var d=new Date(parseInt(n[0])*1000);
+      h+='<div><img src="'+s.url+'" loading=lazy><div>'
+        +('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+':'
+        +('0'+d.getSeconds()).slice(-2)+'　'+(n[1]||'')+'</div></div>';
+    });
+    document.getElementById('shots').innerHTML = h || '<div style="color:#999">まだありません</div>';
+  });
+  fetch('/spirit/similar').then(function(r){return r.json()}).then(function(j){
+    var h='';
+    (j.pairs||[]).forEach(function(pp){
+      h+='<tr><td>'+pp.a+' と '+pp.b+'</td><td>'+pp.similarity+'</td><td'
+        +(pp.same_person?' class=same>同じ人':'>別人')+'</td></tr>';
+    });
+    document.getElementById('sim').innerHTML = h || '<tr><td>まだIDがありません</td></tr>';
+  });
+}
+load(); setInterval(load, 20000);
+</script></html>"""
+
+
+@router.get("/panel", response_class=HTMLResponse)
+async def panel_page():
+    """出先から確かめを操作するページ（2026-09-02）。
+
+    記録の入切と消去はcurlでしか叩けず、外に出ていると手が出せなかった。
+    人の写る写真を扱う操作こそ、その場ですぐ止められる必要がある。"""
+    return _PANEL
 
 
 @router.get("/log")
