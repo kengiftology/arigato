@@ -562,8 +562,10 @@ async def hint():
     押し込めないので、目のほうから軽く覗きにくる形にした。
     返すのは数バイトなので、3秒おきでも負担にならない。"""
     st = _load()
-    if not st.get("empty", True):
-        return ""                              # もう見えているなら探す必要はない
+    # 「在室」は人感が立てるものでもあるので、それを理由に探すのをやめると
+    # 人感が鳴った瞬間に札が自分で消えてしまう。顔が取れているかで判断する。
+    if time.time() - st.get("last_seen", 0) < 60:
+        return ""                              # 顔が取れている＝探す必要はない
     return "sweep\n" if time.time() < st.get("hint_until", 0) else ""
 
 
