@@ -318,11 +318,13 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
         c = _sanitize(r.get("comment", ""))
         if c:
             st["comment"] = c
-    _save(st)
     objs = r.get("objects")
     if isinstance(objs, list):
         objs = [o for o in objs if isinstance(o, dict) and o.get("name")][:10]
         st["objects"] = objs
+    _save(st)                             # 物の一覧を入れてから保存する。
+                                          # 逆順だと一覧はこの場限りで消え、
+                                          # 状態ページには何も出ないままになる。
     if sc is not None:
         _log_event("judge", {"raw": sc, "score": round(st["score"], 3), "pose": pose,
                              "N": round(_calc_n(st, now), 3), "comment": st.get("comment", ""),
