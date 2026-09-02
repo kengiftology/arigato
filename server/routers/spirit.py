@@ -1608,11 +1608,18 @@ _STORY_PAGE = """<!doctype html><html lang=ja><meta charset=utf-8>
 なまえは のこりません。かずも かぞえません。</p>
 <div id=list><p class=none>よみこみちゅう…</p></div>
 <script>
-fetch('/spirit/log?limit=300').then(function(r){return r.json()}).then(function(j){
+function show(html){document.getElementById('list').innerHTML=html}
+fetch('/spirit/log?limit=200').then(function(r){
+  if(!r.ok) throw new Error(r.status);       // 起動直後は503が返ることがある
+  return r.json();
+}).catch(function(){
+  show('<p class=none>いま よみこめませんでした。<br>すこし たってから ひらいてください。</p>');
+  return null;
+}).then(function(j){
+  if(!j) return;
   var ev=(j.events||[]).filter(function(e){return e.kind==='story'});
   if(!ev.length){
-    document.getElementById('list').innerHTML =
-      '<p class=none>まだ なにも ありません。<br>だれかが かたづけてくれたら、ここに ならびます。</p>';
+    show('<p class=none>まだ なにも ありません。<br>だれかが かたづけてくれたら、ここに ならびます。</p>');
     return;
   }
   var h='';
@@ -1630,7 +1637,7 @@ fetch('/spirit/log?limit=300').then(function(r){return r.json()}).then(function(
     }
     h+='</div>';
   });
-  document.getElementById('list').innerHTML=h;
+  show(h);
 });
 </script></html>"""
 
