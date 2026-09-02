@@ -85,6 +85,9 @@ FACE_ROTATE = 0          # カメラの取り付け向きの補正（2026-08-31�
 FACE_ENABLED = os.environ.get("FACE_ENABLED", "") == "1"   # 掲示が済むまでは既定でオフ
 
 _identify_err = [""]   # 顔検出の失敗理由（/spirit/facesで確認する）
+_judge_err = [""]      # 判断の失敗理由（/spirit/fullで確認する）
+                       # 判断が黙って失敗すると、古い一言が残り続けるだけで
+                       # 表からは動いているように見える。実際に40時間気づけなかった。
 _state_cache: dict | None = None   # Firestore読み書き削減用（同一インスタンス内）
 
 
@@ -152,6 +155,7 @@ async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
     """写真をClaudeに直接見せて {score, comment} か {skip} を得る。失敗は {}。
     persona＝そのキャラの人格。ルール部（_SYSTEM）は人格に関わらず常に適用。"""
     if not os.environ.get("ANTHROPIC_API_KEY"):
+        _judge_err[0] = "ANTHROPIC_API_KEY が設定されていない"
         return {}
     try:
         from anthropic import AsyncAnthropic
@@ -167,8 +171,13 @@ async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
         )
         text = "".join(b.text for b in msg.content if b.type == "text")
         i, j = text.find("{"), text.rfind("}")
-        return json.loads(text[i:j + 1]) if i >= 0 and j > i else {}
+        if i < 0 or j <= i:
+            _judge_err[0] = "JSONで返ってこなかった: " + text[:160]
+            return {}
+        _judge_err[0] = ""
+        return json.loads(text[i:j + 1])
     except Exception as e:
+        _judge_err[0] = "%s: %s" % (type(e).__name__, str(e)[:200])
         logger.warning("spirit judge failed: %s", e)
         return {}
 
@@ -340,6 +349,7 @@ async def get_full():
         "photo_url": st.get("photo_url"), "photo_at": st.get("photo_at"),
         "person": st.get("cur_person"), "person_state": st.get("cur_state"),
         "last_judge_ago": round(now - st["last_judge"]) if st["last_judge"] else None,
+        "judge_error": _judge_err[0],
     }
 
 
