@@ -1241,6 +1241,53 @@ async def compare(before: UploadFile = File(...), after: UploadFile = File(...),
     return await _compare_images(a, b)
 
 
+_ZONE_SYSTEM = (
+    "あなたは台所の写真を見て、物が置かれる場所を区画に分ける係です。\n"
+    "【区画の選び方】人がそこに物を置いたり片づけたりする面だけを選ぶ。"
+    "壁・天井・窓の外・冷蔵庫の扉のような、物が乗らない面は選ばない。"
+    "3〜6個。互いに重ならないようにする。\n"
+    "【座標】写真の左上を(0,0)、右下を(1,1)とした割合で答える。"
+    "boxは[左, 上, 右, 下]。その面がぜんぶ入るよう、少し広めに取る。\n"
+    "【名前】その面の呼び名を短い日本語で（シンク・コンロ・調理台・棚・床・テーブル など）。\n"
+    "必ずJSONだけを1行で返す: "
+    "{\"zones\": [{\"name\":\"名前\", \"box\":[0.1,0.2,0.3,0.4], "
+    "\"why\":\"そこを選んだ理由\"}]}"
+)
+
+
+@router.post("/mapzones")
+async def map_zones(request: Request, x_upload_key: str = Header(None)):
+    """写真を見て、見張るべき区画を自分で割り出す（試験用）。
+
+    区画を人が手で決めると、カメラの向きを変えるたびに測り直しになる。
+    写真から起こせるなら、置き直しにも付いていける。"""
+    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty body")
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return {"error": "no api key"}
+    try:
+        from anthropic import AsyncAnthropic
+        client = AsyncAnthropic()
+        msg = await client.messages.create(
+            model=MODEL, max_tokens=900, system=_ZONE_SYSTEM,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64",
+                 "media_type": "image/jpeg",
+                 "data": base64.standard_b64encode(data).decode()}},
+                {"type": "text", "text": "この台所の区画をJSONで。"},
+            ]}])
+        text = "".join(x.text for x in msg.content if x.type == "text")
+        i, j = text.find("{"), text.rfind("}")
+        if i < 0 or j <= i:
+            return {"error": "not json: " + text[:200]}
+        return json.loads(text[i:j + 1])
+    except Exception as e:
+        return {"error": "%s: %s" % (type(e).__name__, str(e)[:200])}
+
+
 @router.get("/log")
 async def get_log(limit: int = 200):
     """研究データの取り出し口（judge/care/presenceの時系列）。"""
