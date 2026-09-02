@@ -1324,7 +1324,11 @@ async def map_zones(request: Request, x_upload_key: str = Header(None)):
 # 信用できるかは人が決めなくても分かる。
 BASELINE_OBJ = "spirit/zonecheck/baseline.jpg"
 VISIT_END_GAP = 90.0        # 最後に人を見てからこれだけ経てば「去った」
-IDLE_CHECK_GAP = 7200.0     # 誰も来ないときの自己点検の間隔
+# 誰も来ないときの自己点検の間隔。1回につき1区画しか見ないので、
+# 5区画あれば1周に2時間半かかる。判定に必要な6回分を貯めるには
+# ここが2時間だと3日近くかかってしまうため、30分に詰めてある。
+# 点検1回はAIへの問い合わせ1回きりで、1日48回にしかならない。
+IDLE_CHECK_GAP = 1800.0
 ZONE_MIN_TRIALS = 6         # これだけ試すまでは見送りにしない
 ZONE_MAX_FALSE = 0.4        # 誤報がこの割合を超えたら見送り
 
