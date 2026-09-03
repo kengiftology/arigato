@@ -289,6 +289,12 @@ def _identify(data: bytes):
     pid, sim = face.match(vec, known)
     db = get_db()
     if pid is None:                                  # 初めて見る顔
+        if not face.big_enough_to_enroll():
+            # 小さく写った顔からは卵を作らない。同じ人でも一致度が下がり、
+            # 知っている人の隣に新しいIDが並んでしまう（2026-09-03に発生）。
+            _log_event("arrive", {"person": "unknown", "why": "too_small",
+                                  "px": face.last_face_px(), "sim": round(sim, 3)})
+            return None
         if not _confirm_new(vec):
             return None                              # 一度きりの見え方は信用しない
         pid = _new_person_id()
@@ -1095,6 +1101,34 @@ async def people():
         return {"people": [], "error": str(e)}
     out.sort(key=lambda x: x.get("born") or 0)
     return {"people": out}
+
+
+@router.post("/merge")
+async def merge_people(keep: str, drop: str, key: str = ""):
+    """割れてしまった2つのIDを1つにまとめる。
+
+    dropの見え方をkeepへ移し、dropを消す。世話・利用の数も足し合わせる。
+    /spirit/similar で「同じ人と判定」と出た組に対して使う。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    db = get_db()
+    a = db.collection("faces").document(keep)
+    b = db.collection("faces").document(drop)
+    da, dbb = a.get().to_dict(), b.get().to_dict()
+    if not da or not dbb:
+        return {"ok": False, "error": "そのIDが見つかりません"}
+    vecs = (da.get("vecs") or []) + (dbb.get("vecs") or [])
+    a.update({"vecs": vecs[:5],
+              "cares": (da.get("cares") or 0) + (dbb.get("cares") or 0),
+              "uses": (da.get("uses") or 0) + (dbb.get("uses") or 0),
+              "bond": max(float(da.get("bond") or 0), float(dbb.get("bond") or 0))})
+    b.delete()
+    st = _load()
+    if st.get("cur_person") == drop:
+        st["cur_person"] = keep
+        _save(st)
+    _log_event("merge", {"keep": keep, "drop": drop})
+    return {"ok": True, "keep": keep, "dropped": drop, "shots": len(vecs[:5])}
 
 
 @router.post("/faces/clear")

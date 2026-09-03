@@ -23,6 +23,10 @@ _MODEL_URL = "https://github.com/onnx/models/raw/main/validated/vision/body_anal
 _MODEL_PATH = "/tmp/arcface.onnx"
 _SIM_THRESHOLD = 0.42        # これ以上似ていたら同一人物とみなす（低いほど緩い）
 _MIN_FACE_PX = 70            # これより小さく写った顔は「見えなかった」扱い
+# 新しい匿名IDを出すのは、これ以上の大きさで写ったときだけ。
+# 小さい顔は特徴が曖昧で、同じ人でも一致度が0.42前後まで落ちる。
+# 実際にそれで同じ人が2つのIDに割れた（2026-09-03・0.407）。
+_ENROLL_FACE_PX = 120
 # 顔だと言い切る自信の下限。0.60では誰も居ない台所の棚を83x83の顔と見て
 # 匿名IDを発行してしまった（2026-09-02・確信度ちょうど0.60）。
 # 本物の顔は実測で0.76〜0.94に出るので、この間に線を引く。
@@ -30,6 +34,7 @@ _DET_CONF = 0.80
 
 _session = None
 _detector = None
+_last_size = [0]             # 直前に切り出した顔の幅
 _lock = threading.Lock()
 
 
@@ -83,6 +88,7 @@ def detect_face(image_bytes: bytes, rotate: int = 0):
     x, y, w, h = (int(v) for v in best[:4])
     if w < _MIN_FACE_PX:
         return None
+    _last_size[0] = w                                       # 呼んだ側が大きさを見られるように
     m = int(w * 0.2)                                        # 少し広めに切る（髪や輪郭も入れる）
     x0, y0 = max(0, x - m), max(0, y - m)
     x1, y1 = min(img.shape[1], x + w + m), min(img.shape[0], y + h + m)
@@ -117,3 +123,13 @@ def match(vec: list, known: dict) -> tuple:
             if s > best:
                 best, best_id = s, pid
     return (best_id, best) if best >= _SIM_THRESHOLD else (None, best)
+
+
+def last_face_px() -> int:
+    """直前に切り出した顔の幅。新しいIDを出してよいかの判断に使う。"""
+    return _last_size[0]
+
+
+def big_enough_to_enroll() -> bool:
+    """新しい匿名IDを出してよい大きさか。"""
+    return _last_size[0] >= _ENROLL_FACE_PX
