@@ -46,7 +46,6 @@ static const int PIN_BTN = 41;
 
 // ---------------- 表示（device_player.py の移植） ----------------
 static const int GRID = 32, CELL = 7, OFF_X = 8, OFF_Y = 1;
-static const int WIN_Y0 = 197;
 #ifdef FSPI
 SPIClass lcdSPI(FSPI);
 #else
@@ -137,7 +136,7 @@ static void playAnim(const uint8_t *bin, int loops, BetweenFn between = nullptr)
             const uint8_t *pal = p + 2;
             const uint8_t *grid = p + 14;
             bool palChanged = havePrev && memcmp(prevPal, pal, 12) != 0;
-            if (!havePrev) fillRect(0, WIN_Y0, pal);   // 初回だけ背景を塗る（窓より上）
+            if (!havePrev) fillRect(0, 240, pal);      // 初回だけ背景を塗る（画面ぜんぶ）
             drawGrid(grid, pal, palChanged);
             uint32_t t0 = millis();
             while (millis() - t0 < dur) {
@@ -147,14 +146,6 @@ static void playAnim(const uint8_t *bin, int loops, BetweenFn between = nullptr)
             p += 2 + 12 + 1024;
         }
     }
-}
-
-// 会話窓（win_*.bin: [h][n][RGB565 240*h]）
-static void blitWindow(const uint8_t *win) {
-    int h = win[0];
-    lcdWindow(0, WIN_Y0, 239, WIN_Y0 + h - 1);
-    digitalWrite(PIN_DC, HIGH);
-    lcdSPI.writeBytes(win + 2, 240 * h * 2);
 }
 
 // ---------------- 音（あつ森語・オンデバイス合成） ----------------
@@ -368,9 +359,6 @@ static bool speakCloud() {
 
 static bool voiceOnce = false;   // murコマンドの1回だけ発声許可
 
-// クラウドの一言の字幕窓（サーバが画像化したものを取りに行く）。取れている間はこちらを表示。
-static uint8_t cloudWin[2 + 240 * 42 * 2];
-static bool cloudWinOk = false;
 
 // 情報源へHTTP(S) GETしてバイナリ本文をbufへ。戻り=本文バイト数(失敗は-1)
 static int httpGetBin(const char *path, uint8_t *buf, int maxlen) {
@@ -625,7 +613,6 @@ static int winIdx = -1;
 static uint32_t nextMurmur = 0;
 static uint32_t nextPoll = 0;    // 次に目へM/Nを取りに行く時刻
 static uint32_t nextBeat = 0;    // 次に目へ在室/不在を伝える時刻
-static uint32_t nextWin = 30000; // 次に字幕窓（クラウドの一言）を取りに行く時刻
 
 void setup() {
     Serial.begin(115200);
@@ -705,10 +692,10 @@ void loop() {
         return;
     }
 
-    if (now >= nextMurmur) {                   // 独り言（字幕は常時・声は滞在中だけ上限つき）
-        winIdx = (winIdx + 1) % N_WINS;
-        if (cloudWinOk) blitWindow(cloudWin);  // クラウドの「今の一言」があればそれを表示
-        else blitWindow(WINS[winIdx]);         // 無ければ持ち歌をローテ
+    if (now >= nextMurmur) {                   // 独り言（声だけ・滞在中は上限つき）
+        // 字幕はやめた（2026-09-03）。声で届くなら、言葉を読ませる必要がない。
+        // 読ませると相手は画面を見にいく。地霊は見るものではなく、居るもの。
+        winIdx = (winIdx + 1) % N_WINS;        // 声の抑揚の選択に今も使っている
         bool staying = inEpisode && (now - episodeStart >= STAY_MS);   // 通過でなく居続けている
         if (!QUIET && staying && voiceUsed < VOICE_BUDGET) {
             // まずクラウドの日本語で喋る。届かなければ従来のあつ森語で鳴く
@@ -736,12 +723,6 @@ void loop() {
         eyeNotify(occ);
         char t[8];
         httpGet(occ ? "/presence?state=occupied" : "/presence?state=empty", t, sizeof t);
-    }
-    // クラウドの一言（字幕窓）を取りに行く（60秒ごと・クラウド接続時のみ）
-    if (srcPort == 443 && now >= nextWin) {
-        nextWin = now + 60000;
-        int n = httpGetBin("/win.bin", cloudWin, sizeof(cloudWin));
-        if (n >= (int)sizeof(cloudWin) - 64 && cloudWin[0] == 42) cloudWinOk = true;
     }
     // 目からM・Nを取りに行く（10秒ごと）。"M N flag" を受けてonMNへ
     if (now >= nextPoll) {
