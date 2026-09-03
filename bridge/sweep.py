@@ -13,8 +13,16 @@ import time
 HOST, PORT = "192.168.0.230", 2020
 USER, PWD = "thankU", "39Kitchen"
 
-# 見て回る向き。逆さ吊りなので縦は上限が部屋の床側を向く（実測）。
-LOOK_POINTS = [(-0.5, 1.0), (0.0, 1.0), (-1.0, 1.0), (0.5, 1.0), (1.0, 1.0)]
+# 定位置。物の増減を見るための向きで、前後の比較はいつもここで撮った2枚で行う。
+# 逆さ吊りなので縦は上限が部屋の床側を向く（実測）。
+HOME = (-0.5, 1.0)
+
+# 人を探すときに見て回る向き。
+# 縦を1.0に固定していた頃は床ばかり見ていて、立った人の頭が画面の上で
+# 切れていた（2026-09-03・顔が口と顎だけになり一致度が上がらなかった）。
+# 実測では y=+0.2〜0.6 が人の高さに当たるので、そこを中心に見て回る。
+LOOK_POINTS = [(-0.5, 0.4), (0.0, 0.4), (-1.0, 0.4), (0.5, 0.4), (1.0, 0.4),
+               (-0.5, 0.1), (0.0, 0.1), (0.5, 0.1)]
 SETTLE = 2.5           # 首が動き終わるのを待つ
 _ptz = [None, None]    # 繋ぎ直しを避けて使い回す
 
@@ -74,13 +82,17 @@ def look(x: float, y: float) -> bool:
         return False
 
 
+def go_home() -> bool:
+    """定位置へ戻る。物の前後比較は、この向きで撮った2枚どうしでしか成り立たない。"""
+    return look(*HOME)
+
+
 def search(grab, found) -> bool:
     """一巡して人を探す。見つけたらその向きで止まり True。
 
     grab  … いまの1枚を返す関数
     found … その1枚に人が写っていたか判定する関数（クラウドに聞く）
     """
-    home = where()
     for x, y in LOOK_POINTS:
         if not look(x, y):
             return False
@@ -92,7 +104,6 @@ def search(grab, found) -> bool:
             print(time.strftime("%H:%M:%S"),
                   "首振りで発見 (%.1f, %.1f)" % (x, y), flush=True)
             return True
-    if home:                             # 見つからなければ元の向きへ戻す
-        look(*home)                      # 区画の前後比較が食い違わないように
+    go_home()                            # 見つからなければ定位置へ戻す
     print(time.strftime("%H:%M:%S"), "首振りしたが見つからず", flush=True)
     return False

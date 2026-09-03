@@ -339,7 +339,10 @@ async def verify_mode(minutes: int = 0, key: str = ""):
     if UPLOAD_KEY and key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
     st = _load()
-    minutes = max(0, min(int(minutes), 240))
+    # 上限は7日。もとは4時間だったが、実験の期間ぶん開けたいと言われて延ばした
+    # （2026-09-03・研究室の同意あり）。期限式そのものはやめない。
+    # 消し忘れより切り忘れのほうが起きやすく、放っておけば閉じる形を保つ。
+    minutes = max(0, min(int(minutes), 10080))
     st["verify_until"] = time.time() + minutes * 60 if minutes else 0
     _save(st)
     _log_event("verify", {"minutes": minutes})

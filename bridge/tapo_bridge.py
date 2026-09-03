@@ -157,6 +157,7 @@ def grab() -> bytes | None:
 
 
 _pose = [""]           # いまカメラが向いている先。写真に添えて送る
+HOME_POSE = "%.2f_%.2f" % sweep.HOME    # 定位置を、写真に添える形で表したもの
 
 
 def refresh_pose() -> None:
@@ -251,6 +252,13 @@ def main():
                 if not w.ready:
                     continue
                 busy = (now - w.last_move) < STILL_HOLD
+
+                # 人を探しに行った先に留まったままだと、物の前後比較が成り立たない。
+                # 落ち着いたら定位置へ戻す。比べられるのは同じ向きの2枚だけ。
+                if not busy and _pose[0] != HOME_POSE:
+                    sweep.go_home()
+                    refresh_pose()
+                    continue
                 gap = GAP_BUSY if busy else GAP_HEARTBEAT
                 if now - last_sent >= gap:
                     last_sent = now
