@@ -508,7 +508,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
         # 待ちきれずに切れる。返事は先に返し、突き合わせは裏で走らせる。
         if not _zone_busy[0]:
             _zone_busy[0] = True
-            asyncio.create_task(_zone_cycle_bg(st, data, now))
+            asyncio.create_task(_zone_cycle_bg(st, data, now, pose))
     logger.info("spirit judge: raw=%s smoothed=%.2f comment=%s", sc, st["score"], st.get("comment"))
     return {"ok": True, "judged": sc is not None, "score": st["score"]}
 
@@ -546,10 +546,15 @@ async def presence(state: str | None = None):
         st["empty"] = (state == "empty")
         if prev != st["empty"]:
             _log_event("presence", {"empty": st["empty"]})   # 在室の変化も研究データ
-        if state == "occupied":
+        if state == "occupied" and prev:
             # 人感は部屋のどこで動いても反応するが、カメラは一方向しか
             # 見ていない。実際、人感が気づいた5分後にようやく顔が取れた。
             # 目に「探しに行け」と伝える札を立てる。
+            #
+            # ただし「居なかった→居る」に変わった瞬間だけにする（prev＝直前は無人）。
+            # 人感は居るあいだ鳴りつづけるので、条件を付けないと札が立ちっぱなしになり、
+            # 今日は79回も首を振ってしまった。動くたびに景色が変わり、
+            # 前後の比較が成り立たなくなる。
             st["hint_until"] = time.time() + SWEEP_HINT_SEC
         _save(st)
         return "ok\n"
@@ -1630,15 +1635,15 @@ def _tally(zone: str, who: list, better, changes: list) -> None:
 _zone_busy = [False]       # 突き合わせが二重に走らないようにする札
 
 
-async def _zone_cycle_bg(st: dict, data: bytes, now: float) -> None:
+async def _zone_cycle_bg(st: dict, data: bytes, now: float, pose: str = "") -> None:
     """裏で突き合わせを回し、終わったら札を下ろす。"""
     try:
-        await _zone_cycle(st, data, now)
+        await _zone_cycle(st, data, now, pose)
     finally:
         _zone_busy[0] = False
 
 
-async def _zone_cycle(st: dict, data: bytes, now: float) -> None:
+async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None:
     """人が去った直後、または長く静かなときに、前後を突き合わせる。
 
     「前」は最後に無人と確かめた1枚。「後」はいま届いた1枚。
@@ -1649,9 +1654,17 @@ async def _zone_cycle(st: dict, data: bytes, now: float) -> None:
             if st["zones"]:
                 _log_event("zones_set", {"zones": [z["name"] for z in st["zones"]]})
         base = read_object(BASELINE_OBJ)
-        if base is None:                       # まだ「前」が無い→いまの1枚を置く
+        if base is None or st.get("baseline_pose") != pose:
+            # 「前」が無いか、あってもカメラの向きが変わっている。
+            # 向きの違う2枚を比べると、何も起きていなくても全部変わって見える
+            # （実際にそれで「世話7回」という嘘の記録が付いた）。基準を取り直す。
+            if base is not None:
+                logger.info("camera moved (%s -> %s): baseline reset",
+                            st.get("baseline_pose"), pose)
             upload_to(BASELINE_OBJ, data, "image/jpeg")
             st["baseline_at"] = now
+            st["baseline_pose"] = pose
+            st["visit_people"] = []            # 比べられなかった来訪は数えない
             _save(st)
             return
         who = st.get("visit_people") or []
@@ -1661,6 +1674,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float) -> None:
         await _zone_pass(st, base, data, who, quiet)
         upload_to(BASELINE_OBJ, data, "image/jpeg")
         st["baseline_at"] = now
+        st["baseline_pose"] = pose
         st["visit_people"] = []
         _save(st)
     except Exception as e:

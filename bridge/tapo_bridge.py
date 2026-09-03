@@ -57,7 +57,10 @@ GAP_BUSY = 3.0        # 動きがある間、クラウドへ送る最短間隔
 GAP_HEARTBEAT = 300.0 # 何も起きなくても、これだけ経ったら1枚送る（定時報告）
 GAP_ERROR = 15.0      # 失敗した時
 HINT_GAP = 3.0        # 「探しに行け」の札を覗きにいく間隔
-SWEEP_COOLDOWN = 90.0 # 一度探したら、しばらくは探し直さない
+SWEEP_COOLDOWN = 600.0 # 一度探したら、しばらくは探し直さない
+                       # 90秒だった頃は1日79回も首を振り、そのたびに景色が
+                       # 変わって前後の比較が壊れた
+POSE_GAP = 30.0        # カメラの向きを確かめにいく間隔
 STILL_HOLD = 20.0     # 最後に動いてからこの秒数は「まだ居る」とみなす
 CALIB_FRAMES = 20     # 最初のこの枚数で、その部屋の「静かさ」を測る
 SETTLE_FRAMES = 8     # 首を振った直後、揺れが収まるまで捨てるコマ数
@@ -153,10 +156,24 @@ def grab() -> bytes | None:
         return None
 
 
+_pose = [""]           # いまカメラが向いている先。写真に添えて送る
+
+
+def refresh_pose() -> None:
+    """カメラの向きを確かめて覚える。
+
+    向きが変わった前後を比べると、何も起きていなくても全部変わって見える。
+    こちらが首を振った時だけでなく、アプリから動かされることもあるので、
+    自分の記憶ではなくカメラ本体に聞く。"""
+    w = sweep.where()
+    if w:
+        _pose[0] = "%.2f_%.2f" % w
+
+
 def send(jpg: bytes) -> dict:
-    """クラウドへ送って判断を受け取る。"""
+    """クラウドへ送って判断を受け取る。写真には向きを添える。"""
     req = urllib.request.Request(
-        SERVER + "/spirit/frame", data=jpg,
+        SERVER + "/spirit/frame?pose=" + _pose[0], data=jpg,
         headers={"Content-Type": "image/jpeg", "X-Upload-Key": KEY})
     with urllib.request.urlopen(req, timeout=40) as r:
         return json.loads(r.read().decode())
@@ -207,7 +224,8 @@ def main():
         proc = watch_stream()
         w = Watcher(proc)
         w.start()
-        last_sent = last_hint = last_sweep = 0.0
+        last_sent = last_hint = last_sweep = last_pose = 0.0
+        refresh_pose()
         try:
             while w.alive:
                 time.sleep(0.5)
@@ -222,8 +240,13 @@ def main():
                         hint_clear()
                         if sweep.search(grab, has_person):
                             w.last_move = now         # 見つけた＝人が居る
+                        refresh_pose()                # 向きが変わった
                         w.reset = True                # 景色が変わったので測り直す
                         continue
+
+                if now - last_pose >= POSE_GAP:      # アプリから動かされた分も拾う
+                    last_pose = now
+                    refresh_pose()
 
                 if not w.ready:
                     continue
