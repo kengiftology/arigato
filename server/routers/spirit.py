@@ -436,11 +436,13 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
             res = _identify(data)
             if res:
                 st["empty"] = False
+                st["want_hires"] = 0          # 取れたので、もう大きく撮らなくてよい
                 if st.get("cur_person") != res["person"]:
                     st["greet_for"] = st["greet_line"] = None   # 相手が変われば言い直す
                 st["cur_person"] = res["person"]
                 st["cur_state"] = res["state"]
                 st["last_seen"] = now
+                st["face_at"] = now              # 最後に顔で確かめた時刻
                 # 前回の判断からこちら、誰が居たかを溜めておく。
                 # 判断の時点で cur_person を見ると、とうに帰った人の名が残り、
                 # 無人の記録にまで同じIDが付いていた（2026-09-02に実際に起きた）。
@@ -454,6 +456,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
                 st["seen_people"], st["visit_people"] = seen[-8:], vis[-8:]
                 _keep_shot(st, now, data, res["person"])
                 _save(st)
+                _save(st)
                 return {"ok": True, "person": res["person"], "state": res["state"],
                         "people": res.get("all") or [res["person"]],
                         "judged": False, "why": "person_seen"}
@@ -465,7 +468,8 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
     recent_visit = (now - st.get("last_seen", 0)) < 300
     gap = JUDGE_GAP_AFTER_VISIT if recent_visit else JUDGE_GAP_IDLE
     if now - st["last_judge"] < gap:
-        return {"ok": True, "judged": False, "why": "throttled"}
+        return {"ok": True, "judged": False, "why": "throttled",
+                "hires": now < st.get("want_hires", 0)}
     if now - st["day_start"] > 86400:
         st["day_start"], st["day_calls"] = now, 0
     if st["day_calls"] >= JUDGE_DAILY_CAP:
@@ -491,6 +495,9 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
     if npeople > 0:                       # 人がいても観察は続ける（2026-09-01改訂）
         st["empty"] = False               # 誰が何を動かしたかを知るため
         st["last_seen"] = now
+        # 人は写っているのに顔が取れなかった。もっと大きく写せば取れるかもしれない。
+        # 送られてくる1280x720では、顔が135pxで確信度0.53と、あと一歩だった。
+        st["want_hires"] = now + 30
         # 顔は取れなかったのに人は写っている＝顔検出が取りこぼした場面。
         # 確かめたいのはまさにここなので、期間中はこれも残す。
         _keep_shot(st, now, data, "noface")
@@ -526,6 +533,16 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
     _save(st)                             # 物の一覧を入れてから保存する。
                                           # 逆順だと一覧はこの場限りで消え、
                                           # 状態ページには何も出ないままになる。
+    # 顔が取れなくても、直前に誰か分かっていて、まだ同じ滞在の中なら、その人が居る。
+    # 全部のコマで顔を取るのは無理がある。1回はっきり見えれば、その滞在は足りる。
+    if npeople > 0 and not st.get("seen_people"):
+        held = st.get("cur_person")
+        if held and now - st.get("face_at", 0) < VISIT_HOLD:
+            st["seen_people"] = [held]
+            if held not in (st.get("visit_people") or []):
+                st["visit_people"] = (st.get("visit_people") or []) + [held]
+            _log_event("hold", {"person": held,
+                                "since": round(now - st.get("face_at", 0))})
     if sc is not None:
         _log_event("judge", {"raw": sc, "score": round(st["score"], 3), "pose": pose,
                              "N": round(_calc_n(st, now), 3), "comment": st.get("comment", ""),
@@ -542,7 +559,8 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
             _zone_busy[0] = True
             asyncio.create_task(_zone_cycle_bg(st, data, now, pose))
     logger.info("spirit judge: raw=%s smoothed=%.2f comment=%s", sc, st["score"], st.get("comment"))
-    return {"ok": True, "judged": sc is not None, "score": st["score"]}
+    return {"ok": True, "judged": sc is not None, "score": st["score"],
+            "hires": now < st.get("want_hires", 0)}
 
 
 @router.get("/m", response_class=PlainTextResponse)
@@ -1583,6 +1601,7 @@ async def map_zones(request: Request, x_upload_key: str = Header(None)):
 BASELINE_OBJ = "spirit/zonecheck/baseline.jpg"
 SWEEP_HINT_SEC = 120.0      # 人感が鳴ってから、目が探しに行く猶予
 VISIT_END_GAP = 90.0        # 最後に人を見てからこれだけ経てば「去った」
+VISIT_HOLD = 300.0          # 顔が取れた人を、この秒数は「まだ居る」として扱う
 BASELINE_MAX_AGE = 7200.0   # 「前」の写真がこれより古ければ捨てて取り直す。
                             # 実際に5時間半をまたいだ比較が10件の誤記録を生んだ
 ZONE_ALL_RATIO = 0.6        # この割合以上の区画が同時に変われば、場所の話ではない

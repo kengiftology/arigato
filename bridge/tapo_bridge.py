@@ -52,6 +52,8 @@ WATCH_W, WATCH_H, WATCH_FPS = 80, 45, 2      # 見張り用の小さな白黒
 FRAME_BYTES = WATCH_W * WATCH_H
 SHOT_FPS = 1                                 # 送る用のJPEGを作り替える速さ
 SHOT_MAX_AGE = 6.0                           # これより古い1枚は使わない
+HIRES_SHOT = "/tmp/tapo_hi.jpg"              # 顔を探すときだけ撮る大きい1枚
+HIRES_GAP = 8.0                              # 大きい1枚を撮り直す最短間隔
 # 写真が古いままこれだけ続いたら、映像ごと繋ぎ直す。
 # 見張りの映像だけが流れつづけ、写真の書き出しだけが止まることがある。
 # その状態は「映像が切れた」と判定されないので、放っておくと目が閉じたまま
@@ -192,6 +194,25 @@ def refresh_pose() -> None:
         _pose[0] = "%.2f_%.2f" % w
 
 
+def grab_hires() -> bytes | None:
+    """主ストリーム（2304x1296）から1枚。顔を探すときだけ使う。
+
+    普段送っているのは副ストリーム（1280x720）で、顔が135pxまで小さくなり
+    確信度0.53で落ちた場面があった。主ストリームなら同じ顔が243pxになる。
+    接続の手続きに3秒近くかかるので、必要な時だけ呼ぶ。"""
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-rtsp_transport", "tcp",
+             "-i", CAM_URL, "-frames:v", "1", "-vf", "hflip,vflip",
+             "-q:v", "2", HIRES_SHOT],
+            check=True, timeout=25, capture_output=True)
+        with open(HIRES_SHOT, "rb") as f:
+            return f.read()
+    except Exception as e:
+        print("hires grab failed:", e, flush=True)
+        return None
+
+
 def send(jpg: bytes) -> dict:
     """クラウドへ送って判断を受け取る。写真には向きを添える。"""
     req = urllib.request.Request(
@@ -228,16 +249,16 @@ def has_person(jpg: bytes) -> bool:
         return False
 
 
-def report(jpg: bytes, why: str) -> bool:
-    """1枚送って、意味のある返事だけ記録する。人が写っていたらTrue。"""
+def report(jpg: bytes, why: str) -> dict:
+    """1枚送って、意味のある返事だけ記録する。返事をそのまま返す。"""
     try:
         res = send(jpg)
     except Exception as e:
         print("send failed:", e, flush=True)
-        return False
+        return {}
     if res.get("person") or res.get("judged"):
         print(time.strftime("%H:%M:%S"), why, res, flush=True)
-    return bool(res.get("person"))
+    return res
 
 
 def main():
@@ -246,7 +267,7 @@ def main():
         proc = watch_stream()
         w = Watcher(proc)
         w.start()
-        last_sent = last_hint = last_sweep = last_pose = 0.0
+        last_sent = last_hint = last_sweep = last_pose = last_hires = 0.0
         last_fresh = time.time()         # 最後に新しい写真を読めた時刻
         refresh_pose()
         refresh_home()
@@ -299,11 +320,22 @@ def main():
                     jpg = grab()
                     if jpg is None:
                         continue                      # 次の周で撮り直せばよい
-                    if report(jpg, "動き" if busy else "定時"):
+                    res = report(jpg, "動き" if busy else "定時")
+                    if res.get("person"):
                         # 座って動かない人を見失わないため、クラウドが人を
                         # 見たと言う間は「まだ居る」として見張りを続ける。
                         # 動きだけを頼りにすると、じっとしている人が消える。
                         w.last_move = now
+                    if res.get("hires") and now - last_hires >= HIRES_GAP:
+                        # 人は写っているのに顔が取れなかった、と返ってきた。
+                        # 大きく撮り直せば取れるかもしれないので、もう一度送る。
+                        last_hires = now
+                        big = grab_hires()
+                        if big is not None:
+                            print(time.strftime("%H:%M:%S"),
+                                  "顔を探すため大きく撮り直す", flush=True)
+                            if report(big, "拡大").get("person"):
+                                w.last_move = now
         except Exception as e:
             print("watch failed:", e, flush=True)
         finally:
