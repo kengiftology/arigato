@@ -1201,6 +1201,29 @@ async def merge_people(keep: str, drop: str, key: str = ""):
     return {"ok": True, "keep": keep, "dropped": drop, "shots": len(vecs[:5])}
 
 
+@router.post("/people/reset")
+async def people_reset(key: str = "", who: str = ""):
+    """世話・利用・なつき度をゼロに戻す（顔は覚えたまま）。
+
+    比べてはいけない2枚から作られた記録が10件残った。中身は光と
+    カメラの向きの変化で、誰の手でもない。論文の記録として置いておくと
+    そのまま嘘になるので、消せる手を用意する。顔まで忘れる必要はない。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    n = 0
+    try:
+        db = get_db()
+        for d in db.collection("faces").stream():
+            if who and d.id != who:
+                continue
+            d.reference.update({"cares": 0, "uses": 0, "bond": 0.0})
+            n += 1
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    _log_event("people_reset", {"count": n, "who": who or "全員"})
+    return {"ok": True, "reset": n}
+
+
 @router.post("/faces/clear")
 async def clear_faces(key: str = ""):
     """覚えた顔をすべて忘れる。
