@@ -52,6 +52,11 @@ WATCH_W, WATCH_H, WATCH_FPS = 80, 45, 2      # 見張り用の小さな白黒
 FRAME_BYTES = WATCH_W * WATCH_H
 SHOT_FPS = 1                                 # 送る用のJPEGを作り替える速さ
 SHOT_MAX_AGE = 6.0                           # これより古い1枚は使わない
+# 写真が古いままこれだけ続いたら、映像ごと繋ぎ直す。
+# 見張りの映像だけが流れつづけ、写真の書き出しだけが止まることがある。
+# その状態は「映像が切れた」と判定されないので、放っておくと目が閉じたまま
+# 動いているように見える（実際に5時間気づけなかった）。
+SHOT_STALE_LIMIT = 90.0
 
 GAP_BUSY = 3.0        # 動きがある間、クラウドへ送る最短間隔
 GAP_HEARTBEAT = 300.0 # 何も起きなくても、これだけ経ったら1枚送る（定時報告）
@@ -226,6 +231,7 @@ def main():
         w = Watcher(proc)
         w.start()
         last_sent = last_hint = last_sweep = last_pose = 0.0
+        last_fresh = time.time()         # 最後に新しい写真を読めた時刻
         refresh_pose()
         try:
             while w.alive:
@@ -248,6 +254,16 @@ def main():
                 if now - last_pose >= POSE_GAP:      # アプリから動かされた分も拾う
                     last_pose = now
                     refresh_pose()
+
+                # 写真が古いままなら、映像を繋ぎ直す。
+                # ここを見ていないと、目が閉じたまま何時間でも走りつづける。
+                if grab() is not None:
+                    last_fresh = now
+                elif now - last_fresh > SHOT_STALE_LIMIT:
+                    print(time.strftime("%H:%M:%S"),
+                          "写真が %d 秒更新されていない → 映像を繋ぎ直す"
+                          % (now - last_fresh), flush=True)
+                    break
 
                 if not w.ready:
                     continue
