@@ -120,30 +120,33 @@ def _doc():
     return get_db().collection("spirit").document("state")
 
 
-_pending = {"vec": None, "t": 0.0}      # まだIDを与えていない「知らない顔」
+_pending = []      # まだIDを与えていない「知らない顔」の心当たり [(特徴量, 時刻)]
 
 
 def _confirm_new(vec: list) -> bool:
-    """知らない顔にIDを出してよいかを決める（2026-09-02）。
+    """知らない顔にIDを出してよいかを決める（2026-09-02 / 2026-09-04改訂）。
 
     1コマ見ただけで卵を作っていたため、1時間で8つのIDが生まれた。
     うち少なくとも1つは、誰も居ない台所の棚を顔と見た誤検出だった。
 
     誤検出はその場限りのゴミなので、続けて似た顔がもう一度出ることはない。
     そこで「知らない顔を、短い間に2回、しかも互いに似た形で見た」ときだけ
-    新しいIDを出す。本物の人はカメラの前に数秒は留まるので、この条件を通る。"""
+    新しいIDを出す。本物の人はカメラの前に数秒は留まるので、この条件を通る。
+
+    心当たりを1つしか覚えていなかった頃は、初対面が2人同時に写ると
+    互いを上書きし合い、別人どうしを見比べて、どちらも卵になれなかった。
+    数人ぶん覚えておき、自分に似た心当たりだけを探す。"""
     import numpy as np
     now = time.time()
-    prev, prev_t = _pending["vec"], _pending["t"]
-    _pending["vec"], _pending["t"] = vec, now
-    if prev is None or now - prev_t > 30:            # 前の心当たりが古ければやり直し
-        return False
-    sim = float(np.dot(np.asarray(vec, dtype=np.float32),
-                       np.asarray(prev, dtype=np.float32)))
-    if sim < 0.42:                                   # 2回が別物＝たまたま拾ったゴミ
-        return False
-    _pending["vec"], _pending["t"] = None, 0.0
-    return True
+    v = np.asarray(vec, dtype=np.float32)
+    _pending[:] = [(a, b) for a, b in _pending if now - b <= 30][-6:]
+    for i, (prev, _t) in enumerate(_pending):
+        sim = float(np.dot(v, np.asarray(prev, dtype=np.float32)))
+        if sim >= 0.42:                              # 同じ顔をもう一度見た
+            _pending.pop(i)
+            return True
+    _pending.append((vec, now))                      # 心当たりとして覚えておく
+    return False
 
 
 def _clean_objects(raw) -> list:
@@ -283,9 +286,22 @@ def _identify(data: bytes):
     from server import face
     # 向きは橋渡しの段階で正しく直してから届くので、1通りだけ見る。
     # 5通り試していた頃は、そのぶん誤検出の機会も5倍あった。
-    crop = face.detect_face(data, rotate=FACE_ROTATE)
-    if crop is None:
+    found = face.detect_faces(data, rotate=FACE_ROTATE)
+    if not found:
         return None
+    people = [_identify_one(f["crop"], f["px"]) for f in found]
+    people = [x for x in people if x]
+    if not people:
+        return None
+    # 先頭＝一番大きく写っている人。いま目の前に居る相手として扱う。
+    head = people[0]
+    return {"person": head["person"], "state": head["state"],
+            "all": [x["person"] for x in people]}
+
+
+def _identify_one(crop, px: int):
+    """切り抜き1つを匿名IDに結びつける。"""
+    from server import face
     vec = face.embed(crop)
     if vec is None:
         return None
@@ -293,11 +309,11 @@ def _identify(data: bytes):
     pid, sim = face.match(vec, known)
     db = get_db()
     if pid is None:                                  # 初めて見る顔
-        if not face.big_enough_to_enroll():
+        if not face.big_enough_to_enroll(px):
             # 小さく写った顔からは卵を作らない。同じ人でも一致度が下がり、
             # 知っている人の隣に新しいIDが並んでしまう（2026-09-03に発生）。
             _log_event("arrive", {"person": "unknown", "why": "too_small",
-                                  "px": face.last_face_px(), "sim": round(sim, 3)})
+                                  "px": px, "sim": round(sim, 3)})
             return None
         if not _confirm_new(vec):
             return None                              # 一度きりの見え方は信用しない
@@ -427,16 +443,17 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
                 # 判断の時点で cur_person を見ると、とうに帰った人の名が残り、
                 # 無人の記録にまで同じIDが付いていた（2026-09-02に実際に起きた）。
                 seen = st.get("seen_people") or []
-                if res["person"] not in seen:
-                    seen.append(res["person"])
-                    st["seen_people"] = seen[-8:]
                 vis = st.get("visit_people") or []       # 前後比較に添える顔ぶれ
-                if res["person"] not in vis:
-                    vis.append(res["person"])
-                    st["visit_people"] = vis[-8:]
+                for pid in res.get("all") or [res["person"]]:
+                    if pid not in seen:
+                        seen.append(pid)
+                    if pid not in vis:
+                        vis.append(pid)
+                st["seen_people"], st["visit_people"] = seen[-8:], vis[-8:]
                 _keep_shot(st, now, data, res["person"])
                 _save(st)
                 return {"ok": True, "person": res["person"], "state": res["state"],
+                        "people": res.get("all") or [res["person"]],
                         "judged": False, "why": "person_seen"}
         except Exception as e:
             logger.warning("identify failed: %s", e)

@@ -66,14 +66,22 @@ def _get_session():
     return _session
 
 
-def detect_face(image_bytes: bytes, rotate: int = 0):
-    """写真から一番大きい顔を切り出す。見つからなければ None。
-    rotate＝カメラの取り付け向きの補正（度・90/180/270）。"""
+MAX_FACES = 4                # 一度に見る人数の上限
+
+
+def detect_faces(image_bytes: bytes, rotate: int = 0) -> list:
+    """写真に写っている顔を全部切り出す。大きい順に返す。
+
+    以前は一番大きい1つだけを返し、残りを捨てていた。2人居ても1人しか
+    識別できず、「この時間帯に居たのは誰と誰か」が作れなかった。
+
+    返すのは [{"crop": 切り抜き, "px": 顔の幅}, ...]。幅は、新しいIDを
+    出してよいかの判断に使う（小さい顔からは卵を作らない）。"""
     import cv2
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
-        return None
+        return []
     if rotate:
         k = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180,
              270: cv2.ROTATE_90_COUNTERCLOCKWISE}.get(rotate)
@@ -83,16 +91,26 @@ def detect_face(image_bytes: bytes, rotate: int = 0):
     det.setInputSize((img.shape[1], img.shape[0]))
     _, faces = det.detect(img)
     if faces is None or len(faces) == 0:
+        return []
+    out = []
+    for f in sorted(faces, key=lambda f: -(f[2] * f[3]))[:MAX_FACES]:
+        x, y, w, h = (int(v) for v in f[:4])
+        if w < _MIN_FACE_PX:
+            continue                                        # 小さすぎる顔は見えなかった扱い
+        m = int(w * 0.2)                                    # 少し広めに切る（髪や輪郭も入れる）
+        x0, y0 = max(0, x - m), max(0, y - m)
+        x1, y1 = min(img.shape[1], x + w + m), min(img.shape[0], y + h + m)
+        out.append({"crop": img[y0:y1, x0:x1], "px": w})
+    return out
+
+
+def detect_face(image_bytes: bytes, rotate: int = 0):
+    """一番大きい顔だけを切り出す（診断用に残してある）。"""
+    fs = detect_faces(image_bytes, rotate)
+    if not fs:
         return None
-    best = max(faces, key=lambda f: f[2] * f[3])            # 一番大きい顔＝一番近い人
-    x, y, w, h = (int(v) for v in best[:4])
-    if w < _MIN_FACE_PX:
-        return None
-    _last_size[0] = w                                       # 呼んだ側が大きさを見られるように
-    m = int(w * 0.2)                                        # 少し広めに切る（髪や輪郭も入れる）
-    x0, y0 = max(0, x - m), max(0, y - m)
-    x1, y1 = min(img.shape[1], x + w + m), min(img.shape[0], y + h + m)
-    return img[y0:y1, x0:x1]
+    _last_size[0] = fs[0]["px"]
+    return fs[0]["crop"]
 
 
 def embed(face_img) -> list | None:
@@ -130,6 +148,6 @@ def last_face_px() -> int:
     return _last_size[0]
 
 
-def big_enough_to_enroll() -> bool:
+def big_enough_to_enroll(px: int | None = None) -> bool:
     """新しい匿名IDを出してよい大きさか。"""
-    return _last_size[0] >= _ENROLL_FACE_PX
+    return (px if px is not None else _last_size[0]) >= _ENROLL_FACE_PX
