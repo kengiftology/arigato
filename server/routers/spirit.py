@@ -1560,6 +1560,9 @@ async def map_zones(request: Request, x_upload_key: str = Header(None)):
 BASELINE_OBJ = "spirit/zonecheck/baseline.jpg"
 SWEEP_HINT_SEC = 120.0      # 人感が鳴ってから、目が探しに行く猶予
 VISIT_END_GAP = 90.0        # 最後に人を見てからこれだけ経てば「去った」
+BASELINE_MAX_AGE = 7200.0   # 「前」の写真がこれより古ければ捨てて取り直す。
+                            # 実際に5時間半をまたいだ比較が10件の誤記録を生んだ
+ZONE_ALL_RATIO = 0.6        # この割合以上の区画が同時に変われば、場所の話ではない
 # 誰も来ないときの自己点検の間隔。1回につき1区画しか見ないので、
 # 5区画あれば1周に2時間半かかる。判定に必要な6回分を貯めるには
 # ここが2時間だと3日近くかかってしまうため、30分に詰めてある。
@@ -1625,11 +1628,21 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
         i = st.get("zone_rotate", 0) % max(1, len(zones))
         zones = zones[i:i + 1]
         st["zone_rotate"] = i + 1
+    results = []
     for z in zones:
         r = await _compare_images(before, after, z["name"])
         if r.get("error"):
             logger.warning("zone compare failed (%s): %s", z["name"], r["error"])
             continue
+        results.append((z, r))
+    # 片づけも散らかしも、場所ごとに起きる。区画がまとめて変わったなら、
+    # それは誰かの手ではなく、光か露出かカメラの向きが変わったということ。
+    n_changed = sum(1 for _z, r in results if not r.get("same"))
+    if len(results) > 1 and n_changed >= len(results) * ZONE_ALL_RATIO:
+        _log_event("zone_all", {"changed": n_changed, "of": len(results),
+                                "quiet": quiet, "who": who})
+        return
+    for z, r in results:
         changed = not r.get("same")
         z["trials"] = z.get("trials", 0) + 1
         if quiet:
@@ -1770,13 +1783,16 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
             if st["zones"]:
                 _log_event("zones_set", {"zones": [z["name"] for z in st["zones"]]})
         base = read_object(BASELINE_OBJ)
-        if base is None or st.get("baseline_pose") != pose:
-            # 「前」が無いか、あってもカメラの向きが変わっている。
+        stale = now - st.get("baseline_at", 0) > BASELINE_MAX_AGE
+        if base is None or st.get("baseline_pose") != pose or stale:
+            # 「前」が無いか、カメラの向きが変わったか、古すぎる。
             # 向きの違う2枚を比べると、何も起きていなくても全部変わって見える
-            # （実際にそれで「世話7回」という嘘の記録が付いた）。基準を取り直す。
+            # （実際にそれで「世話7回」という嘘の記録が付いた）。
+            # 時間が空きすぎた2枚も同じで、朝と昼では光がまるで違う。基準を取り直す。
             if base is not None:
-                logger.info("camera moved (%s -> %s): baseline reset",
-                            st.get("baseline_pose"), pose)
+                logger.info("baseline reset (%s -> %s, age %ds)",
+                            st.get("baseline_pose"), pose,
+                            now - st.get("baseline_at", 0))
             upload_to(BASELINE_OBJ, data, "image/jpeg")
             st["baseline_at"] = now
             st["baseline_pose"] = pose
