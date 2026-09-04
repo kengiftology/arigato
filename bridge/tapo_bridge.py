@@ -162,7 +162,23 @@ def grab() -> bytes | None:
 
 
 _pose = [""]           # いまカメラが向いている先。写真に添えて送る
-HOME_POSE = "%.2f_%.2f" % sweep.HOME    # 定位置を、写真に添える形で表したもの
+_home = ["%.2f_%.2f" % sweep.HOME]      # 待機位置。クラウドから読み直せる
+
+
+def refresh_home() -> None:
+    """待機位置をクラウドから読む。
+
+    カメラを動かすたびにコードを書き直さずに済むよう、置き場所を外に出した。
+    キッチンでスマホから決められる。"""
+    try:
+        with urllib.request.urlopen(SERVER + "/spirit/home", timeout=5) as r:
+            v = r.read().decode().strip()
+        if v and v.count("_") == 1:
+            _home[0] = v
+            x, y = (float(a) for a in v.split("_"))
+            sweep.HOME = (x, y)
+    except Exception:
+        pass
 
 
 def refresh_pose() -> None:
@@ -233,6 +249,7 @@ def main():
         last_sent = last_hint = last_sweep = last_pose = 0.0
         last_fresh = time.time()         # 最後に新しい写真を読めた時刻
         refresh_pose()
+        refresh_home()
         try:
             while w.alive:
                 time.sleep(0.5)
@@ -254,6 +271,7 @@ def main():
                 if now - last_pose >= POSE_GAP:      # アプリから動かされた分も拾う
                     last_pose = now
                     refresh_pose()
+                    refresh_home()                   # 待機位置が変わっていたら拾う
 
                 # 写真が古いままなら、映像を繋ぎ直す。
                 # ここを見ていないと、目が閉じたまま何時間でも走りつづける。
@@ -271,7 +289,7 @@ def main():
 
                 # 人を探しに行った先に留まったままだと、物の前後比較が成り立たない。
                 # 落ち着いたら定位置へ戻す。比べられるのは同じ向きの2枚だけ。
-                if not busy and _pose[0] != HOME_POSE:
+                if not busy and _pose[0] != _home[0]:
                     sweep.go_home()
                     refresh_pose()
                     continue

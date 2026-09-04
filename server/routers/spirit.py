@@ -428,6 +428,8 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
 
     st = _load()
     now = time.time()
+    if pose:
+        st["last_pose"] = pose            # いまカメラが向いている先。待機位置を決める元
 
     if FACE_ENABLED:                           # ① 顔があれば、それが在室の証拠かつ本人の手がかり
         try:
@@ -591,6 +593,35 @@ async def presence(state: str | None = None):
     return ("empty" if st["empty"] else "occupied") + "\n"
 
 
+@router.get("/home", response_class=PlainTextResponse)
+async def home_get():
+    """待機位置。目が読みに来る。空なら既定のまま。"""
+    return (_load().get("home_pose") or "") + "\n"
+
+
+@router.post("/home")
+async def home_set(key: str = "", pause: int = -1):
+    """いまカメラが向いている先を、待機位置として覚える。
+
+    カメラを動かすたびにコードを書き直していては追いつかない。
+    移動した本人が、その場で向きを決めて押せるようにする。
+    pause=1 で首振りを止める（設置作業の間、勝手に動かれると困る）。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    st = _load()
+    if pause >= 0:
+        st["sweep_paused"] = bool(pause)
+    else:
+        st["home_pose"] = st.get("last_pose") or ""
+        st["zones"] = []              # 画角が変われば区画も立て直す
+        st["baseline_at"] = 0
+        _log_event("home", {"pose": st["home_pose"]})
+    _save(st)
+    return {"ok": True, "home": st.get("home_pose"),
+            "paused": bool(st.get("sweep_paused")),
+            "note": "区画は次に人が去ったときに立て直します"}
+
+
 @router.get("/hint", response_class=PlainTextResponse)
 async def hint():
     """目が数秒おきに覗きにくる札。探すべきなら sweep、でなければ空。
@@ -601,6 +632,8 @@ async def hint():
     st = _load()
     # 「在室」は人感が立てるものでもあるので、それを理由に探すのをやめると
     # 人感が鳴った瞬間に札が自分で消えてしまう。顔が取れているかで判断する。
+    if st.get("sweep_paused"):
+        return ""                              # 設置作業中などは動かさない
     if time.time() - st.get("last_seen", 0) < 60:
         return ""                              # 顔が取れている＝探す必要はない
     return "sweep\n" if time.time() < st.get("hint_until", 0) else ""
@@ -647,6 +680,19 @@ async function forget(){
   post('/spirit/faces/clear').then(function(j){
     if(j.detail){alert('合言葉がちがいます');return}
     alert(j.deleted+'件 忘れました'); load();
+  });
+}
+function setHome(){
+  if(!confirm('いまカメラが向いている先を待機位置にします。区画も立て直します。'))return;
+  post('/spirit/home').then(function(j){
+    if(j.detail){alert('合言葉がちがいます');return}
+    alert('待機位置を '+(j.home||'?')+' にしました'); load();
+  });
+}
+function pause(v){
+  post('/spirit/home?pause='+v).then(function(j){
+    if(j.detail){alert('合言葉がちがいます');return}
+    load();
   });
 }
 function load(){
@@ -1299,6 +1345,14 @@ _PANEL = """<!doctype html><html lang=ja><meta charset=utf-8>
 </div>
 
 <div class=card>
+  <h2 style="margin-top:0">カメラの向き</h2>
+  <div class=st id=homest style="margin-bottom:8px">…</div>
+  <button onclick="setHome()">いまの向きを待機位置にする</button>
+  <button class=gray onclick="pause(1)">首振りを止める</button>
+  <button class=gray onclick="pause(0)">再開する</button>
+</div>
+
+<div class=card>
   <h2 style="margin-top:0">残っている写真</h2>
   <div class=shots id=shots></div>
   <button class=off onclick="wipe()" style="margin-top:10px">ぜんぶ消す</button>
@@ -1349,6 +1403,10 @@ function load(){
         +('0'+d.getSeconds()).slice(-2)+'　'+(n[1]||'')+'</div></div>';
     });
     document.getElementById('shots').innerHTML = h || '<div style="color:#999">まだありません</div>';
+  });
+  fetch('/spirit/zones').then(function(r){return r.json()}).then(function(j){
+    var h = '待機位置 '+(j.home||'既定のまま')+'<br>首振り '+(j.paused?'<span class=rec>止めている</span>':'動く');
+    document.getElementById('homest').innerHTML = h;
   });
   fetch('/spirit/similar').then(function(r){return r.json()}).then(function(j){
     var h='';
@@ -1750,7 +1808,9 @@ async def zones_status():
                     "trials": t, "hits": z.get("hits", 0),
                     "false_alarms": z.get("false", 0),
                     "false_rate": round(z.get("false", 0) / t, 2) if t else None})
-    return {"zones": out, "baseline_age": round(time.time() - st.get("baseline_at", 0))
+    return {"zones": out, "home": st.get("home_pose") or "",
+            "paused": bool(st.get("sweep_paused")),
+            "baseline_age": round(time.time() - st.get("baseline_at", 0))
             if st.get("baseline_at") else None}
 
 
