@@ -110,7 +110,10 @@ def detect_faces(image_bytes: bytes, rotate: int = 0) -> list:
         # 端にかかっていた。確信度では分けられない（本物も0.807〜0.91）。
         edge = (x < 2 or y < 2
                 or x + w > img.shape[1] - 2 or y + h > img.shape[0] - 2)
-        out.append({"crop": img[y0:y1, x0:x1], "px": w, "edge": edge})
+        # どこに写っていたかも返す。動かない「顔」は置いてある物なので、
+        # 場所が変わらないことを手がかりに人と分ける（2026-09-05）。
+        out.append({"crop": img[y0:y1, x0:x1], "px": w, "edge": edge,
+                    "pos": (x + w // 2, y + h // 2)})
     return out
 
 

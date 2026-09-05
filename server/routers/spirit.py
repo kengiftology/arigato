@@ -120,10 +120,20 @@ def _doc():
     return get_db().collection("spirit").document("state")
 
 
-_pending = []      # まだIDを与えていない「知らない顔」の心当たり [(特徴量, 時刻)]
+_pending = []      # まだIDを与えていない「知らない顔」の心当たり [(特徴量, 時刻, 位置)]
 
 
-def _confirm_new(vec: list) -> bool:
+def _moved(a, b, px: int) -> bool:
+    """2つの位置は、顔の大きさから見て「動いた」と言えるほど離れているか。
+
+    人の頭は数秒あれば顔の幅の半分くらいは動く。置いてある物は動かない。
+    土鍋の位置は1分のあいだ17pxしかぶれなかった（顔の幅は180px）。"""
+    if not a or not b:
+        return False
+    return max(abs(a[0] - b[0]), abs(a[1] - b[1])) >= MOVE_MIN * max(px, 1)
+
+
+def _confirm_new(vec: list, pos=None, px: int = 0) -> bool:
     """知らない顔にIDを出してよいかを決める（2026-09-02 / 2026-09-04改訂）。
 
     1コマ見ただけで卵を作っていたため、1時間で8つのIDが生まれた。
@@ -139,13 +149,18 @@ def _confirm_new(vec: list) -> bool:
     import numpy as np
     now = time.time()
     v = np.asarray(vec, dtype=np.float32)
-    _pending[:] = [(a, b) for a, b in _pending if now - b <= 30][-6:]
-    for i, (prev, _t) in enumerate(_pending):
+    _pending[:] = [x for x in _pending if now - x[1] <= 30][-6:]
+    for i, (prev, _t, ppos) in enumerate(_pending):
         sim = float(np.dot(v, np.asarray(prev, dtype=np.float32)))
         if sim >= 0.42:                              # 同じ顔をもう一度見た
+            if not _moved(pos, ppos, px):
+                # 見た目は同じで、場所も動いていない。置いてある物である。
+                # 「続けて同じ顔は出ない」という前提が、物には逆に働く
+                # （土鍋が28回「その人が来た」ことになっていた・2026-09-05）。
+                return False
             _pending.pop(i)
             return True
-    _pending.append((vec, now))                      # 心当たりとして覚えておく
+    _pending.append((vec, now, pos))                 # 心当たりとして覚えておく
     return False
 
 
@@ -317,10 +332,48 @@ async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
         return {}
 
 
+# 動かない「顔」は、置いてある物である。
+#
+# 2026-09-05、テーブルの土鍋が幅180〜200pxの顔と判定され、新しい人として
+# 登録された（p02）。一晩で28回「その人が来た」ことになっていた。
+#
+# 新しいIDを出す条件は「短い間に2回、似た顔を見たら本物」だった。根拠は
+# 「誤検出はその場限りのゴミなので、続けて同じ顔は出ない」。置いてある物には
+# この理屈がそのまま逆に働く。土鍋は何百回でも同じ顔を出しつづける。
+#
+# 人の頭は、じっとしていても1分のうちには顔の幅ぶんくらい動く。動かない場所は
+# 物として、照合からも新規発行からも外す。カメラが固定なので成り立つ。
+_spots = []              # [[x, y, 最初に見た時刻, 最後に見た時刻, 回数], ...]
+SPOT_NEAR = 0.35         # 顔の幅に対してこの割合より近ければ「同じ場所」
+SPOT_MIN_N = 5           # この回数以上
+SPOT_MIN_SEC = 60.0      # この時間ずっと同じ場所なら、それは物
+SPOT_FORGET = 900.0      # 15分見かけなければ忘れる（片づけられたかもしれない）
+
+
+def _is_furniture(pos, px: int) -> bool:
+    """この場所の「顔」は、動かない物か。
+
+    同じ場所に居つづけた回数と時間だけで決める。見た目は使わない
+    （土鍋どうしの一致度は0.795で、人の顔どうしの0.399より高かった。
+    見た目で「物らしさ」を測ろうとすると、物のほうが人らしく見える）。"""
+    if not pos:
+        return False
+    now = time.time()
+    _spots[:] = [s for s in _spots if now - s[3] <= SPOT_FORGET][-40:]
+    near = SPOT_NEAR * max(px, 1)
+    for s in _spots:
+        if abs(pos[0] - s[0]) <= near and abs(pos[1] - s[1]) <= near:
+            s[3], s[4] = now, s[4] + 1
+            return s[4] >= SPOT_MIN_N and now - s[2] >= SPOT_MIN_SEC
+    _spots.append([pos[0], pos[1], now, now, 1])
+    return False
+
+
 # 直近の顔を数枚ためておく器。1枚で「誰か」を決めるのをやめるため。
 # 実測（2026-09-05）で、1枚あたりの一致度は同じ人でも0.09〜0.52に散った。
 # 数枚の平均をとれば、1枚ごとの当たり外れは打ち消し合う。
-_face_buf = []            # [(特徴量, 顔の幅, 時刻), ...]
+_face_buf = []            # [(特徴量, 顔の幅, 時刻, 位置), ...]
+MOVE_MIN = 0.5           # 顔の幅に対して、これだけ離れたら「動いた」
 FACE_BUF_SEC = 25.0       # これより古い顔は忘れる（別の人が来ているかもしれない）
 FACE_BUF_MAX = 8          # ためる枚数の上限
 FACE_BUF_MIN_NEW = 3      # 新しいIDを出すのに、最低これだけの枚数が要る
@@ -333,16 +386,22 @@ def _blend(vecs: list) -> list:
     return [float(x) for x in (m / (float(np.linalg.norm(m)) + 1e-9))]
 
 
-def _remember_face(vec: list, px: int) -> tuple:
+def _remember_face(vec: list, px: int, pos=None) -> tuple:
     """この顔をためて、たまっている顔の平均を返す。
 
-    返すのは (平均した特徴量, たまっている枚数, 一番大きく写った幅)。
-    人が3秒おきに写るので、10秒立っていれば3〜4枚たまる。"""
+    返すのは (平均した特徴量, たまっている枚数, 一番大きく写った幅,
+    位置がどれだけ広がったか)。人が3秒おきに写るので、10秒立っていれば
+    3〜4枚たまる。位置の広がりは「本当に動いたか」を測るために使う。"""
     now = time.time()
     _face_buf[:] = [x for x in _face_buf if now - x[2] <= FACE_BUF_SEC][-(FACE_BUF_MAX - 1):]
-    _face_buf.append((vec, px, now))
-    return (_blend([v for v, _p, _t in _face_buf]), len(_face_buf),
-            max(p for _v, p, _t in _face_buf))
+    _face_buf.append((vec, px, now, pos))
+    ps = [x[3] for x in _face_buf if x[3]]
+    spread = 0
+    for i in range(len(ps)):
+        for j in range(i + 1, len(ps)):
+            spread = max(spread, abs(ps[i][0] - ps[j][0]), abs(ps[i][1] - ps[j][1]))
+    return (_blend([x[0] for x in _face_buf]), len(_face_buf),
+            max(x[1] for x in _face_buf), spread)
 
 
 def _identify(data: bytes):
@@ -362,7 +421,8 @@ def _identify(data: bytes):
     # 1人だけ写っているときは、数枚ためて平均で決める。
     # 2人以上のときは誰の顔かの取り違えが起きるので、1枚ずつ決める。
     solo = len(found) == 1
-    people = [_identify_one(f["crop"], f["px"], f.get("edge"), solo) for f in found]
+    people = [_identify_one(f["crop"], f["px"], f.get("edge"), solo, f.get("pos"))
+              for f in found]
     people = [x for x in people if x]
     if not people:
         return {"person": None, "px": px}
@@ -372,7 +432,7 @@ def _identify(data: bytes):
             "all": [x["person"] for x in people]}
 
 
-def _identify_one(crop, px: int, edge: bool = False, solo: bool = False):
+def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=None):
     """切り抜き1つを匿名IDに結びつける。
 
     solo=True（1人だけ写っている）のときは、この1枚だけでは決めない。
@@ -389,15 +449,20 @@ def _identify_one(crop, px: int, edge: bool = False, solo: bool = False):
         # 「顔は見えた」ことだけ残して、呼ぶ側に撮り直しを任せる。
         _log_small("too_small_to_match", px)
         return None
+    if _is_furniture(pos, px):
+        # 同じ場所から動かない「顔」。置いてある物なので、
+        # 誰かを決めるのにも、新しいIDを出すのにも使わない。
+        _log_small("furniture", px)
+        return None
     one = face.embed(crop)
     if one is None:
         return None
     known = _known_faces()
     _, sim1 = face.match(one, known)                 # 1枚だけで決めた場合の値（比べる用）
     if solo:
-        vec, n, best_px = _remember_face(one, px)
+        vec, n, best_px, spread = _remember_face(one, px, pos)
     else:
-        vec, n, best_px = one, 1, px
+        vec, n, best_px, spread = one, 1, px, 0
     pid, sim = face.match(vec, known)
     note = {"sim": round(sim, 3), "sim1": round(sim1, 3), "n": n, "px": best_px}
     db = get_db()
@@ -407,9 +472,14 @@ def _identify_one(crop, px: int, edge: bool = False, solo: bool = False):
             # 知っている人の隣に新しいIDが並んでしまう（2026-09-03に発生）。
             _log_small("too_small", best_px, sim=round(sim, 3), sim1=round(sim1, 3), n=n)
             return None
-        # 数枚そろっていれば、それ自体が「一度きりではない」証拠になる。
-        # 1枚しか無いときは、今までどおり短い間に2回見たかを確かめる。
-        if n < FACE_BUF_MIN_NEW and not _confirm_new(vec):
+        # 動いたところを見ていないものにIDは出さない。
+        # 「短い間に2回同じ顔を見たら本物」は、置いてある物には通じない。
+        # 土鍋は何百回でも同じ顔を出し、そのまま人として登録された。
+        # 「動いた」だけでは足りない。土鍋の位置も一度だけ91px跳ねた
+        # （検出の枠のぶれ）。動いたうえで、数枚そろっていることを求める。
+        seen_moving = spread >= MOVE_MIN * best_px and n >= FACE_BUF_MIN_NEW
+        if not seen_moving and not _confirm_new(vec, pos, px):
+            _log_small("did_not_move", best_px, n=n, spread=spread)
             return None
         pid = _new_person_id()
         db.collection("faces").document(pid).set(
@@ -1361,6 +1431,30 @@ async def people_reset(key: str = "", who: str = ""):
         return {"ok": False, "error": str(e)}
     _log_event("people_reset", {"count": n, "who": who or "全員"})
     return {"ok": True, "reset": n}
+
+
+@router.post("/faces/drop")
+async def drop_face(who: str = "", key: str = ""):
+    """指定した1つのIDだけを忘れる。
+
+    まっさらにすると、正しく覚えている人まで巻き添えになる。
+    誤ってできた1つ（2026-09-05のp02＝テーブルの土鍋）を抜くための口。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    if not who:
+        raise HTTPException(status_code=400, detail="who is required")
+    try:
+        get_db().collection("faces").document(who).delete()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    st = _load()
+    if st.get("cur_person") == who:
+        st["cur_person"] = st["cur_state"] = None
+    for k in ("seen_people", "visit_people"):
+        st[k] = [p for p in (st.get(k) or []) if p != who]
+    _save(st)
+    _log_event("face_drop", {"person": who})
+    return {"ok": True, "dropped": who}
 
 
 @router.post("/faces/clear")
