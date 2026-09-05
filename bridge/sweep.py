@@ -15,7 +15,11 @@ USER, PWD = "thankU", "39Kitchen"
 
 # 定位置。物の増減を見るための向きで、前後の比較はいつもここで撮った2枚で行う。
 # 逆さ吊りなので縦は上限が部屋の床側を向く（実測）。
-HOME = (-0.5, 1.0)
+# 2026-09-05: カメラを付け直した。(-0.5, 1.0) は真下の床だけを見ており、
+# 人は写っても頭のてっぺんしか写らなかった。全周を撮り直して選びなおした先が
+# (0.7, 0.4)。シンク・コンロ・棚・冷蔵庫・テーブル・床が1枚に収まり、
+# 立った人の頭も画面に入る。
+HOME = (0.7, 0.4)
 
 # 人を探すときに見て回る向き。
 # 縦を1.0に固定していた頃は床ばかり見ていて、立った人の頭が画面の上で
@@ -54,6 +58,25 @@ def _connect():
         _ptz[0] = cam.create_ptz_service()
         _ptz[1] = media.GetProfiles()[0].token
     return _ptz
+
+
+def settled(tries: int = 6) -> tuple | None:
+    """首が止まるまで待ってから向きを返す。
+
+    動いている途中に聞くと、通りすがりの向きが返ってくる
+    （実測：(0.7, 0.4) へ向かう途中で (0.27, 1.0) と答えた）。
+    その値が写真に添いて送られると、別の向きで撮った2枚を
+    同じ向きとして比べることになる。二度続けて同じなら止まったとみなす。"""
+    prev = None
+    for _ in range(tries):
+        w = where()
+        if w is None:
+            return None
+        if prev is not None and abs(w[0] - prev[0]) < 0.01 and abs(w[1] - prev[1]) < 0.01:
+            return w
+        prev = w
+        time.sleep(0.6)
+    return prev
 
 
 def where() -> tuple | None:
