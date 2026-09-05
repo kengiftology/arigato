@@ -22,7 +22,11 @@ logger = logging.getLogger("face")
 _MODEL_URL = "https://github.com/onnx/models/raw/main/validated/vision/body_analysis/arcface/model/arcfaceresnet100-8.onnx"
 _MODEL_PATH = "/tmp/arcface.onnx"
 _SIM_THRESHOLD = 0.42        # これ以上似ていたら同一人物とみなす（低いほど緩い）
-_MIN_FACE_PX = 70            # これより小さく写った顔は「見えなかった」扱い
+# 大きさの線は3本ある。一本だけにしていた頃は「小さい顔」が
+# その場で捨てられ、人が居たことさえ残らなかった（実測：9/3〜9/5の3日間で
+# 顔が取れたのは3回）。分けると、小さい顔を「大きく撮り直せ」の合図に使える。
+_MIN_FACE_PX = 45            # これ未満は顔として扱わない（見えてもいない）
+_MATCH_FACE_PX = 70          # これ未満は照合しない。特徴が出ず、別人に結びつく
 # 新しい匿名IDを出すのは、これ以上の大きさで写ったときだけ。
 # 小さい顔は特徴が曖昧で、同じ人でも一致度が0.42前後まで落ちる。
 # 実際にそれで同じ人が2つのIDに割れた（2026-09-03・0.407）。
@@ -151,3 +155,11 @@ def last_face_px() -> int:
 def big_enough_to_enroll(px: int | None = None) -> bool:
     """新しい匿名IDを出してよい大きさか。"""
     return (px if px is not None else _last_size[0]) >= _ENROLL_FACE_PX
+
+
+def big_enough_to_match(px: int | None = None) -> bool:
+    """登録済みの人と照合してよい大きさか。
+
+    これ未満でも「顔が見えている」こと自体は確かなので、
+    人が居る合図には使う。ただし誰かを決めるには使わない。"""
+    return (px if px is not None else _last_size[0]) >= _MATCH_FACE_PX

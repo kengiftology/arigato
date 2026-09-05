@@ -190,6 +190,21 @@ def _vec_list(raw) -> list:
     return out
 
 
+_last_small = [0.0]    # 「顔が小さい」を最後に記録した時刻
+
+
+def _log_small(why: str, px: int, **extra):
+    """顔が小さすぎた、を記録する。ただし間引く。
+
+    人が3秒おきに写りつづける間ずっと書くと、10分の滞在で200件になり、
+    肝心の出来事がその中に埋もれる。30秒に1件で、傾向は十分に読める。"""
+    now = time.time()
+    if now - _last_small[0] < 30:
+        return
+    _last_small[0] = now
+    _log_event("arrive", {"person": "unknown", "why": why, "px": px, **extra})
+
+
 def _log_event(kind: str, data: dict):
     """研究用の時系列ログ（spirit_log）。失敗しても本体を止めない。"""
     try:
@@ -282,26 +297,36 @@ async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
 
 def _identify(data: bytes):
     """写真から顔を探して匿名IDに結びつける。顔が無ければ None。
-    実名は扱わない。初めての顔には新しい匿名IDを発行して「卵」にする。"""
+    実名は扱わない。初めての顔には新しい匿名IDを発行して「卵」にする。
+
+    顔は見えたのに小さすぎて誰とも結べなかった時は、person を空のまま
+    px（一番大きく写った顔の幅）だけ返す。呼ぶ側はそれを合図に、
+    その場で大きく撮り直させる。"""
     from server import face
     # 向きは橋渡しの段階で正しく直してから届くので、1通りだけ見る。
     # 5通り試していた頃は、そのぶん誤検出の機会も5倍あった。
     found = face.detect_faces(data, rotate=FACE_ROTATE)
     if not found:
         return None
+    px = max(f["px"] for f in found)
     people = [_identify_one(f["crop"], f["px"]) for f in found]
     people = [x for x in people if x]
     if not people:
-        return None
+        return {"person": None, "px": px}
     # 先頭＝一番大きく写っている人。いま目の前に居る相手として扱う。
     head = people[0]
-    return {"person": head["person"], "state": head["state"],
+    return {"person": head["person"], "state": head["state"], "px": px,
             "all": [x["person"] for x in people]}
 
 
 def _identify_one(crop, px: int):
     """切り抜き1つを匿名IDに結びつける。"""
     from server import face
+    if not face.big_enough_to_match(px):
+        # 照合できる大きさではない。ここで誰かを決めると別人に結びつく。
+        # 「顔は見えた」ことだけ残して、呼ぶ側に撮り直しを任せる。
+        _log_small("too_small_to_match", px)
+        return None
     vec = face.embed(crop)
     if vec is None:
         return None
@@ -312,8 +337,7 @@ def _identify_one(crop, px: int):
         if not face.big_enough_to_enroll(px):
             # 小さく写った顔からは卵を作らない。同じ人でも一致度が下がり、
             # 知っている人の隣に新しいIDが並んでしまう（2026-09-03に発生）。
-            _log_event("arrive", {"person": "unknown", "why": "too_small",
-                                  "px": px, "sim": round(sim, 3)})
+            _log_small("too_small", px, sim=round(sim, 3))
             return None
         if not _confirm_new(vec):
             return None                              # 一度きりの見え方は信用しない
@@ -401,7 +425,8 @@ async def clear_shots(key: str = ""):
 
 
 @router.post("/frame")
-async def receive_frame(request: Request, pose: str = "", raw: str = "", x_upload_key: str = Header(None)):
+async def receive_frame(request: Request, pose: str = "", raw: str = "", big: int = 0,
+                        x_upload_key: str = Header(None)):
     """目からの写真1枚を、すべての判断に使う統合窓口（2026-08-31改訂）。
 
     以前は人感センサーが「人が居る」を判定していたが、座って動かない人を
@@ -410,8 +435,12 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
 
     順序:
       1) 顔が写っているか（無料・その場で）→ 写っていれば誰かを照合して終わり
-      2) 顔が無ければAIに見せる → 人が写っていれば在室と記録（散らかりは測らない）
-      3) 人も居なければ散らかりを判断する
+      2) 顔は見えたが小さすぎた → その場で大きく撮り直させる（AIには聞かない）
+      3) 顔が無ければAIに見せる → 人が写っていれば在室と記録（散らかりは測らない）
+      4) 人も居なければ散らかりを判断する
+
+    big=1 は「これはもう大きく撮り直した1枚」の印。これ以上大きくは
+    撮れないので、同じ写真でまた撮り直しを頼まない。
     """
     if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
@@ -434,6 +463,20 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
     if FACE_ENABLED:                           # ① 顔があれば、それが在室の証拠かつ本人の手がかり
         try:
             res = _identify(data)
+            if res and not res.get("person"):
+                # 顔は見えたのに小さすぎて誰とも結べなかった。
+                # ここで大きく撮り直させる。AIの判断待ちにすると、
+                # 順番が回ってくる頃には人が去っている（実測：今日の
+                # 17:55、幅107pxの顔が誰にも結ばれないまま流れた）。
+                st["empty"] = False
+                st["last_seen"] = now
+                if not big:
+                    st["want_hires"] = now + 30
+                _keep_shot(st, now, data, "small")
+                _save(st)
+                return {"ok": True, "person": None, "judged": False,
+                        "why": "face_too_small", "px": res.get("px"),
+                        "hires": not big}
             if res:
                 st["empty"] = False
                 st["want_hires"] = 0          # 取れたので、もう大きく撮らなくてよい
@@ -455,7 +498,6 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", x_uploa
                         vis.append(pid)
                 st["seen_people"], st["visit_people"] = seen[-8:], vis[-8:]
                 _keep_shot(st, now, data, res["person"])
-                _save(st)
                 _save(st)
                 return {"ok": True, "person": res["person"], "state": res["state"],
                         "people": res.get("all") or [res["person"]],
@@ -613,24 +655,33 @@ async def presence(state: str | None = None):
 
 @router.get("/home", response_class=PlainTextResponse)
 async def home_get():
-    """待機位置。目が読みに来る。空なら既定のまま。"""
-    return (_load().get("home_pose") or "") + "\n"
+    """待機位置。目が読みに来る。空なら既定のまま。
+
+    止めているときは向きのうしろに paused を付ける。目はこれを見て
+    定位置へ戻すのをやめる。設置の最中に勝手に戻られると、
+    向きを決めて押す前にカメラが逃げてしまう（実際に起きた）。"""
+    st = _load()
+    line = st.get("home_pose") or ""
+    if st.get("sweep_paused"):
+        line = (line + " paused").strip()
+    return line + "\n"
 
 
 @router.post("/home")
-async def home_set(key: str = "", pause: int = -1):
+async def home_set(key: str = "", pause: int = -1, pose: str = ""):
     """いまカメラが向いている先を、待機位置として覚える。
 
     カメラを動かすたびにコードを書き直していては追いつかない。
     移動した本人が、その場で向きを決めて押せるようにする。
-    pause=1 で首振りを止める（設置作業の間、勝手に動かれると困る）。"""
+    pause=1 で首振りを止める（設置作業の間、勝手に動かれると困る）。
+    pose を渡せばその向きをそのまま覚える（目がまだ動いていない時用）。"""
     if UPLOAD_KEY and key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
     st = _load()
     if pause >= 0:
         st["sweep_paused"] = bool(pause)
     else:
-        st["home_pose"] = st.get("last_pose") or ""
+        st["home_pose"] = pose or st.get("last_pose") or ""
         st["zones"] = []              # 画角が変われば区画も立て直す
         st["baseline_at"] = 0
         _log_event("home", {"pose": st["home_pose"]})

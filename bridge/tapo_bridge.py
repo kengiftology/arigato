@@ -114,7 +114,7 @@ class Watcher(threading.Thread):
 
     def run(self):
         prev = None
-        quiet, seen, settle = 0.0, 0, SETTLE_FRAMES
+        calib, quiet, settle = [], 0.0, SETTLE_FRAMES
         while True:
             buf = self.proc.stdout.read(FRAME_BYTES)
             if not buf or len(buf) < FRAME_BYTES:
@@ -122,7 +122,7 @@ class Watcher(threading.Thread):
                 return
             if self.reset:                       # 向きが変わった＝別の景色
                 self.reset = False
-                prev, quiet, seen = None, 0.0, 0
+                prev, calib, quiet = None, [], 0.0
                 settle = SETTLE_FRAMES
                 self.ready = False
             if settle > 0:
@@ -134,10 +134,14 @@ class Watcher(threading.Thread):
                 continue
             if prev is not None:
                 d = diff(prev, buf)
-                if seen < CALIB_FRAMES:          # 最初は黙って基準を測る
-                    quiet = max(quiet, d)
-                    seen += 1
-                    if seen == CALIB_FRAMES:
+                if len(calib) < CALIB_FRAMES:    # 最初は黙って基準を測る
+                    calib.append(d)
+                    if len(calib) == CALIB_FRAMES:
+                        # 一番大きい値を基準にしていた頃は、測っている
+                        # 10秒のうちに一度でも映像が乱れると、その1回だけで
+                        # しきい値が固定された（実測 2.29 → 17.57）。
+                        # 上から2番目を使えば、その一発に引きずられない。
+                        quiet = sorted(calib)[-2]
                         self.ready = True
                         print("静かな時の揺らぎ = %.2f / しきい値 = %.2f"
                               % (quiet, max(quiet * 2.5, 1.5)), flush=True)
@@ -165,22 +169,44 @@ def grab() -> bytes | None:
 
 _pose = [""]           # いまカメラが向いている先。写真に添えて送る
 _home = ["%.2f_%.2f" % sweep.HOME]      # 待機位置。クラウドから読み直せる
+_stay = [False]        # 定位置へ戻すのを止めているか
 
 
 def refresh_home() -> None:
     """待機位置をクラウドから読む。
 
     カメラを動かすたびにコードを書き直さずに済むよう、置き場所を外に出した。
-    キッチンでスマホから決められる。"""
+    キッチンでスマホから決められる。
+
+    返事は「向き」または「向き paused」。paused の間は定位置へ戻さない。
+    設置中に戻されると、向きを決めて押す前にカメラが逃げる。"""
     try:
         with urllib.request.urlopen(SERVER + "/spirit/home", timeout=5) as r:
             v = r.read().decode().strip()
+        parts = v.split()
+        _stay[0] = "paused" in parts
+        v = parts[0] if parts and parts[0] != "paused" else ""
         if v and v.count("_") == 1:
             _home[0] = v
             x, y = (float(a) for a in v.split("_"))
             sweep.HOME = (x, y)
     except Exception:
         pass
+
+
+def at_home() -> bool:
+    """いま定位置を向いているか。
+
+    文字が一致するかで見ていた頃は、カメラが返す値が -0.29 と -0.30 の
+    間で僅かに揺れるだけで「ずれている」と判定され、30秒ごとに首を
+    動かし直していた。そのたび景色が揺れて、物の前後比較が壊れる。
+    近ければ同じ向きとみなす。"""
+    try:
+        a = [float(v) for v in _pose[0].split("_")]
+        b = [float(v) for v in _home[0].split("_")]
+    except ValueError:
+        return False
+    return abs(a[0] - b[0]) < 0.05 and abs(a[1] - b[1]) < 0.05
 
 
 def refresh_pose() -> None:
@@ -202,7 +228,11 @@ def grab_hires() -> bytes | None:
     接続の手続きに3秒近くかかるので、必要な時だけ呼ぶ。"""
     try:
         subprocess.run(
+            # 接続の手続きを削る。既定では中身を数秒ぶん覗いてから
+            # 始めるので、その間に人が通り過ぎてしまう。
             ["ffmpeg", "-y", "-v", "error", "-rtsp_transport", "tcp",
+             "-probesize", "100000", "-analyzeduration", "0",
+             "-fflags", "nobuffer", "-flags", "low_delay",
              "-i", CAM_URL, "-frames:v", "1", "-vf", "hflip,vflip",
              "-q:v", "2", HIRES_SHOT],
             check=True, timeout=25, capture_output=True)
@@ -213,10 +243,14 @@ def grab_hires() -> bytes | None:
         return None
 
 
-def send(jpg: bytes) -> dict:
-    """クラウドへ送って判断を受け取る。写真には向きを添える。"""
+def send(jpg: bytes, big: bool = False) -> dict:
+    """クラウドへ送って判断を受け取る。写真には向きを添える。
+
+    big=True は「これはもう大きく撮り直した1枚」の印。これ以上大きくは
+    撮れないので、クラウドに同じ頼みを繰り返させない。"""
+    url = SERVER + "/spirit/frame?pose=" + _pose[0] + ("&big=1" if big else "")
     req = urllib.request.Request(
-        SERVER + "/spirit/frame?pose=" + _pose[0], data=jpg,
+        url, data=jpg,
         headers={"Content-Type": "image/jpeg", "X-Upload-Key": KEY})
     with urllib.request.urlopen(req, timeout=40) as r:
         return json.loads(r.read().decode())
@@ -241,22 +275,31 @@ def hint_clear() -> None:
         pass
 
 
+def someone(res: dict) -> bool:
+    """この返事は「人が居た」と言っているか。
+
+    顔が小さすぎて誰か分からなかった時も、人が居ることは確かなので
+    含める。ここを person だけで見ていた頃は、顔が小さいというだけで
+    首振りが人の前を素通りして探し続けていた。"""
+    return bool(res.get("person")) or res.get("why") == "face_too_small"
+
+
 def has_person(jpg: bytes) -> bool:
     """この1枚に人が写っているかをクラウドに聞く。"""
     try:
-        return bool(send(jpg).get("person"))
+        return someone(send(jpg))
     except Exception:
         return False
 
 
-def report(jpg: bytes, why: str) -> dict:
+def report(jpg: bytes, why: str, big: bool = False) -> dict:
     """1枚送って、意味のある返事だけ記録する。返事をそのまま返す。"""
     try:
-        res = send(jpg)
+        res = send(jpg, big)
     except Exception as e:
         print("send failed:", e, flush=True)
         return {}
-    if res.get("person") or res.get("judged"):
+    if res.get("person") or res.get("judged") or res.get("why") == "face_too_small":
         print(time.strftime("%H:%M:%S"), why, res, flush=True)
     return res
 
@@ -310,7 +353,7 @@ def main():
 
                 # 人を探しに行った先に留まったままだと、物の前後比較が成り立たない。
                 # 落ち着いたら定位置へ戻す。比べられるのは同じ向きの2枚だけ。
-                if not busy and _pose[0] != _home[0]:
+                if not busy and not _stay[0] and not at_home():
                     sweep.go_home()
                     refresh_pose()
                     continue
@@ -321,7 +364,7 @@ def main():
                     if jpg is None:
                         continue                      # 次の周で撮り直せばよい
                     res = report(jpg, "動き" if busy else "定時")
-                    if res.get("person"):
+                    if someone(res):
                         # 座って動かない人を見失わないため、クラウドが人を
                         # 見たと言う間は「まだ居る」として見張りを続ける。
                         # 動きだけを頼りにすると、じっとしている人が消える。
@@ -330,11 +373,11 @@ def main():
                         # 人は写っているのに顔が取れなかった、と返ってきた。
                         # 大きく撮り直せば取れるかもしれないので、もう一度送る。
                         last_hires = now
-                        big = grab_hires()
-                        if big is not None:
+                        shot = grab_hires()
+                        if shot is not None:
                             print(time.strftime("%H:%M:%S"),
                                   "顔を探すため大きく撮り直す", flush=True)
-                            if report(big, "拡大").get("person"):
+                            if someone(report(shot, "拡大", big=True)):
                                 w.last_move = now
         except Exception as e:
             print("watch failed:", e, flush=True)
