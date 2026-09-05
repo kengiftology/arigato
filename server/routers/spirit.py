@@ -309,7 +309,7 @@ def _identify(data: bytes):
     if not found:
         return None
     px = max(f["px"] for f in found)
-    people = [_identify_one(f["crop"], f["px"]) for f in found]
+    people = [_identify_one(f["crop"], f["px"], f.get("edge")) for f in found]
     people = [x for x in people if x]
     if not people:
         return {"person": None, "px": px}
@@ -319,9 +319,14 @@ def _identify(data: bytes):
             "all": [x["person"] for x in people]}
 
 
-def _identify_one(crop, px: int):
+def _identify_one(crop, px: int, edge: bool = False):
     """切り抜き1つを匿名IDに結びつける。"""
     from server import face
+    if edge:
+        # 画面の端で切れた顔。写っていない半分は読めないので、
+        # 誰かを決めるには使わない。人が居る合図には使う。
+        _log_small("cut_off", px)
+        return None
     if not face.big_enough_to_match(px):
         # 照合できる大きさではない。ここで誰かを決めると別人に結びつく。
         # 「顔は見えた」ことだけ残して、呼ぶ側に撮り直しを任せる。

@@ -79,8 +79,8 @@ def detect_faces(image_bytes: bytes, rotate: int = 0) -> list:
     以前は一番大きい1つだけを返し、残りを捨てていた。2人居ても1人しか
     識別できず、「この時間帯に居たのは誰と誰か」が作れなかった。
 
-    返すのは [{"crop": 切り抜き, "px": 顔の幅}, ...]。幅は、新しいIDを
-    出してよいかの判断に使う（小さい顔からは卵を作らない）。"""
+    返すのは [{"crop": 切り抜き, "px": 顔の幅, "edge": 画面の端にかかっているか}, ...]。
+    幅は、新しいIDを出してよいかの判断に使う（小さい顔からは卵を作らない）。"""
     import cv2
     arr = np.frombuffer(image_bytes, dtype=np.uint8)
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
@@ -104,7 +104,13 @@ def detect_faces(image_bytes: bytes, rotate: int = 0) -> list:
         m = int(w * 0.2)                                    # 少し広めに切る（髪や輪郭も入れる）
         x0, y0 = max(0, x - m), max(0, y - m)
         x1, y1 = min(img.shape[1], x + w + m), min(img.shape[0], y + h + m)
-        out.append({"crop": img[y0:y1, x0:x1], "px": w})
+        # 画面の端にかかった枠は、顔の半分しか写っていない。
+        # 実測では、棚のボトルを確信度0.809で顔と見た1件も、
+        # 口と顕だけになって一致度が上がらなかった1件も、どちらも
+        # 端にかかっていた。確信度では分けられない（本物も0.807〜0.91）。
+        edge = (x < 2 or y < 2
+                or x + w > img.shape[1] - 2 or y + h > img.shape[0] - 2)
+        out.append({"crop": img[y0:y1, x0:x1], "px": w, "edge": edge})
     return out
 
 
