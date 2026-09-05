@@ -261,6 +261,28 @@ def _sanitize(c) -> str:
     return c[:MAX_COMMENT]
 
 
+def _shrink_for_judge(data: bytes, max_w: int = 1280) -> bytes:
+    """AIに見せる前に写真を小さくする。
+
+    人が動いている間は2304幅の写真が届く。散らかり具合を見るのに
+    その細かさは要らず、そのまま渡すと1枚あたりの費用が3倍になる。
+    顔の照合は元の大きさのままで行うので、ここで縮めても影響はない。"""
+    try:
+        import cv2
+        import numpy as np
+        arr = np.frombuffer(data, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img is None or img.shape[1] <= max_w:
+            return data
+        h = int(img.shape[0] * max_w / img.shape[1])
+        img = cv2.resize(img, (max_w, h), interpolation=cv2.INTER_AREA)
+        ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+        return buf.tobytes() if ok else data
+    except Exception as e:
+        logger.warning("shrink failed: %s", e)
+        return data
+
+
 async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
     """写真をClaudeに直接見せて {score, comment} か {skip} を得る。失敗は {}。
     persona＝そのキャラの人格。ルール部（_SYSTEM）は人格に関わらず常に適用。"""
@@ -270,7 +292,7 @@ async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
     try:
         from anthropic import AsyncAnthropic
         client = AsyncAnthropic()
-        b64 = base64.standard_b64encode(image_bytes).decode()
+        b64 = base64.standard_b64encode(_shrink_for_judge(image_bytes)).decode()
         system = (persona or _DEFAULT_PERSONA) + "\n" + _SYSTEM
         msg = await client.messages.create(
             # 物の一覧を返させるようになってから、200では足りず返事が途中で

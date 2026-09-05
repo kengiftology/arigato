@@ -26,6 +26,12 @@ Tapoは家のネットワークの中にいるので、クラウドから直接�
   首を振って人を探している間、見張りの読み取りが止まると、映像の通り道が
   詰まってffmpegごと止まる。そうなると肝心の写真も更新されなくなる。
   読み取りだけを別の流れに分け、何があっても映像を流し続ける。
+
+■ 動いている間は大きいほうを送る（2026-09-05）
+  保存写真68枚を数え直したところ、顔の幅は1280幅で87〜150px、
+  2304幅で100〜222pxだった。新しい人を覚えられる線は120pxなので、
+  普段の1枚では3件中2件が届かない。主ストリームを基準コマだけ開いて
+  流しつづけ、人が動いている間はそちらを送る。
 """
 import json
 import os
@@ -44,16 +50,19 @@ SERVER = os.environ.get("SPIRIT_SERVER", "https://arigato-3ipecjbnha-an.a.run.ap
 KEY = os.environ.get("SPIRIT_KEY", "06dc964a3cdd2c4f4c5c1d8592dff543")
 SHOT = "/tmp/tapo.jpg"          # 常に最新の1枚が置かれる（ffmpegが書き替えつづける）
 
-# 副ストリーム（1280x720）から取る。主ストリーム（2304x1296）を流しっぱなしに
-# するとラズパイのCPUを1コア食い切ってしまう。顔は720pでも十分な大きさで写る。
+# 見張りと定時報告は副ストリーム（1280x720）から取る。
+# 主ストリーム（2304x1296）は全コマを開くとCPUを1コア食い切るが、
+# 基準コマだけを開けば負荷はほぼ変わらない（hires_stream を参照）。
+# 顔の幅は1280幅で87〜150px、2304幅で100〜222px（9/5の実測）。
 WATCH_URL = os.environ.get("TAPO_WATCH_URL", CAM_URL.replace("/stream1", "/stream2"))
 
 WATCH_W, WATCH_H, WATCH_FPS = 80, 45, 2      # 見張り用の小さな白黒
 FRAME_BYTES = WATCH_W * WATCH_H
 SHOT_FPS = 1                                 # 送る用のJPEGを作り替える速さ
 SHOT_MAX_AGE = 6.0                           # これより古い1枚は使わない
-HIRES_SHOT = "/tmp/tapo_hi.jpg"              # 顔を探すときだけ撮る大きい1枚
-HIRES_GAP = 8.0                              # 大きい1枚を撮り直す最短間隔
+HIRES_SHOT = "/tmp/tapo_hi.jpg"              # 大きい1枚（2304x1296）が常に置かれる
+HIRES_MAX_AGE = 10.0                         # これより古い大きい1枚は使わない
+HIRES_GAP = 8.0                              # 撮り直しを頼まれたときの最短間隔
 # 写真が古いままこれだけ続いたら、映像ごと繋ぎ直す。
 # 見張りの映像だけが流れつづけ、写真の書き出しだけが止まることがある。
 # その状態は「映像が切れた」と判定されないので、放っておくと目が閉じたまま
@@ -87,6 +96,24 @@ def watch_stream():
          "-an", "-vf", "fps=%d,hflip,vflip" % SHOT_FPS, "-q:v", "3",
          "-update", "1", "-y", SHOT],
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+
+def hires_stream():
+    """主ストリーム（2304x1296）から、大きい1枚を作り替えつづける。
+
+    以前は顔が要るたびにffmpegを起こしていたが、接続の手続きだけで2.9秒かかり、
+    その間に人が通り過ぎていた。かといって流しっぱなしにするとラズパイの
+    CPUを1コア食い切る——と思われていたが、それは全コマを開いていたから。
+
+    `-skip_frame nokey` を付けると、飛び飛びの基準コマ（2〜4秒に1枚）だけを
+    開いて、あいだのコマは開かずに捨てる。実測では負荷平均が 0.42 のまま
+    変わらなかった（2026-09-05）。これで大きい1枚がいつでも手元にある。"""
+    return subprocess.Popen(
+        ["ffmpeg", "-v", "error", "-rtsp_transport", "tcp",
+         "-skip_frame", "nokey", "-i", CAM_URL,
+         "-an", "-vsync", "0", "-vf", "hflip,vflip", "-q:v", "3",
+         "-update", "1", "-y", HIRES_SHOT],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def diff(a: bytes, b: bytes) -> float:
@@ -154,17 +181,31 @@ class Watcher(threading.Thread):
             prev = buf
 
 
-def grab() -> bytes | None:
-    """できあがっている最新の1枚を読む。新しくなければNone。"""
+def _read_fresh(path: str, max_age: float) -> bytes | None:
+    """できあがっている1枚を読む。古ければNone。書きかけも捨てる。"""
     try:
-        if time.time() - os.path.getmtime(SHOT) > SHOT_MAX_AGE:
+        if time.time() - os.path.getmtime(path) > max_age:
             return None                       # 映像が止まっている
-        with open(SHOT, "rb") as f:
+        with open(path, "rb") as f:
             data = f.read()
-        return data if data[-2:] == b"\xff\xd9" else None   # 書きかけは捨てる
+        return data if data[-2:] == b"\xff\xd9" else None
     except Exception as e:
-        print("grab failed:", e, flush=True)
+        print("grab failed:", path, e, flush=True)
         return None
+
+
+def grab() -> bytes | None:
+    """副ストリーム（1280x720）の最新の1枚。"""
+    return _read_fresh(SHOT, SHOT_MAX_AGE)
+
+
+def grab_big() -> bytes | None:
+    """主ストリーム（2304x1296）の最新の1枚。無ければNone。
+
+    顔の幅は1280幅で87〜150px、2304幅で100〜222px（9/5の実測）。
+    新しい人を覚えられる線は120pxなので、人が動いている間は
+    こちらを送る。誰も居ない定時報告では副ストリームで足りる。"""
+    return _read_fresh(HIRES_SHOT, HIRES_MAX_AGE)
 
 
 _pose = [""]           # いまカメラが向いている先。写真に添えて送る
@@ -220,29 +261,6 @@ def refresh_pose() -> None:
     w = sweep.settled()
     if w:
         _pose[0] = "%.2f_%.2f" % w
-
-
-def grab_hires() -> bytes | None:
-    """主ストリーム（2304x1296）から1枚。顔を探すときだけ使う。
-
-    普段送っているのは副ストリーム（1280x720）で、顔が135pxまで小さくなり
-    確信度0.53で落ちた場面があった。主ストリームなら同じ顔が243pxになる。
-    接続の手続きに3秒近くかかるので、必要な時だけ呼ぶ。"""
-    try:
-        subprocess.run(
-            # 接続の手続きを削る。既定では中身を数秒ぶん覗いてから
-            # 始めるので、その間に人が通り過ぎてしまう。
-            ["ffmpeg", "-y", "-v", "error", "-rtsp_transport", "tcp",
-             "-probesize", "100000", "-analyzeduration", "0",
-             "-fflags", "nobuffer", "-flags", "low_delay",
-             "-i", CAM_URL, "-frames:v", "1", "-vf", "hflip,vflip",
-             "-q:v", "2", HIRES_SHOT],
-            check=True, timeout=25, capture_output=True)
-        with open(HIRES_SHOT, "rb") as f:
-            return f.read()
-    except Exception as e:
-        print("hires grab failed:", e, flush=True)
-        return None
 
 
 def send(jpg: bytes, big: bool = False) -> dict:
@@ -310,6 +328,7 @@ def main():
     print("tapo bridge start ->", SERVER, flush=True)
     while True:
         proc = watch_stream()
+        big_proc = hires_stream()        # 大きい1枚を作り替えつづける別の流れ
         w = Watcher(proc)
         w.start()
         last_sent = last_hint = last_sweep = last_pose = last_hires = 0.0
@@ -362,10 +381,16 @@ def main():
                 gap = GAP_BUSY if busy else GAP_HEARTBEAT
                 if now - last_sent >= gap:
                     last_sent = now
-                    jpg = grab()
+                    # 動いている間は大きいほうを送る。顔の幅が1.8倍になり、
+                    # 新しい人を覚えられる線（120px）を越えられる。
+                    # 誰も居ない定時報告は小さいほうで足りる（費用も軽い）。
+                    jpg, is_big = (grab_big(), True) if busy else (None, False)
+                    if jpg is None:
+                        jpg, is_big = grab(), False
                     if jpg is None:
                         continue                      # 次の周で撮り直せばよい
-                    res = report(jpg, "動き" if busy else "定時")
+                    res = report(jpg, ("動き・大" if is_big else "動き") if busy
+                                 else "定時", big=is_big)
                     if someone(res):
                         # 座って動かない人を見失わないため、クラウドが人を
                         # 見たと言う間は「まだ居る」として見張りを続ける。
@@ -375,7 +400,7 @@ def main():
                         # 人は写っているのに顔が取れなかった、と返ってきた。
                         # 大きく撮り直せば取れるかもしれないので、もう一度送る。
                         last_hires = now
-                        shot = grab_hires()
+                        shot = grab_big()
                         if shot is not None:
                             print(time.strftime("%H:%M:%S"),
                                   "顔を探すため大きく撮り直す", flush=True)
@@ -384,10 +409,11 @@ def main():
         except Exception as e:
             print("watch failed:", e, flush=True)
         finally:
-            try:
-                proc.kill()
-            except Exception:
-                pass
+            for pr in (proc, big_proc):
+                try:
+                    pr.kill()
+                except Exception:
+                    pass
         print("watch stream ended", flush=True)
         time.sleep(GAP_ERROR)            # 映像が切れたら少し待って繋ぎ直す
 
