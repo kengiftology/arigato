@@ -97,6 +97,23 @@ def main():
         print("    最小%d / 中央%d / 最大%d px" % (pxs[0], pxs[len(pxs) // 2], pxs[-1]))
         print()
 
+    # --- 1枚で決めるのと、数枚の平均で決めるのと ---------------------
+    pairs = [(e["sim1"], e["sim"], e.get("n", 1)) for e in arrive
+             if "sim1" in e and "sim" in e]
+    print("[3.5] 1枚だけで決めた場合と、数枚の平均で決めた場合（%d件）" % len(pairs))
+    if pairs:
+        multi = [p for p in pairs if p[2] >= 2]
+        up = sum(1 for a, b, _ in multi if b > a)
+        print("    2枚以上たまった回数： %d" % len(multi))
+        if multi:
+            print("    平均のほうが高かった： %d / %d" % (up, len(multi)))
+            print("    1枚だけ  中央 %.3f" % sorted(p[0] for p in multi)[len(multi) // 2])
+            print("    平均     中央 %.3f" % sorted(p[1] for p in multi)[len(multi) // 2])
+            print("    ためた枚数 最大 %d" % max(p[2] for p in multi))
+    else:
+        print("    まだ判断が起きていません")
+    print()
+
     # --- 人が居た時間帯 ---------------------------------------------
     visits = []
     for e in sorted(ev, key=lambda e: e["t"]):

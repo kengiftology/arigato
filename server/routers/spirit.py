@@ -317,6 +317,34 @@ async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
         return {}
 
 
+# 直近の顔を数枚ためておく器。1枚で「誰か」を決めるのをやめるため。
+# 実測（2026-09-05）で、1枚あたりの一致度は同じ人でも0.09〜0.52に散った。
+# 数枚の平均をとれば、1枚ごとの当たり外れは打ち消し合う。
+_face_buf = []            # [(特徴量, 顔の幅, 時刻), ...]
+FACE_BUF_SEC = 25.0       # これより古い顔は忘れる（別の人が来ているかもしれない）
+FACE_BUF_MAX = 8          # ためる枚数の上限
+FACE_BUF_MIN_NEW = 3      # 新しいIDを出すのに、最低これだけの枚数が要る
+
+
+def _blend(vecs: list) -> list:
+    """特徴量を平均して、長さを1に揃え直す。"""
+    import numpy as np
+    m = np.mean([np.asarray(v, dtype=np.float32) for v in vecs], axis=0)
+    return [float(x) for x in (m / (float(np.linalg.norm(m)) + 1e-9))]
+
+
+def _remember_face(vec: list, px: int) -> tuple:
+    """この顔をためて、たまっている顔の平均を返す。
+
+    返すのは (平均した特徴量, たまっている枚数, 一番大きく写った幅)。
+    人が3秒おきに写るので、10秒立っていれば3〜4枚たまる。"""
+    now = time.time()
+    _face_buf[:] = [x for x in _face_buf if now - x[2] <= FACE_BUF_SEC][-(FACE_BUF_MAX - 1):]
+    _face_buf.append((vec, px, now))
+    return (_blend([v for v, _p, _t in _face_buf]), len(_face_buf),
+            max(p for _v, p, _t in _face_buf))
+
+
 def _identify(data: bytes):
     """写真から顔を探して匿名IDに結びつける。顔が無ければ None。
     実名は扱わない。初めての顔には新しい匿名IDを発行して「卵」にする。
@@ -331,7 +359,10 @@ def _identify(data: bytes):
     if not found:
         return None
     px = max(f["px"] for f in found)
-    people = [_identify_one(f["crop"], f["px"], f.get("edge")) for f in found]
+    # 1人だけ写っているときは、数枚ためて平均で決める。
+    # 2人以上のときは誰の顔かの取り違えが起きるので、1枚ずつ決める。
+    solo = len(found) == 1
+    people = [_identify_one(f["crop"], f["px"], f.get("edge"), solo) for f in found]
     people = [x for x in people if x]
     if not people:
         return {"person": None, "px": px}
@@ -341,8 +372,12 @@ def _identify(data: bytes):
             "all": [x["person"] for x in people]}
 
 
-def _identify_one(crop, px: int, edge: bool = False):
-    """切り抜き1つを匿名IDに結びつける。"""
+def _identify_one(crop, px: int, edge: bool = False, solo: bool = False):
+    """切り抜き1つを匿名IDに結びつける。
+
+    solo=True（1人だけ写っている）のときは、この1枚だけでは決めない。
+    直近25秒ぶんの顔をためて、その平均で照合する。記録には
+    「1枚だけで決めた場合の値(sim1)」も残すので、平均が効いたか後で測れる。"""
     from server import face
     if edge:
         # 画面の端で切れた顔。写っていない半分は読めないので、
@@ -354,24 +389,32 @@ def _identify_one(crop, px: int, edge: bool = False):
         # 「顔は見えた」ことだけ残して、呼ぶ側に撮り直しを任せる。
         _log_small("too_small_to_match", px)
         return None
-    vec = face.embed(crop)
-    if vec is None:
+    one = face.embed(crop)
+    if one is None:
         return None
     known = _known_faces()
+    _, sim1 = face.match(one, known)                 # 1枚だけで決めた場合の値（比べる用）
+    if solo:
+        vec, n, best_px = _remember_face(one, px)
+    else:
+        vec, n, best_px = one, 1, px
     pid, sim = face.match(vec, known)
+    note = {"sim": round(sim, 3), "sim1": round(sim1, 3), "n": n, "px": best_px}
     db = get_db()
     if pid is None:                                  # 初めて見る顔
-        if not face.big_enough_to_enroll(px):
+        if not face.big_enough_to_enroll(best_px):
             # 小さく写った顔からは卵を作らない。同じ人でも一致度が下がり、
             # 知っている人の隣に新しいIDが並んでしまう（2026-09-03に発生）。
-            _log_small("too_small", px, sim=round(sim, 3))
+            _log_small("too_small", best_px, sim=round(sim, 3), sim1=round(sim1, 3), n=n)
             return None
-        if not _confirm_new(vec):
-            return None                              # 一度きりの見え方は信用しない
+        # 数枚そろっていれば、それ自体が「一度きりではない」証拠になる。
+        # 1枚しか無いときは、今までどおり短い間に2回見たかを確かめる。
+        if n < FACE_BUF_MIN_NEW and not _confirm_new(vec):
+            return None
         pid = _new_person_id()
         db.collection("faces").document(pid).set(
             {"vecs": [{"v": vec}], "born": time.time(), "persona": "", "state": "egg"})
-        _log_event("arrive", {"person": pid, "state": "new_egg", "sim": round(sim, 3)})
+        _log_event("arrive", dict(note, person=pid, state="new_egg"))
         return {"person": pid, "state": "egg"}
     doc = db.collection("faces").document(pid).get().to_dict() or {}
     vecs = doc.get("vecs", [])
@@ -379,7 +422,7 @@ def _identify_one(crop, px: int, edge: bool = False):
         vecs.append({"v": vec})
         db.collection("faces").document(pid).update({"vecs": vecs})
     state = "ready" if doc.get("persona") else "egg"
-    _log_event("arrive", {"person": pid, "state": state, "sim": round(sim, 3)})
+    _log_event("arrive", dict(note, person=pid, state=state))
     return {"person": pid, "state": state}
 
 
