@@ -14,3 +14,4 @@ __pycache__/
 # 検証用に落としてきた公開音声
 samples/
 work/
+kid/
