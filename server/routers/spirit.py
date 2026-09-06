@@ -1797,7 +1797,21 @@ async def voice_pcm():
     if _voice_cache["text"] != text or _voice_cache["pcm"] is None:
         pcm = _synth_ja(text)
         if pcm is None:
-            raise HTTPException(status_code=503, detail=_voice_cache.get("err") or "no voice")
+            # 合成が使えない場でも、持ち歌はGCSに19本ある。
+            # 503を返していた頃は、本体がそれを受けて素の鳴き声に落ちていた
+            # （2026-09-06、4回続けて503。ユーザーが聞いたのは日本語ではなく
+            # あつ森語のほうだった）。何も言うことが無いなら204で黙る。
+            name = _pick_line("alone")
+            if name:
+                try:
+                    pcm = read_object(LINES_PREFIX + name + ".pcm")
+                except Exception as e:
+                    logger.warning("fallback line read failed: %s", e)
+                    pcm = None
+            if pcm:
+                return Response(content=pcm,
+                                media_type="application/octet-stream")
+            return Response(status_code=204)
         _voice_cache["pcm"] = pcm
         _voice_cache["text"] = text
     return Response(content=_voice_cache["pcm"], media_type="application/octet-stream")
