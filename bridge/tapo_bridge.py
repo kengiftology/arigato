@@ -80,6 +80,7 @@ POSE_GAP = 30.0        # カメラの向きを確かめにいく間隔
 STILL_HOLD = 20.0     # 最後に動いてからこの秒数は「まだ居る」とみなす
 CALIB_FRAMES = 20     # 最初のこの枚数で、その部屋の「静かさ」を測る
 SETTLE_FRAMES = 8     # 首を振った直後、揺れが収まるまで捨てるコマ数
+SETTLE_AFTER_MOVE = 4.0  # 見回りで振ったあと、映像が入れ替わるのを待つ秒数
 
 
 def watch_stream():
@@ -285,6 +286,49 @@ def hint() -> str:
         return ""
 
 
+def checked() -> None:
+    """見回りが済んだと伝える。"""
+    try:
+        req = urllib.request.Request(SERVER + "/spirit/checked",
+                                     data=b"", method="POST")
+        urllib.request.urlopen(req, timeout=5).read()
+    except Exception as e:
+        print("checked failed:", e, flush=True)
+
+
+def go_check(pose: str, w) -> None:
+    """キッチンを見に行って、1枚だけ撮って、また戻る（2026-09-06）。
+
+    普段は入り口を向いて待っている。人は数秒で通り過ぎるので、鳴ってから
+    振ったのでは顔に間に合わないため。ただし物の増減は入り口からは見えない。
+
+    そこで、誰も居ないと分かってから見に行く。撮るのは1枚だけ。
+    前後比較は「誰も居ないキッチンの2枚」どうしになるので成立する。
+    往復で10秒ほど。この間に人が来たら入り口の顔は逃すが、人感は鳴るので
+    「誰か来ていた」ことは残る。"""
+    try:
+        x, y = (float(v) for v in pose.split("_"))
+    except ValueError:
+        print("bad check pose:", pose, flush=True)
+        checked()
+        return
+    print(time.strftime("%H:%M:%S"), "キッチンを見に行く", pose, flush=True)
+    if not sweep.look(x, y):
+        checked()                      # 振れなかった。次の機会に回す
+        return
+    w.reset = True                     # 景色が変わったので静かさを測り直す
+    time.sleep(SETTLE_AFTER_MOVE)      # 揺れが収まり、映像が入れ替わるのを待つ
+    jpg = grab_big() or grab()
+    if jpg is not None:
+        _pose[0] = pose                # この1枚に添える向き
+        report(jpg, "見回り", big=True)
+    checked()
+    sweep.go_home()                    # 入り口へ戻る
+    w.reset = True
+    refresh_pose()
+    print(time.strftime("%H:%M:%S"), "入り口へ戻った", _pose[0], flush=True)
+
+
 def hint_clear() -> None:
     """探し終わったら札を下ろす。"""
     try:
@@ -344,7 +388,11 @@ def main():
                 # 首を振って探しに行く。見張りは別の流れなので止まらない。
                 if now - last_hint >= HINT_GAP:
                     last_hint = now
-                    if now - last_sweep >= SWEEP_COOLDOWN and hint() == "sweep":
+                    tag = hint()
+                    if tag.startswith("check "):
+                        go_check(tag.split(None, 1)[1].strip(), w)
+                        continue
+                    if now - last_sweep >= SWEEP_COOLDOWN and tag == "sweep":
                         last_sweep = now
                         hint_clear()
                         if sweep.search(grab, has_person):

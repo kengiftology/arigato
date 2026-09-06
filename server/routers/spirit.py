@@ -776,7 +776,9 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     _save(st)
     # 人が去って落ち着いてから突き合わせる。居る間の1枚を「後」にすると
     # 本人が写り込んでしまい、物の変化と見分けがつかない。
-    if npeople == 0 and now - st.get("last_seen", 0) > VISIT_END_GAP:
+    check = st.get("check_pose") or ""
+    right_place = (not check) or (pose == check)   # 見に行く先で撮った1枚か
+    if right_place and npeople == 0 and now - st.get("last_seen", 0) > VISIT_END_GAP:
         # 区画の数だけAIに問い合わせるので、返事を待たせると橋渡しが
         # 待ちきれずに切れる。返事は先に返し、突き合わせは裏で走らせる。
         if not _zone_busy[0]:
@@ -887,9 +889,48 @@ async def hint():
     # 人感が鳴った瞬間に札が自分で消えてしまう。顔が取れているかで判断する。
     if st.get("sweep_paused"):
         return ""                              # 設置作業中などは動かさない
-    if time.time() - st.get("last_seen", 0) < 60:
+    now = time.time()
+    # 誰も居ないと分かってから、キッチンを見に行く。
+    # 目はここを3秒おきに覗きにくるので、札を立てるだけで伝わる。
+    check = st.get("check_pose") or ""
+    if (check and now - st.get("last_seen", 0) > CHECK_QUIET_SEC
+            and now - st.get("checked_at", 0) > CHECK_GAP):
+        return "check " + check + "\n"
+    if now - st.get("last_seen", 0) < 60:
         return ""                              # 顔が取れている＝探す必要はない
-    return "sweep\n" if time.time() < st.get("hint_until", 0) else ""
+    return "sweep\n" if now < st.get("hint_until", 0) else ""
+
+
+@router.get("/checkpose", response_class=PlainTextResponse)
+async def checkpose_get():
+    """見に行く先（キッチンの向き）。空なら見回りをしない。"""
+    return (_load().get("check_pose") or "") + "\n"
+
+
+@router.post("/checkpose")
+async def checkpose_set(pose: str = "", key: str = ""):
+    """見に行く先を決める。いまカメラが向いている先を渡すのが早い。
+
+    pose を空にすると見回りをやめる（1つの向きに留まる）。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    st = _load()
+    st["check_pose"] = pose or ""
+    st["checked_at"] = 0                       # すぐ1回目を見に行かせる
+    st["zones"] = []                           # 区画は見に行く先で立て直す
+    _log_event("checkpose", {"pose": st["check_pose"]})
+    _save(st)
+    return {"ok": True, "check_pose": st["check_pose"],
+            "note": "誰も居なくなってから見に行きます"}
+
+
+@router.post("/checked", response_class=PlainTextResponse)
+async def checked():
+    """見回りが済んだことを目が伝える。次は CHECK_GAP 後まで行かない。"""
+    st = _load()
+    st["checked_at"] = time.time()
+    _save(st)
+    return "ok\n"
 
 
 @router.post("/hint/clear", response_class=PlainTextResponse)
@@ -1954,7 +1995,34 @@ async def map_zones(request: Request, x_upload_key: str = Header(None)):
 # 良し悪しの判定も自分でやる。誰も来ていない時間帯の前後を比べて出た
 # 「変化」は、定義上すべて誤報である。それを数えれば、どの区画が
 # 信用できるかは人が決めなくても分かる。
-BASELINE_OBJ = "spirit/zonecheck/baseline.jpg"
+BASELINE_OBJ = "spirit/zonecheck/baseline.jpg"        # 旧・単一の基準（読み残し用）
+BASELINE_PREFIX = "spirit/zonecheck/base_"           # 向きごとの基準写真
+
+# ■ 二つの持ち場（2026-09-06）
+#
+# カメラは1台なので、同じ瞬間に「入り口」と「キッチン」の両方は見られない。
+# だが、この二つは必要になる時刻が違う。
+#
+#   顔を撮る       … 秒単位。人は数秒で通り過ぎる。鳴ってから振ったのでは遅い
+#   場所の変化を測る … 分単位。誰も居なければ、いつ撮っても同じ
+#
+# そこで、普段は入り口を向いたまま待つ（いつでも顔を撮れる状態）。
+# 誰も居ないと分かってからキッチンへ見に行き、1枚撮って、また戻る。
+# 前後比較は「誰も居ないキッチンの2枚」どうしなので成立する。
+#
+# 見張りはカメラではなく人感センサーがしている（24時間で110回）。
+# カメラを見張りから降ろせるのは、そのおかげ。
+CHECK_QUIET_SEC = 180.0     # 人が去ってこれだけ静かなら、見に行ってよい
+CHECK_GAP = 1800.0          # 見回りの間隔。これより短くは行かない
+
+
+def _baseline_key(pose: str) -> str:
+    """その向き専用の基準写真の置き場。
+
+    向きごとに分けないと、入り口の1枚とキッチンの1枚を見比べることになり、
+    何も起きていなくても全部変わって見える。"""
+    safe = "".join(c if c.isalnum() or c in "._-" else "_" for c in (pose or "none"))
+    return BASELINE_PREFIX + safe + ".jpg"
 SWEEP_HINT_SEC = 120.0      # 人感が鳴ってから、目が探しに行く猶予
 VISIT_END_GAP = 90.0        # 最後に人を見てからこれだけ経てば「去った」
 VISIT_HOLD = 300.0          # 顔が取れた人を、この秒数は「まだ居る」として扱う
@@ -2186,7 +2254,8 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
             st["zones"] = await _derive_zones(data)
             if st["zones"]:
                 _log_event("zones_set", {"zones": [z["name"] for z in st["zones"]]})
-        base = read_object(BASELINE_OBJ)
+        key = _baseline_key(pose)
+        base = read_object(key)
         stale = now - st.get("baseline_at", 0) > BASELINE_MAX_AGE
         if base is None or st.get("baseline_pose") != pose or stale:
             # 「前」が無いか、カメラの向きが変わったか、古すぎる。
@@ -2197,7 +2266,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
                 logger.info("baseline reset (%s -> %s, age %ds)",
                             st.get("baseline_pose"), pose,
                             now - st.get("baseline_at", 0))
-            upload_to(BASELINE_OBJ, data, "image/jpeg")
+            upload_to(key, data, "image/jpeg")
             st["baseline_at"] = now
             st["baseline_pose"] = pose
             st["visit_people"] = []            # 比べられなかった来訪は数えない
@@ -2212,7 +2281,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         if quiet and now - st.get("baseline_at", 0) < IDLE_CHECK_GAP:
             return                             # 静かな時は、そう何度も点検しない
         await _zone_pass(st, base, data, who, quiet, st.get("seen_by") or [])
-        upload_to(BASELINE_OBJ, data, "image/jpeg")
+        upload_to(key, data, "image/jpeg")
         st["baseline_at"] = now
         st["baseline_pose"] = pose
         st["visit_people"] = []
