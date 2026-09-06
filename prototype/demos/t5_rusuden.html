@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>デモ5 留守電 — ありがとう</title>
+<link rel="stylesheet" href="./proto.css">
+<style>
+  .proto-nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px; font-size: 0.7rem; color: var(--text-muted);
+    background: var(--surface);
+  }
+  .proto-nav a { color: var(--text-muted); text-decoration: none; }
+  .chat { padding-bottom: 120px; }
+  /* 再生ボタン（🌱の代わりに▶） */
+  .chat-thank-btn.vm-play::before { content: "▶"; font-size: 0.68rem; }
+  .chat-thank-btn.vm-play:disabled { opacity: 0.55; cursor: default; }
+  /* 各留守電の受信ラベル */
+  .vm-when { margin: 0 0 4px 2px; }
+  /* 再生中の「…」 */
+  @keyframes vmTyping { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  .bubble-place.typing { animation: vmTyping 0.9s ease-in-out infinite; }
+  /* 全部聞くまで入力は閉じておく */
+  .chat-input:disabled { opacity: 0.55; }
+  .chat-send:disabled { opacity: 0.45; cursor: default; }
+</style>
+</head>
+<body>
+
+<div class="proto-nav"><a href="./index.html">← デモ一覧</a><span>デモ5：留守電</span></div>
+
+<div class="chat-header">
+  <div class="chat-header-icon">🌿</div>
+  <div>
+    <div class="chat-header-name">リビング</div>
+    <div class="chat-header-sub" id="vmSub">留守電 3件</div>
+  </div>
+</div>
+
+<div class="chat" id="chat">
+  <div class="msg-place">
+    <div class="msg-place-icon">🌿</div>
+    <div class="msg-place-bubbles">
+      <div class="bubble-place">おかえり。<br>留守のあいだのこと、3件とってあるよ。</div>
+      <button class="chat-thank-btn vm-play" id="playBtn" onclick="playNext()">聞く</button>
+    </div>
+  </div>
+</div>
+
+<div class="chat-compose">
+  <button class="chat-cam" onclick="camHint()">📷</button>
+  <input class="chat-input" id="chatInput" placeholder="おかえりの一言を返す" disabled onkeydown="if(event.key==='Enter')sendMsg()">
+  <button class="chat-send" id="sendBtn" onclick="sendMsg()" disabled>送る</button>
+</div>
+
+<div class="toast" id="toast">
+  <div class="toast-icon">🌱</div>
+  <div>
+    <div class="toast-app">ありがとう</div>
+    <div class="toast-msg" id="toastMsg"></div>
+    <div class="toast-sub" id="toastSub"></div>
+  </div>
+</div>
+
+<script src="./data.js"></script>
+<script>
+var lastCare = ZONE_DATA.cares[ZONE_DATA.cares.length - 1];
+
+var MAILS = [
+  {
+    label: "木曜のよる",
+    inner: '<div class="bubble-place">木曜のよる、風で窓がカタカタいってた。ちょっと心細かったな。</div>'
+  },
+  {
+    label: "金曜",
+    inner: '<div class="bubble-place photo"><div class="photo-wrap"><img class="card-photo" src="' + lastCare.after_photo + '" alt=""></div></div>' +
+      '<div class="bubble-place">この姿、まだキープできてるよ。</div>'
+  },
+  {
+    label: "けさ",
+    inner: '<div class="bubble-place">けさは光がよく入ったんだ。あなたが来て、いまがいちばんうれしい。</div>'
+  }
+];
+var played = 0;
+var busy = false;
+
+function placeMsg(label) {
+  var chat = document.getElementById("chat");
+  var wrap = document.createElement("div");
+  wrap.className = "msg-place";
+  wrap.innerHTML = '<div class="msg-place-icon">🌿</div>' +
+    '<div class="msg-place-bubbles">' +
+    (label ? '<div class="chat-time vm-when">' + label + "</div>" : "") +
+    '<div class="bubble-place typing">…</div>' +
+    "</div>";
+  chat.appendChild(wrap);
+  wrap.scrollIntoView({ behavior: "smooth", block: "end" });
+  return wrap;
+}
+
+function playNext() {
+  if (busy || played >= MAILS.length) return;
+  busy = true;
+  var btn = document.getElementById("playBtn");
+  btn.disabled = true;
+  var mail = MAILS[played];
+  var wrap = placeMsg(mail.label);
+  setTimeout(function () {
+    wrap.querySelector(".msg-place-bubbles").innerHTML =
+      '<div class="chat-time vm-when">' + mail.label + "</div>" + mail.inner;
+    wrap.scrollIntoView({ behavior: "smooth", block: "end" });
+    played++;
+    document.getElementById("vmSub").textContent = "留守電 " + (MAILS.length - played) + "件";
+    busy = false;
+    if (played >= MAILS.length) {
+      btn.style.display = "none";
+      document.getElementById("chatInput").disabled = false;
+      document.getElementById("sendBtn").disabled = false;
+    } else {
+      btn.disabled = false;
+    }
+  }, 700);
+}
+
+function sendMsg() {
+  var input = document.getElementById("chatInput");
+  if (input.disabled) return;
+  var msg = input.value.trim();
+  input.value = "";
+  var chat = document.getElementById("chat");
+  var you = document.createElement("div");
+  you.className = "msg-you";
+  you.innerHTML = '<div class="bubble-you">' + (msg || "ただいま") + "</div>";
+  chat.appendChild(you);
+  you.scrollIntoView({ behavior: "smooth", block: "end" });
+  setTimeout(function () {
+    var wrap = placeMsg(null);
+    setTimeout(function () {
+      var b = wrap.querySelector(".bubble-place");
+      b.classList.remove("typing");
+      b.textContent = "うん。また留守番してるね。";
+      wrap.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, 700);
+  }, 500);
+}
+
+function camHint() {
+  var t = document.getElementById("toast");
+  document.getElementById("toastMsg").textContent = "これはデモ版です";
+  document.getElementById("toastSub").textContent = "撮影・投稿は本物のアプリでどうぞ";
+  t.classList.add("show");
+  setTimeout(function () { t.classList.remove("show"); }, 2400);
+}
+</script>
+</body>
+</html>
