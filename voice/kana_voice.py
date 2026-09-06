@@ -88,7 +88,7 @@ def parse(text):
                    "m": "m", "r": "r", "g": "g", "j": "j", "b": "b",
                    "p": "p"}.get(con, con)
             i += 1
-        out.append((con, vow, 0.13))
+        out.append((con, vow, 0.15))
         i += 1
     return out
 
@@ -105,14 +105,33 @@ def reson(x, freqs, bw=(80, 110, 150)):
 
 
 def glottal(n, f0, jitter, breath, rng):
-    x = np.zeros(n, dtype=np.float32)
+    """声帯の動き。
+
+    点（インパルス）を並べると、全ての周波数が同じ強さで入り、
+    ザラついた音になる。本物の声帯はなめらかに開いて閉じるので、
+    高い方が自然に落ちる。その形（開く山と、閉じる下り坂）を作る。
+
+    息は、口の中で作られる高い方の雑音なので、低い方は混ぜない。"""
+    x = np.zeros(n + 512, dtype=np.float32)
     t = 0.0
-    while int(t) < n:
-        x[int(t)] = 1.0
-        t += max(8.0, SR / (f0 * (1.0 + rng.normal(0, jitter))))
-    x = np.convolve(x, np.exp(-np.arange(40) / 6.0).astype(np.float32))[:n]
+    while t < n:
+        T = SR / (f0 * (1.0 + rng.normal(0, jitter)))
+        T = max(10.0, T)
+        op = int(T * 0.44)                    # 開いていく長さ
+        cl = int(T * 0.18)                    # 閉じる長さ（ここが急なほど明るい）
+        i0 = int(t)
+        if op > 1:
+            a = np.arange(op) / op
+            x[i0:i0 + op] += (0.5 - 0.5 * np.cos(np.pi * a)).astype(np.float32)
+        if cl > 1:
+            b = np.arange(cl) / cl
+            x[i0 + op:i0 + op + cl] += np.cos(0.5 * np.pi * b).astype(np.float32)
+        t += T
+    x = x[:n]
     if breath:
-        x = x * (1 - breath * 0.5) + rng.normal(0, 1, n).astype(np.float32) * breath * 0.3
+        nz = rng.normal(0, 1, n).astype(np.float32)
+        nz = lfilter([1.0, -0.97], [1.0], nz)  # 低い方を落とす（息は高い成分）
+        x = x * (1 - breath * 0.35) + nz * breath * 0.12
     return x
 
 
@@ -156,6 +175,8 @@ def mora(con, vow, dur, f0, size, breath, jitter, rng):
     e[:a] = np.linspace(0, 1, a)
     e[-r:] = np.linspace(1, 0, r)
     y = y * e
+    # 唇から外へ出るときの変化（高い方が少し持ち上がる）
+    y = lfilter([1.0, -0.94], [1.0], y).astype(np.float32)
     return np.concatenate(pre + [y]) if pre else y
 
 
