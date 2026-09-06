@@ -108,7 +108,8 @@ def main():
         f.unlink()
     say("")
     for tag, text in LINES:
-        for label, wp in (("キャラ100", 0.0), ("キャラ70_人30", 0.3), ("キャラ50_人50", 0.5)):
+        for label, wp in (("キャラ100", 0.0), ("キャラ70_人30", 0.3), ("キャラ50_人50", 0.5),
+                          ("キャラ40_人60", 0.6), ("キャラ30_人70", 0.7)):
             g = wmean([char_l, ppl_l], [1 - wp, wp])
             s = wmean([char_e, ppl_e], [1 - wp, wp])
             wav = np.asarray(model.inference(text, "ja", torch.tensor(g).to(dev),
