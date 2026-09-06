@@ -634,6 +634,23 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 st["cur_state"] = res["state"]
                 st["last_seen"] = now
                 st["face_at"] = now              # 最後に顔で確かめた時刻
+                if st.get("cur_person") != res["person"] or not st.get("speak_line"):
+                    try:
+                        doc = get_db().collection("faces").document(
+                            res["person"]).get().to_dict() or {}
+                    except Exception:
+                        doc = {}
+                    b = _bond_now(doc)
+                    alone = len(st.get("visit_people") or []) <= 1
+                    if res["state"] == "egg" and len(doc.get("vecs") or []) <= 1:
+                        kind, slow = "hello_new", True     # 初対面はためらう
+                    elif b >= 1.5:
+                        kind, slow = "hello_close", False
+                    elif b <= -0.3 and alone:
+                        kind, slow = "hello_cold", False
+                    else:
+                        kind, slow = "hello_known", False
+                    _plan_speech(st, kind, slow)
                 # 前回の判断からこちら、誰が居たかを溜めておく。
                 # 判断の時点で cur_person を見ると、とうに帰った人の名が残り、
                 # 無人の記録にまで同じIDが付いていた（2026-09-02に実際に起きた）。
@@ -1520,6 +1537,62 @@ async def faces_similar():
 
 
 
+# ---- 持ち歌（2026-09-06）----
+# クラウドにGPUは無いので、その場では声を合成できない。
+# 憲法どおりなら台詞は限られた数で足りる（数も評価も助言も言わないので）、
+# あらかじめ作った音をGCSに置き、場面で選ぶ。
+# 生き物の持ち歌が限られているのは、むしろ自然なこと。
+#
+# 第5条（間を置く）もここで守る。0.3秒以内に返すのは「軽率」なので、
+# 鳴らしてよい時刻を決めておき、それより前に取りに来ても何も渡さない。
+LINES_PREFIX = "spirit/lines/"
+SPEAK_MIN = 0.8            # これより早くは返さない
+SPEAK_MAX = 1.6            # ふつうの間
+SPEAK_SLOW = 3.0           # ためらうときの間
+SILENT_CHANCE = 0.1        # 10回に1回は黙る（ぎこちなさを残す・p.159）
+
+_line_cache = {"at": 0.0, "names": []}
+
+
+def _line_names() -> list:
+    """置いてある持ち歌の名前。数分は覚えておく。"""
+    now = time.time()
+    if now - _line_cache["at"] > 300 or not _line_cache["names"]:
+        try:
+            _line_cache["names"] = [b["name"].split("/")[-1].replace(".pcm", "")
+                                    for b in list_prefix(LINES_PREFIX)
+                                    if b["name"].endswith(".pcm")]
+            _line_cache["at"] = now
+        except Exception as e:
+            logger.warning("line list failed: %s", e)
+    return _line_cache["names"]
+
+
+def _pick_line(kind: str) -> str | None:
+    """その場面の持ち歌から1つ選ぶ。毎回同じにはしない。"""
+    import random
+    cands = [n for n in _line_names() if n.rsplit("_", 1)[0] == kind]
+    return random.choice(cands) if cands else None
+
+
+def _plan_speech(st: dict, kind: str, slow: bool = False) -> None:
+    """何を、いつ鳴らすかを決める。
+
+    すぐ返すと、聞いていたのではなく反射したように見える。
+    間があると、受け取って・考えて・返した、という順序が生まれる。"""
+    import random
+    if random.random() < SILENT_CHANCE:
+        st["speak_line"] = None                    # たまに黙る
+        return
+    name = _pick_line(kind)
+    if not name:
+        return
+    gap = random.uniform(SPEAK_MIN, SPEAK_SLOW if slow else SPEAK_MAX)
+    st["speak_line"] = name
+    st["speak_at"] = time.time() + gap
+    _log_event("speak", {"line": name, "after": round(gap, 2)})
+
+
 # ---- 日本語の声（2026-08-31）----
 # クラウドで一言を音声に変換し、C3が取りに来て流す。
 # C3のI2Sは 16kHz・16bit・モノラル なので、その形の生PCMで返す。
@@ -1556,10 +1629,51 @@ def _synth_ja(text: str) -> bytes | None:
         return None
 
 
+@router.post("/lines/{name}")
+async def put_line(name: str, request: Request, x_upload_key: str = Header(None)):
+    """持ち歌を1本置く。手元のGPUで作ったものを送り込むための口。
+
+    クラウドにGPUは無いので声は作れない。作るのは手元、置くのはここ。
+    声を作り直したくなったら、同じ名前で上書きすればよい。"""
+    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    if not re.fullmatch(r"[a-z_]+_\d+", name):
+        raise HTTPException(status_code=400, detail="bad name")
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty body")
+    url = upload_to(LINES_PREFIX + name + ".pcm", data, "application/octet-stream")
+    _line_cache["at"] = 0.0                 # 覚え直させる
+    return {"ok": True, "name": name, "bytes": len(data), "url": url}
+
+
+@router.get("/lines")
+async def list_lines():
+    """置いてある持ち歌の一覧。"""
+    return {"lines": sorted(_line_names())}
+
+
 @router.get("/voice.pcm")
 async def voice_pcm():
-    """C3が取りに来る声。いまの一言を16kHz/16bit/モノラルの生PCMで返す。"""
+    """C3が取りに来る声。
+
+    まず持ち歌を見る。決まっていて、鳴らしてよい時刻を過ぎていれば、それを返す。
+    時刻より前なら何も返さない――その沈黙が「間」になる（憲法第5条）。
+    持ち歌が無いときだけ、従来の合成に落ちる。"""
     st = _load()
+    name = st.get("speak_line")
+    if name:
+        if time.time() < st.get("speak_at", 0):
+            return Response(status_code=204)       # まだ。これが間になる
+        try:
+            pcm = read_object(LINES_PREFIX + name + ".pcm")
+        except Exception as e:
+            logger.warning("line read failed: %s", e)
+            pcm = None
+        st["speak_line"] = None                    # 一度鳴らしたら下ろす
+        _save(st)
+        if pcm:
+            return Response(content=pcm, media_type="application/octet-stream")
     text = st.get("comment", "")
     if _voice_cache["text"] != text or _voice_cache["pcm"] is None:
         pcm = _synth_ja(text)
@@ -2004,6 +2118,10 @@ def _tally(zone: str, who: list, better, changes: list) -> None:
     if better is None:
         return                                   # どちらとも言えない変化は数えない
     kind = "care" if better else "use"
+    try:
+        _plan_speech(_load(), "better" if better else "worse")
+    except Exception as e:
+        logger.warning("plan speech failed: %s", e)
     _log_event(kind, {"zone": zone, "who": who,
                       "what": [c.get("what") for c in changes][:5]})
     if not who:
