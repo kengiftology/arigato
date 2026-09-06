@@ -153,11 +153,6 @@ def _confirm_new(vec: list, pos=None, px: int = 0) -> bool:
     for i, (prev, _t, ppos) in enumerate(_pending):
         sim = float(np.dot(v, np.asarray(prev, dtype=np.float32)))
         if sim >= 0.42:                              # 同じ顔をもう一度見た
-            if not _moved(pos, ppos, px):
-                # 見た目は同じで、場所も動いていない。置いてある物である。
-                # 「続けて同じ顔は出ない」という前提が、物には逆に働く
-                # （土鍋が28回「その人が来た」ことになっていた・2026-09-05）。
-                return False
             _pending.pop(i)
             return True
     _pending.append((vec, now, pos))                 # 心当たりとして覚えておく
@@ -483,11 +478,15 @@ def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=Non
         # 動いたところを見ていないものにIDは出さない。
         # 「短い間に2回同じ顔を見たら本物」は、置いてある物には通じない。
         # 土鍋は何百回でも同じ顔を出し、そのまま人として登録された。
-        # 「動いた」だけでは足りない。土鍋の位置も一度だけ91px跳ねた
-        # （検出の枠のぶれ）。動いたうえで、数枚そろっていることを求める。
-        seen_moving = spread >= MOVE_MIN * best_px and n >= FACE_BUF_MIN_NEW
-        if not seen_moving and not _confirm_new(vec, pos, px):
-            _log_small("did_not_move", best_px, n=n, spread=spread)
+        # 動いたかどうかは問わない（2026-09-06に撤回）。
+        # 土鍋を防ぐために入れた条件だったが、顔の起き具合だけで土鍋は
+        # 15/15すべて弾けると分かった（土鍋0.80〜0.95・人の正面1.03〜1.22）。
+        # 一方この条件は、カメラをじっと見ている人——いちばん識別したい
+        # 相手——を弾いていた（実測：240pxの正面顔が did_not_move で流れた）。
+        # 残る守りは、起きた顔であること・120px以上・数枚そろうこと、
+        # そして同じ場所に居つづける「顔」を物として外す仕組み。
+        if n < FACE_BUF_MIN_NEW and not _confirm_new(vec, pos, px):
+            _log_small("not_enough", best_px, n=n)
             return None
         pid = _new_person_id()
         db.collection("faces").document(pid).set(
