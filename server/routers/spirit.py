@@ -110,6 +110,51 @@ _identify_err = [""]   # 顔検出の失敗理由（/spirit/facesで確認する
 VERIFY_PREFIX = "spirit/verify/"
 VERIFY_GAP = 10.0      # 同じ滞在で撮りすぎないための間隔（秒）
 
+# 顔の切り抜きだけを集める置き場（2026-09-06）。
+#
+# 角度によって何がどう変わるかを、推測ではなく実物で確かめるために作った。
+# 全画面の写真だと1枚400KBあり、10秒に1枚が限度で、しかも顔を探し直す
+# 手間がかかる。切り抜きなら15KB前後なので、細かく残せる。
+#
+# 弾いた顔も残す。ここが肝心で、いまは帯から外れた顔がその場で消えるため
+# 「弾きすぎていないか」を確かめる術がない。
+#
+# 測った値はファイル名に入れる。あとで名前を読むだけで分布が出る:
+#   <時刻>_<幅>px_r<起き具合×100>_<up|dn>_<結びついたID>.jpg
+FACES_PREFIX = "spirit/faces_raw/"
+COLLECT_GAP = 1.5      # 集める間隔（秒）
+_last_collect = [0.0]
+
+
+def _collect_face(f: dict, pid: str = "", sim=None) -> None:
+    """顔の切り抜きを1枚、測った値つきで残す。期間中だけ。
+
+    人の写る写真を残す窓は期限式で、切り忘れが一番まずいという考えは
+    ここでも同じ。verify の期限をそのまま使う。"""
+    st = _load()
+    now = time.time()
+    if now >= st.get("verify_until", 0):
+        return
+    if now - _last_collect[0] < COLLECT_GAP:
+        return
+    _last_collect[0] = now
+    try:
+        import cv2
+        ok, buf = cv2.imencode(".jpg", f["crop"],
+                               [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        if not ok:
+            return
+        r = f.get("ratio")
+        name = FACES_PREFIX + "%d_%dpx_r%s_%s%s_%s.jpg" % (
+            int(now), f.get("px", 0),
+            ("%03d" % round(r * 100)) if r else "___",
+            "up" if f.get("up") else "dn",
+            "_edge" if f.get("edge") else "",
+            pid or "unknown")
+        upload_to(name, buf.tobytes(), "image/jpeg")
+    except Exception as e:
+        logger.warning("collect face failed: %s", e)
+
 _judge_err = [""]      # 判断の失敗理由（/spirit/fullで確認する）
                        # 判断が黙って失敗すると、古い一言が残り続けるだけで
                        # 表からは動いているように見える。実際に40時間気づけなかった。
@@ -413,6 +458,8 @@ def _identify(data: bytes):
     if not found:
         return None
     px = max(f["px"] for f in found)
+    for f in found:                       # 集める期間中だけ、弾く前に1枚ずつ残す
+        _collect_face(f)
     # 1人だけ写っているときは、数枚ためて平均で決める。
     # 2人以上のときは誰の顔かの取り違えが起きるので、1枚ずつ決める。
     solo = len(found) == 1
@@ -571,18 +618,26 @@ async def list_shots():
         shots = sorted(list_prefix(VERIFY_PREFIX), key=lambda x: -(x.get("at") or 0))
     except Exception as e:
         return {"shots": [], "error": str(e)}
+    try:
+        faces = list_prefix(FACES_PREFIX)
+    except Exception:
+        faces = []
     left = st.get("verify_until", 0) - time.time()
     return {"shots": shots, "count": len(shots),
+            "faces": len(faces),          # 顔の切り抜き。消すときは一緒に消える
             "recording": left > 0, "minutes_left": round(left / 60, 1) if left > 0 else 0}
 
 
 @router.post("/shots/clear")
 async def clear_shots(key: str = ""):
-    """確かめ用の写真を全部消す。技術的な確認が済んだらこれを叩く。"""
+    """確かめ用の写真を全部消す。技術的な確認が済んだらこれを叩く。
+
+    置き場が2つある（全画面の写真と、顔の切り抜き）。
+    片方だけ消す道を残すと、消したつもりで残る。必ず両方消す。"""
     if UPLOAD_KEY and key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
     try:
-        n = delete_prefix(VERIFY_PREFIX)
+        n = delete_prefix(VERIFY_PREFIX) + delete_prefix(FACES_PREFIX)
     except Exception as e:
         return {"ok": False, "error": str(e)}
     st = _load()
