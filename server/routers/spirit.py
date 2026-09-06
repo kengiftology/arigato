@@ -896,9 +896,10 @@ async def hint():
     if (check and now - st.get("last_seen", 0) > CHECK_QUIET_SEC
             and now - st.get("checked_at", 0) > CHECK_GAP):
         return "check " + check + "\n"
-    if now - st.get("last_seen", 0) < 60:
-        return ""                              # 顔が取れている＝探す必要はない
-    return "sweep\n" if now < st.get("hint_until", 0) else ""
+    # 人を探して首を振る仕組みは止めた（2026-09-06）。
+    # カメラは入り口を向いて待っているので、探しに行く先がもう無い。
+    # 振れば景色が変わり、そのたび静かさの基準と前後比較が壊れる。
+    return ""
 
 
 @router.get("/checkpose", response_class=PlainTextResponse)
