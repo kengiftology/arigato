@@ -649,7 +649,7 @@ async def clear_shots(key: str = ""):
 
 @router.post("/frame")
 async def receive_frame(request: Request, pose: str = "", raw: str = "", big: int = 0,
-                        x_upload_key: str = Header(None)):
+                        check: int = 0, x_upload_key: str = Header(None)):
     """目からの写真1枚を、すべての判断に使う統合窓口（2026-08-31改訂）。
 
     以前は人感センサーが「人が居る」を判定していたが、座って動かない人を
@@ -748,7 +748,10 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     # 人が去った直後（5分以内）は細かく見る。それ以外は間隔を空けて無駄打ちを避ける
     recent_visit = (now - st.get("last_seen", 0)) < 300
     gap = JUDGE_GAP_AFTER_VISIT if recent_visit else JUDGE_GAP_IDLE
-    if now - st["last_judge"] < gap:
+    # 見回りの1枚だけは間引かない。わざわざ首を振って撮りに行った1枚が
+    # 「10分たっていない」で捨てられては、行った意味がなくなる
+    # （実際に1回目の見回りがそれで消えた・2026-09-06）。
+    if not check and now - st["last_judge"] < gap:
         return {"ok": True, "judged": False, "why": "throttled",
                 "hires": now < st.get("want_hires", 0)}
     if now - st["day_start"] > 86400:
@@ -2312,8 +2315,12 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
                 _log_event("zones_set", {"zones": [z["name"] for z in st["zones"]]})
         key = _baseline_key(pose)
         base = read_object(key)
-        stale = now - st.get("baseline_at", 0) > BASELINE_MAX_AGE
-        if base is None or st.get("baseline_pose") != pose or stale:
+        # 時刻も向きごとに持つ。1つしか持っていなかった頃は、2箇所を
+        # 往復するたびに「向きが変わった」と判定され、基準を取り直しては
+        # 捨てるのを繰り返して、いつまでも比較にたどり着けなかった。
+        ats = st.get("baseline_ats") or {}
+        stale = now - float(ats.get(pose) or 0) > BASELINE_MAX_AGE
+        if base is None or stale:
             # 「前」が無いか、カメラの向きが変わったか、古すぎる。
             # 向きの違う2枚を比べると、何も起きていなくても全部変わって見える
             # （実際にそれで「世話7回」という嘘の記録が付いた）。
@@ -2323,8 +2330,9 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
                             st.get("baseline_pose"), pose,
                             now - st.get("baseline_at", 0))
             upload_to(key, data, "image/jpeg")
-            st["baseline_at"] = now
-            st["baseline_pose"] = pose
+            ats[pose] = now
+            st["baseline_ats"] = ats
+            st["baseline_at"], st["baseline_pose"] = now, pose   # 表示用
             st["visit_people"] = []            # 比べられなかった来訪は数えない
             st["visit_seen"], st["seen_by"] = False, []
             _save(st)
@@ -2334,12 +2342,13 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         # ここを who で見ていたため、顔が取れない日は片づけまで誤報として
         # 数えられ、区画の評判が下がりつづけていた。
         quiet = not st.get("visit_seen")
-        if quiet and now - st.get("baseline_at", 0) < IDLE_CHECK_GAP:
+        if quiet and now - float(ats.get(pose) or 0) < IDLE_CHECK_GAP:
             return                             # 静かな時は、そう何度も点検しない
         await _zone_pass(st, base, data, who, quiet, st.get("seen_by") or [])
         upload_to(key, data, "image/jpeg")
-        st["baseline_at"] = now
-        st["baseline_pose"] = pose
+        ats[pose] = now
+        st["baseline_ats"] = ats
+        st["baseline_at"], st["baseline_pose"] = now, pose       # 表示用
         st["visit_people"] = []
         st["visit_seen"], st["seen_by"] = False, []
         _save(st)

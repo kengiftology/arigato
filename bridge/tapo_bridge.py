@@ -284,12 +284,13 @@ def refresh_pose() -> None:
         _pose[0] = "%.2f_%.2f" % w
 
 
-def send(jpg: bytes, big: bool = False) -> dict:
+def send(jpg: bytes, big: bool = False, check: bool = False) -> dict:
     """クラウドへ送って判断を受け取る。写真には向きを添える。
 
     big=True は「これはもう大きく撮り直した1枚」の印。これ以上大きくは
     撮れないので、クラウドに同じ頼みを繰り返させない。"""
-    url = SERVER + "/spirit/frame?pose=" + _pose[0] + ("&big=1" if big else "")
+    url = (SERVER + "/spirit/frame?pose=" + _pose[0]
+           + ("&big=1" if big else "") + ("&check=1" if check else ""))
     req = urllib.request.Request(
         url, data=jpg,
         headers={"Content-Type": "image/jpeg", "X-Upload-Key": KEY})
@@ -340,7 +341,7 @@ def go_check(pose: str, w) -> None:
     jpg = grab_big() or grab()
     if jpg is not None:
         _pose[0] = pose                # この1枚に添える向き
-        report(jpg, "見回り", big=True)
+        report(jpg, "見回り", big=True, check=True)
     checked()
     sweep.go_home()                    # 入り口へ戻る（止まるまで待つ）
     refresh_pose()
@@ -376,10 +377,10 @@ def has_person(jpg: bytes) -> bool:
         return False
 
 
-def report(jpg: bytes, why: str, big: bool = False) -> dict:
+def report(jpg: bytes, why: str, big: bool = False, check: bool = False) -> dict:
     """1枚送って、意味のある返事だけ記録する。返事をそのまま返す。"""
     try:
-        res = send(jpg, big)
+        res = send(jpg, big, check)
     except Exception as e:
         print("send failed:", e, flush=True)
         return {}
