@@ -22,7 +22,12 @@ def score(p: Path):
     d = np.abs(np.diff(y))
     # 無音がまじると「ふだんの差」が0に寄り、何でもかんでも段差に見える。
     # 音が出ているところの差の分布を基準にして、そこから飛び抜けた分だけ数える。
-    ref = np.percentile(d, 90) + 1e-12
+    # 息の音は、もともと1標本ごとに大きく動く。文全体をひとつの基準で測ると
+    # 息のところが全部「段差」に見えてしまうので、その場その場の基準で測る。
+    w = int(0.03 * sr)
+    pad = np.pad(d, (w, w), mode="edge")
+    ref = np.array([np.percentile(pad[i:i + 2 * w], 90) for i in range(0, len(d), w)])
+    ref = np.repeat(ref, w)[:len(d)] + 1e-12
     jumps = int((d > ref * 6).sum())
     return len(y) / sr, jumps, jumps / (len(y) / sr)
 

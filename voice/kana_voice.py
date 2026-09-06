@@ -21,14 +21,26 @@
 
   1) 声帯の波が、文字ごとに頭からやり直しになる（波形が飛ぶ）
   2) 共鳴を通す計算の「余韻」が、文字の終わりで切り捨てられる
-  3) 破裂や摩擦の雑音に、頭と尻の始末がついていない
+  3) 共鳴の位置を4ミリ秒ごとにまとめて切り替えていた
 
-耳はこの段差を「プチッ」と聞く。雑音ではないので、ノイズ除去では消えない
-（段差は残り、まわりの声のほうが削られる）。実測 1秒あたり3000箇所。
+耳はこの段差を「プチッ」と聞く。雑音ではないので、ノイズ除去では消えない。
+文をまるごと1本の音として作る作りに変えた。1秒あたり16.4→0.5箇所。
 
-そこで、文をまるごと1本の音として作る作りに変えた。
-声帯の波は文の頭から終わりまで途切れず進み、共鳴は余韻を持ったまま
-少しずつ位置を変えていく。人の口も、そうやって動いている。
+--- ぎこちなさを取った経緯（2026-09-06）---
+音は綺麗になったが、喋り方が機械のままだった。
+良いと言われた声（ずんだもん・四国めたん・後鬼）の読み方を測って
+自分の作りと突き合わせたら、4つずれていた。
+
+  拍の長さ  実際は 0.057〜0.336 秒（ばらつき0.055）／私は全部 0.150 秒
+  抑揚      実際は句のなかで1.5倍動く／私は文全体でひとつの山（±10%）
+  間        実際は 0.33〜0.62 秒／私は 0.16 秒
+  無声化    し・っ は息だけになる／私は全部を声にしていた
+
+とくに拍の長さ。全部同じ長さで並べると、耳はそれを言葉ではなく
+拍子として聞く。人は句の終わりの拍を1.7倍にのばし、詰まる音を半分に縮める。
+
+もうひとつ、子音を拍の外に足していた。子音つきの拍だけ4割長くなり、
+拍の並びががたついていた。子音の時間は拍の中から取るように直した。
 """
 import io
 from pathlib import Path
@@ -62,6 +74,8 @@ C = {
     "r":  ("flap", (350, 1600, 2600)),
     "y":  ("glide", (300, 2400, 3000)), "w": ("glide", (350, 800, 2200)),
 }
+# 声帯を使わない子音。これにはさまれた い・う は息だけになる（無声化）
+VOICELESS = {"k", "t", "p", "s", "h", "f", "sh", "ch", "ts"}
 
 KANA = {}
 for row, con in (("あいうえお", ""), ("かきくけこ", "k"), ("さしすせそ", "s"),
@@ -77,6 +91,13 @@ KANA.update({"し": ("sh", "i"), "ち": ("ch", "i"), "つ": ("ts", "u"),
              "を": ("", "o"), "ん": ("n", "n")})
 SMALL = {"ゃ": "a", "ゅ": "u", "ょ": "o"}
 
+# 実測にもとづく拍の長さ（秒）。3人の平均は 0.156・ばらつき 0.055
+BASE = 0.135          # ふつうの拍
+LAST = 1.70           # 句の終わりの拍はのびる（実測 0.254 対 0.139）
+SOKUON = 0.075        # 詰まる音（実測 0.058〜0.111）
+HATSUON = 0.100       # ん（実測 0.082〜0.110）
+PAUSE_C, PAUSE_P = 0.36, 0.30   # 、 と 。 の間（実測 0.33〜0.62）
+
 
 def parse(text):
     """かなを、子音と母音の組に分ける。ー は伸ばし、っ は詰まり。"""
@@ -84,11 +105,11 @@ def parse(text):
     while i < len(text):
         ch = text[i]
         if ch in "、。 　":
-            out.append(("pause", None, 0.16 if ch == "、" else 0.3))
+            out.append(("pause", None, PAUSE_C if ch == "、" else PAUSE_P))
             i += 1
             continue
         if ch == "っ":
-            out.append(("sokuon", None, 0.09))
+            out.append(("sokuon", None, SOKUON))
             i += 1
             continue
         if ch in "ーぁぃぅぇぉ":
@@ -103,14 +124,75 @@ def parse(text):
         if i + 1 < len(text) and text[i + 1] in SMALL:
             vow = SMALL[text[i + 1]]
             i += 1
-        out.append((con, vow, 0.15))
+        out.append((con, vow, HATSUON if vow == "n" else BASE))
         i += 1
+    return out
+
+
+def prosody(items, rng):
+    """どう読むかを決める。長さ・高さ・無声化。
+
+    句（、で区切られたまとまり）ごとに形をつける。
+      終わりでない句 … 上がって終わる（まだ続くよ、の合図）
+      終わりの句     … 二拍目で高くなり、そこから落ちる
+
+    実測では句のなかで高さが1.5倍動いていた。私は±10%しか動かしておらず、
+    それが棒読みの正体だった。"""
+    phrases, cur = [], []
+    for it in items:
+        if it[0] == "pause":
+            phrases.append((cur, it[2]))
+            cur = []
+        else:
+            cur.append(it)
+    phrases.append((cur, 0.0))
+    phrases = [(p, g) for p, g in phrases if p or g]
+
+    out = []
+    nph = sum(1 for p, _ in phrases if p)
+    ip = 0
+    for p, gap in phrases:
+        voiced_idx = [j for j, it in enumerate(p) if it[0] != "sokuon"]
+        k = len(voiced_idx)
+        last_phrase = (ip == nph - 1)
+        drift = 0.97 ** ip                       # 句を追うごとに少しずつ下がる
+        for j, it in enumerate(p):
+            con, vow, dur = it
+            if con == "sokuon":
+                out.append(("sokuon", None, dur, None, False, 0.0))
+                continue
+            r = voiced_idx.index(j)
+            d = dur * (LAST if r == k - 1 else 1.0)   # 句の終わりはのばす
+            d *= 1.0 + rng.normal(0, 0.06)            # 毎回きっかり同じにはならない
+            a = r / max(1, k - 1)
+            if last_phrase:
+                if k >= 3:
+                    pit = float(np.interp(r, [0, 1, k - 1], [1.00, 1.28, 0.72]))
+                elif k == 2:
+                    pit = [1.10, 0.78][r]
+                else:
+                    pit = 0.95
+            else:
+                pit = 0.88 + 0.44 * a                 # 上がって終わる
+            pit *= drift * (1.0 + rng.normal(0, 0.015))
+            nxt = p[j + 1] if j + 1 < len(p) else None
+            # 無声化。句の頭では起きない（実測：「きた」のキは声のままだった）
+            dev = (r > 0 and vow in ("i", "u") and con in VOICELESS
+                   and (nxt is None or nxt[0] in VOICELESS))
+            # 強さ。ひと息のなかで少しずつ弱くなる。全部同じ強さで並べると、
+            # 高さと長さを直しても、まだ打鍵のように聞こえる
+            amp = (1.0 - 0.22 * a) if last_phrase else (1.0 - 0.08 * a)
+            amp *= 1.0 + rng.normal(0, 0.04)
+            out.append((con, vow, float(d), float(pit), bool(dev), float(amp)))
+        if gap:
+            out.append(("pause", None, gap, None, False, 0.0))
+        if p:
+            ip += 1
     return out
 
 
 # 共鳴の幅（Hz）。狭いほど母音がはっきりする。広すぎると谷が埋まってこもる
 BW = (60, 90, 120, 150, 200)
-BLOCK = 96                             # 共鳴の位置を測り直す間隔（4ミリ秒）
 
 
 def _smooth(x, ms):
@@ -157,34 +239,47 @@ def cascade(x, tracks):
     return y
 
 
-def plan(text, size):
-    """文を、時間の流れに沿った区間の並びに直す。
+# 子音にかかる時間。拍の長さのうち、これを引いた残りが母音になる
+CTIME = {"stop": 0.052, "vstop": 0.052, "aff": 0.085, "fric": 0.070,
+         "nasal": 0.050, "flap": 0.018, "glide": 0.0, "none": 0.0}
 
-    区間 = (長さ, 種類, 共鳴の位置, 声の強さ, 息の強さ)
+
+def plan(items, size):
+    """読み方を、時間の流れに沿った区間の並びに直す。
+
+    区間 = (長さ, 種類, 共鳴の位置, 声の強さ, 息の強さ, 高さ)
     種類は 声 / 雑音 / 沈黙。"""
     segs = []
-    for con, vow, dur in parse(text):
+    for con, vow, dur, pit, dev, amp in items:
         if con in ("pause", "sokuon"):
-            segs.append((dur, "sil", None, 0.0, 0.0))
+            segs.append((dur, "sil", None, 0.0, 0.0, None))
             continue
         kind, locus = C.get(con, ("none", None))
         vt = V.get(vow, V["u"]) if vow != "n" else (300, 1000, 2200)
         vt = tuple(f * size for f in vt)
         lo = tuple(f * size for f in locus) if locus else vt
+        vowel = max(0.045, dur - CTIME.get(kind, 0.0))
         if kind in ("stop", "vstop", "aff"):
-            segs.append((0.045, "sil", lo, 0.0, 0.0))          # 口を閉じる
+            segs.append((0.040, "sil", lo, 0.0, 0.0, None))        # 口を閉じる
         if kind in ("stop", "vstop"):
             segs.append((0.012, "noise", lo, 0.0,
-                         0.50 if kind == "stop" else 0.30))    # 破裂
+                         0.50 if kind == "stop" else 0.30, None))  # 破裂
         if kind in ("fric", "aff"):
-            segs.append((0.070, "noise", lo, 0.0, 0.35))       # 摩擦
+            segs.append((0.070 if kind == "fric" else 0.045, "noise",
+                         lo, 0.0, 0.35, None))                     # 摩擦
         if kind == "nasal":
-            segs.append((0.050, "voice", lo, 0.50, 0.0))       # 鼻の共鳴
+            segs.append((0.050, "voice", lo, 0.50 * amp, 0.0, pit))      # 鼻の共鳴
         if kind == "flap":
-            segs.append((0.018, "sil", lo, 0.0, 0.0))          # はじき
-        segs.append((dur, "voice", vt, 1.0, 0.0))
+            segs.append((0.018, "sil", lo, 0.0, 0.0, None))        # はじき
+        if dev:
+            # 無声化。声帯を使わず、子音の息がそのまま続く。
+            # 母音の形ではなく子音の場所で鳴らす（「し」なら し のまま消える）。
+            # 声より小さい。ここが大きいと、そこだけ砂を撒いたように浮く
+            segs.append((vowel * 0.7, "noise", lo, 0.0, 0.14 * amp, None))
+        else:
+            segs.append((vowel, "voice", vt, amp, 0.0, pit))
     if not segs:
-        segs = [(0.2, "sil", None, 0.0, 0.0)]
+        segs = [(0.2, "sil", None, 0.0, 0.0, None)]
     return segs
 
 
@@ -192,7 +287,8 @@ def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
           contour=None):
     """文をまるごと1本の音として作る。継ぎ目がないので段差が出ない。"""
     rng = np.random.default_rng(seed)
-    segs = plan(text, size)
+    items = prosody(parse(text), rng)
+    segs = plan(items, size)
     lens = [max(1, int(d * SR)) for d, *_ in segs]
     n = sum(lens)
 
@@ -200,9 +296,10 @@ def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
     tr = np.zeros((5, n))
     vg = np.zeros(n)
     ng = np.zeros(n)
+    marks, vals = [], []
     last = None
     pos = 0
-    for (d, kind, ff, v, b), L in zip(segs, lens):
+    for (d, kind, ff, v, b, pit), L in zip(segs, lens):
         ff = ff or last or tuple(f * size for f in V["u"])
         last = ff
         tr[0, pos:pos + L] = ff[0]
@@ -210,6 +307,9 @@ def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
         tr[2, pos:pos + L] = ff[2]
         vg[pos:pos + L] = v
         ng[pos:pos + L] = b
+        if pit is not None:
+            marks.append(pos + L // 2)
+            vals.append(pit)
         pos += L
     tr[3, :] = F4 * size
     tr[4, :] = F5 * size
@@ -220,17 +320,11 @@ def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
     ng = _smooth(ng, 4.0)
 
     # --- 声の高さ。文の頭から終わりまで1本の線でつなぐ ---
-    marks, pos = [], 0
-    for (d, kind, ff, v, b), L in zip(segs, lens):
-        if kind == "voice" and v >= 1.0:
-            marks.append(pos + L // 2)
-        pos += L
     if len(marks) < 2:
-        marks = [0, n - 1]
-    a = np.linspace(0.0, 1.0, len(marks))
-    vals = np.array([contour(x) if contour else (1.0 + 0.10 * np.sin(np.pi * x))
-                     for x in a])
-    f0line = np.interp(np.arange(n), marks, vals * f0)
+        marks, vals = [0, n - 1], [1.0, 0.95]
+    if contour:                                  # 呼び出し側が形を指定したとき
+        vals = [contour(x) for x in np.linspace(0.0, 1.0, len(marks))]
+    f0line = np.interp(np.arange(n), marks, np.asarray(vals, dtype=float) * f0)
     f0line = _smooth(f0line, 25.0)
     # 声の揺れ。ゆっくり揺らす。1標本ごとに散らすとザラつきになる
     wob = _smooth(rng.normal(0, jitter, n), 18.0)
@@ -290,9 +384,13 @@ def main():
         d = np.abs(np.diff(y.astype(np.float64)))
         # 音が出ているところの差を基準に、そこから飛び抜けた分だけ数える
         jumps = int((d > (np.percentile(d, 90) + 1e-12) * 6).sum())
-        say("%-12s 段差 %5d 箇所（%.0f/秒）  「%s」"
-            % (name, jumps, jumps / (len(y) / SR), text))
+        it = prosody(parse(text), np.random.default_rng(i))
+        ds = [t[2] for t in it if t[0] not in ("pause", "sokuon")]
+        dev = sum(1 for t in it if t[4])
+        say("%-12s 段差%4d  拍のばらつき%.3f  無声化%d  「%s」"
+            % (name, jumps, float(np.std(ds)), dev, text))
     say("")
+    say("実測（ずんだもん・四国めたん・後鬼）の拍のばらつきは 0.055")
     say("できました: %s" % OUT)
     rep.close()
     return 0
