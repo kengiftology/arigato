@@ -61,7 +61,13 @@ FRAME_BYTES = WATCH_W * WATCH_H
 SHOT_FPS = 1                                 # 送る用のJPEGを作り替える速さ
 SHOT_MAX_AGE = 6.0                           # これより古い1枚は使わない
 HIRES_SHOT = "/tmp/tapo_hi.jpg"              # 大きい1枚（2304x1296）が常に置かれる
-HIRES_MAX_AGE = 10.0                         # これより古い大きい1枚は使わない
+HIRES_MAX_AGE = 10.0                         # 見回りなど、急がない場面での上限
+# 人が動いている間は、これより古い大きい1枚は使わない。
+# 大きい写真は基準コマだけを開いて作るので2〜4秒に1枚しか更新されない。
+# 10秒前まで許していた頃は、動きを見つけた瞬間に「人が写る前の景色」を
+# 送りかねなかった。通り過ぎる人には致命的なので、古ければ小さいほう（1秒ごとに
+# 更新される）の新しい1枚を送る。
+HIRES_FRESH = 3.5
 HIRES_GAP = 8.0                              # 撮り直しを頼まれたときの最短間隔
 # 写真が古いままこれだけ続いたら、映像ごと繋ぎ直す。
 # 見張りの映像だけが流れつづけ、写真の書き出しだけが止まることがある。
@@ -200,13 +206,13 @@ def grab() -> bytes | None:
     return _read_fresh(SHOT, SHOT_MAX_AGE)
 
 
-def grab_big() -> bytes | None:
+def grab_big(max_age: float = HIRES_MAX_AGE) -> bytes | None:
     """主ストリーム（2304x1296）の最新の1枚。無ければNone。
 
     顔の幅は1280幅で87〜150px、2304幅で100〜222px（9/5の実測）。
     新しい人を覚えられる線は120pxなので、人が動いている間は
     こちらを送る。誰も居ない定時報告では副ストリームで足りる。"""
-    return _read_fresh(HIRES_SHOT, HIRES_MAX_AGE)
+    return _read_fresh(HIRES_SHOT, max_age)
 
 
 _pose = [""]           # いまカメラが向いている先。写真に添えて送る
@@ -432,7 +438,8 @@ def main():
                     # 動いている間は大きいほうを送る。顔の幅が1.8倍になり、
                     # 新しい人を覚えられる線（120px）を越えられる。
                     # 誰も居ない定時報告は小さいほうで足りる（費用も軽い）。
-                    jpg, is_big = (grab_big(), True) if busy else (None, False)
+                    # 動いている間は、古い大きい1枚より新しい小さい1枚を選ぶ。
+                    jpg, is_big = (grab_big(HIRES_FRESH), True) if busy else (None, False)
                     if jpg is None:
                         jpg, is_big = grab(), False
                     if jpg is None:
