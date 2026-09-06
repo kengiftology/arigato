@@ -504,6 +504,27 @@ def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=Non
     return {"person": pid, "state": state}
 
 
+def _mark_seen(st: dict, now: float, by: str = "") -> None:
+    """この前後比較のあいだに、人が居たことを記す。
+
+    「誰か」が分かったかどうかとは別に持つ。ここを visit_people（顔で
+    分かった人の一覧）で兼ねていたため、顔が取れない日は「誰も来ていない」
+    ことになり、実際に片づいた変化まで誤報として数えられていた
+    （2026-09-06までの36時間で、棚と床が片づいた2件がそう処理された）。
+
+    台帳#5（表情だけで手が出る）は世話イベントの数で測る。あれは
+    「誰が」が無くても成立する主張なので、実装のほうもそう分ける。"""
+    st["empty"] = False
+    st["last_seen"] = now
+    st["visit_seen"] = True
+    if by:
+        # 何が「人が居る」と言ったのかを残す。人感だけが根拠の記録と、
+        # 目で見えている記録は、あとで分けて読めるようにしておく。
+        src = st.get("seen_by") or []
+        if by not in src:
+            st["seen_by"] = (src + [by])[-4:]
+
+
 def _keep_shot(st: dict, now: float, data: bytes, pid: str) -> None:
     """確かめ期間中だけ、人の写った1枚を専用の置き場に残す。
 
@@ -616,8 +637,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 # ここで大きく撮り直させる。AIの判断待ちにすると、
                 # 順番が回ってくる頃には人が去っている（実測：今日の
                 # 17:55、幅107pxの顔が誰にも結ばれないまま流れた）。
-                st["empty"] = False
-                st["last_seen"] = now
+                _mark_seen(st, now, "顔(小)")
                 if not big:
                     st["want_hires"] = now + 30
                 _keep_shot(st, now, data, "small")
@@ -626,7 +646,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                         "why": "face_too_small", "px": res.get("px"),
                         "hires": not big}
             if res:
-                st["empty"] = False
+                _mark_seen(st, now, "顔")
                 st["want_hires"] = 0          # 取れたので、もう大きく撮らなくてよい
                 if st.get("cur_person") != res["person"]:
                     st["greet_for"] = st["greet_line"] = None   # 相手が変われば言い直す
@@ -700,8 +720,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     except (TypeError, ValueError):
         npeople = 0
     if npeople > 0:                       # 人がいても観察は続ける（2026-09-01改訂）
-        st["empty"] = False               # 誰が何を動かしたかを知るため
-        st["last_seen"] = now
+        _mark_seen(st, now, "AI")         # 誰が何を動かしたかを知るため
         # 人は写っているのに顔が取れなかった。もっと大きく写せば取れるかもしれない。
         # 送られてくる1280x720では、顔が135pxで確信度0.53と、あと一歩だった。
         st["want_hires"] = now + 30
@@ -709,8 +728,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
         # 確かめたいのはまさにここなので、期間中はこれも残す。
         _keep_shot(st, now, data, "noface")
     elif r.get("skip"):                   # 旧仕様の名残（人がいるとだけ返る場合）
-        st["empty"] = False
-        st["last_seen"] = now
+        _mark_seen(st, now)
         _log_event("judge", {"skip": True})
         _save(st)
         return {"ok": True, "judged": False, "why": "person_in_frame"}
@@ -803,6 +821,8 @@ async def presence(state: str | None = None):
         st["empty"] = (state == "empty")
         if prev != st["empty"]:
             _log_event("presence", {"empty": st["empty"]})   # 在室の変化も研究データ
+        if state == "occupied":
+            _mark_seen(st, time.time(), "人感")  # 顔が取れなくても、人は来ていた
         if state == "occupied" and prev:
             # 人感は部屋のどこで動いても反応するが、カメラは一方向しか
             # 見ていない。実際、人感が気づいた5分後にようやく顔が取れた。
@@ -1997,7 +2017,7 @@ def _score_zone(z: dict) -> None:
 
 
 async def _zone_pass(st: dict, before: bytes, after: bytes,
-                     who: list, quiet: bool) -> None:
+                     who: list, quiet: bool, seen_by=None) -> None:
     """区画ごとに前後を見比べて、結果を記録する。
 
     quiet＝この間、誰も来ていない。そこで出た変化はすべて誤報とみなす。"""
@@ -2033,9 +2053,11 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
         if changed:
             _log_event("zone", {"zone": z["name"], "who": who,
                                 "quiet": quiet, "better": r.get("better"),
+                                "seen_by": seen_by,
                                 "changes": r.get("changes") or []})
             if not quiet:
-                _tally(z["name"], who, r.get("better"), r.get("changes") or [])
+                _tally(z["name"], who, r.get("better"), r.get("changes") or [],
+                       seen_by)
                 if r.get("better"):
                     cared.append((z["name"], r.get("changes") or []))
     if cared:
@@ -2106,7 +2128,7 @@ def _fresh_news(pid: str) -> str:
     return ""
 
 
-def _tally(zone: str, who: list, better, changes: list) -> None:
+def _tally(zone: str, who: list, better, changes: list, seen_by=None) -> None:
     """変化を「世話」か「利用」として数え、人ごとの覚えに足す。
 
     散らかったことは失敗ではない。その場所が使われた証拠である。
@@ -2122,7 +2144,7 @@ def _tally(zone: str, who: list, better, changes: list) -> None:
         _plan_speech(_load(), "better" if better else "worse")
     except Exception as e:
         logger.warning("plan speech failed: %s", e)
-    _log_event(kind, {"zone": zone, "who": who,
+    _log_event(kind, {"zone": zone, "who": who, "seen_by": seen_by or [],
                       "what": [c.get("what") for c in changes][:5]})
     if not who:
         return                                   # 誰が居たか分からない変化は人に付けない
@@ -2180,17 +2202,22 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
             st["baseline_at"] = now
             st["baseline_pose"] = pose
             st["visit_people"] = []            # 比べられなかった来訪は数えない
+            st["visit_seen"], st["seen_by"] = False, []
             _save(st)
             return
         who = st.get("visit_people") or []
-        quiet = not who
+        # 「静か」＝この間に誰も来ていない。顔が取れたかどうかではない。
+        # ここを who で見ていたため、顔が取れない日は片づけまで誤報として
+        # 数えられ、区画の評判が下がりつづけていた。
+        quiet = not st.get("visit_seen")
         if quiet and now - st.get("baseline_at", 0) < IDLE_CHECK_GAP:
             return                             # 静かな時は、そう何度も点検しない
-        await _zone_pass(st, base, data, who, quiet)
+        await _zone_pass(st, base, data, who, quiet, st.get("seen_by") or [])
         upload_to(BASELINE_OBJ, data, "image/jpeg")
         st["baseline_at"] = now
         st["baseline_pose"] = pose
         st["visit_people"] = []
+        st["visit_seen"], st["seen_by"] = False, []
         _save(st)
     except Exception as e:
         logger.warning("zone cycle failed: %s", e)
