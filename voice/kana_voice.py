@@ -299,25 +299,46 @@ def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
     marks, vals = [], []
     last = None
     pos = 0
+    # 口の形は、区間ごとに置いて塗るのではなく、点を打って線でつなぐ。
+    #
+    # 塗っていた頃は、母音のあいだ形がぴたりと止まっていた。実測すると
+    # 「まったく動かない時間」が全体の23%（肉声は2%、VOICEVOXも2%）。
+    # 人の口は喋っているあいだ止まらない。この止まりがロボット感だった。
+    #
+    # 点は、子音の場所と母音の中心に打つ。あいだは滑らかにつなぐので、
+    # 短い拍では母音の形に届ききらない。これは人でも起きること（言い崩し）。
+    fa, fv = [], []
     for (d, kind, ff, v, b, pit), L in zip(segs, lens):
         ff = ff or last or tuple(f * size for f in V["u"])
         last = ff
-        tr[0, pos:pos + L] = ff[0]
-        tr[1, pos:pos + L] = ff[1]
-        tr[2, pos:pos + L] = ff[2]
+        fa.append(pos + L // 2)
+        fv.append(ff)
         vg[pos:pos + L] = v
         ng[pos:pos + L] = b
         if pit is not None:
             marks.append(pos + L // 2)
             vals.append(pit)
         pos += L
+    if len(fa) < 2:
+        fa, fv = [0, n - 1], [fv[0] if fv else tuple(f * size for f in V["u"])] * 2
+    idx = np.arange(n)
+    for i in range(3):
+        tr[i] = np.interp(idx, fa, [f[i] for f in fv])
     tr[3, :] = F4 * size
     tr[4, :] = F5 * size
-    # 12ミリ秒でなめらかに移す。これが子音から母音への滑り（言葉らしさ）になる
     for i in range(3):
-        tr[i] = _smooth(tr[i], 12.0)
+        tr[i] = _smooth(tr[i], 8.0)
+    # 揺らぎ。人の口は狙った形にぴたりと静止しない。
+    # ゆっくりのものだけだと、20〜50ミリ秒の「止まり」が残った（実測）。
+    # 速い揺らぎを重ねて、止まる時間そのものをなくす。
+    for i in range(5):
+        slow = _smooth(rng.normal(0, 0.012, n), 90.0) * 6.0
+        fast = _smooth(rng.normal(0, 0.010, n), 30.0) * 3.5
+        tr[i] = tr[i] * (1.0 + slow + fast)
     vg = _smooth(vg, 6.0)
     ng = _smooth(ng, 4.0)
+    # 息の強さも一定ではない。1拍のなかでもわずかに上下する
+    vg = vg * (1.0 + _smooth(rng.normal(0, 0.05, n), 70.0) * 5.0)
 
     # --- 声の高さ。文の頭から終わりまで1本の線でつなぐ ---
     if len(marks) < 2:
