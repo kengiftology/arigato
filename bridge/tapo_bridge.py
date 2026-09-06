@@ -87,6 +87,7 @@ STILL_HOLD = 20.0     # 最後に動いてからこの秒数は「まだ居る�
 CALIB_FRAMES = 20     # 最初のこの枚数で、その部屋の「静かさ」を測る
 SETTLE_FRAMES = 8     # 首を振った直後、揺れが収まるまで捨てるコマ数
 SETTLE_AFTER_MOVE = 4.0  # 見回りで振ったあと、映像が入れ替わるのを待つ秒数
+MAX_QUIET = 8.0          # 「静かさ」がこれを超えたら測り直す（動いている最中の値）
 
 
 def watch_stream():
@@ -176,6 +177,19 @@ class Watcher(threading.Thread):
                         # しきい値が固定された（実測 2.29 → 17.57）。
                         # 上から2番目を使えば、その一発に引きずられない。
                         quiet = sorted(calib)[-2]
+                        if quiet > MAX_QUIET:
+                            # この部屋の静けさは実測で0.45前後。これを大きく
+                            # 超えるのは、測っている間じゅう景色が動いていた
+                            # ということ（首振りの途中など）。採用すると
+                            # しきい値が跳ね上がり、以後どんな人も通らなくなる
+                            # （実測でしきい値167.67になり見張りが死んだ）。
+                            # 黙って測り直す。
+                            print("揺らぎ %.2f は大きすぎる → 測り直す" % quiet,
+                                  flush=True)
+                            calib = []
+                            settle = SETTLE_FRAMES     # 収まるまでもう一度捨てる
+                            prev = buf
+                            continue
                         self.ready = True
                         print("静かな時の揺らぎ = %.2f / しきい値 = %.2f"
                               % (quiet, max(quiet * 2.5, 1.5)), flush=True)
@@ -322,16 +336,16 @@ def go_check(pose: str, w) -> None:
     if not sweep.look(x, y):
         checked()                      # 振れなかった。次の機会に回す
         return
-    w.reset = True                     # 景色が変わったので静かさを測り直す
-    time.sleep(SETTLE_AFTER_MOVE)      # 揺れが収まり、映像が入れ替わるのを待つ
+    time.sleep(SETTLE_AFTER_MOVE)      # 映像が新しい向きに入れ替わるのを待つ
     jpg = grab_big() or grab()
     if jpg is not None:
         _pose[0] = pose                # この1枚に添える向き
         report(jpg, "見回り", big=True)
     checked()
-    sweep.go_home()                    # 入り口へ戻る
-    w.reset = True
+    sweep.go_home()                    # 入り口へ戻る（止まるまで待つ）
     refresh_pose()
+    time.sleep(SETTLE_AFTER_MOVE)      # 映像が入れ替わるのを待ってから
+    w.reset = True                     # 静かさを測り直す（ここで初めて）
     print(time.strftime("%H:%M:%S"), "入り口へ戻った", _pose[0], flush=True)
 
 

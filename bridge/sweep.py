@@ -92,12 +92,18 @@ def where() -> tuple | None:
 
 
 def look(x: float, y: float) -> bool:
-    """その向きへ首を向ける。"""
+    """その向きへ首を向け、止まるまで待つ。
+
+    決め打ちで2.5秒待っていた頃は、遠くへ振ると待ちきれなかった。
+    入り口とキッチンは横に1.58ぶん離れていて、2.5秒では戻りきらない。
+    そのまま次へ進むと、動いている最中の景色を「静かな状態」として
+    測ってしまい、しきい値が167まで跳ね上がって見張りが死んだ（実測）。"""
     try:
         ptz, token = _connect()
         ptz.AbsoluteMove({"ProfileToken": token,
                           "Position": {"PanTilt": {"x": x, "y": y}}})
         time.sleep(SETTLE)
+        settled(tries=10)                # 本当に止まったか、カメラに聞く
         return True
     except Exception as e:
         print("look failed:", e, flush=True)
