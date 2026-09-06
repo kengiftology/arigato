@@ -36,6 +36,21 @@ _ENROLL_FACE_PX = 120
 # 本物の顔は実測で0.76〜0.94に出るので、この間に線を引く。
 _DET_CONF = 0.80
 
+# 顔が「起きている」か「うつむいている」か。
+#
+# 2026-09-05の実測（同一人物・同じカメラ・同じ距離）:
+#   顔を上げたとき   一致度の中央 0.616 / 他人を本人と誤る 0%
+#   うつむいたとき   一致度の中央 0.506 / 同じ人でも60%しか通らない
+#   シンク作業中     一致度の中央 0.399
+# しかも「同じ人の正面」と「同じ人のうつむき」は最大0.270で、まったく
+# 一致しない。うつむき顔を記憶に混ぜると、そのIDは誰でも吸い込む網になる
+# （実測で他人の86〜93%を吸い込んだ）。だから記憶にも照合にも使わない。
+#
+# 起き具合は、目と目の幅に対する「目から口までの縦の長さ」で測る。
+# 実測では 正面15件が1.03〜1.22、うつむき13件は0.87〜1.85に散り、
+# この帯で正面15/15を通し、うつむき11/13を弾けた。
+_UP_MIN, _UP_MAX = 1.00, 1.30
+
 _session = None
 _detector = None
 _last_size = [0]             # 直前に切り出した顔の幅
@@ -98,6 +113,7 @@ def detect_faces(image_bytes: bytes, rotate: int = 0) -> list:
         return []
     out = []
     for f in sorted(faces, key=lambda f: -(f[2] * f[3]))[:MAX_FACES]:
+        ratio = _up_ratio(f)
         x, y, w, h = (int(v) for v in f[:4])
         if w < _MIN_FACE_PX:
             continue                                        # 小さすぎる顔は見えなかった扱い
@@ -113,8 +129,26 @@ def detect_faces(image_bytes: bytes, rotate: int = 0) -> list:
         # どこに写っていたかも返す。動かない「顔」は置いてある物なので、
         # 場所が変わらないことを手がかりに人と分ける（2026-09-05）。
         out.append({"crop": img[y0:y1, x0:x1], "px": w, "edge": edge,
-                    "pos": (x + w // 2, y + h // 2)})
+                    "pos": (x + w // 2, y + h // 2), "ratio": ratio,
+                    "up": ratio is not None and _UP_MIN <= ratio <= _UP_MAX})
     return out
+
+
+def _up_ratio(f):
+    """顔の起き具合。目と目の幅に対する、目から口までの縦の長さ。
+
+    YuNetが返す5点（右目・左目・鼻・右口角・左口角）から測る。
+    うつむいた顔を上から見ると、この比が帯から外れる。"""
+    try:
+        p = np.asarray(f[4:14], dtype=np.float32).reshape(5, 2)
+        eye_w = float(np.linalg.norm(p[0] - p[1]))
+        if eye_w < 1.0:
+            return None
+        eye = (p[0] + p[1]) / 2.0
+        mouth = (p[3] + p[4]) / 2.0
+        return float(np.linalg.norm(mouth - eye)) / eye_w
+    except Exception:
+        return None
 
 
 def detect_face(image_bytes: bytes, rotate: int = 0):

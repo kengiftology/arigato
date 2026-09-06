@@ -421,7 +421,8 @@ def _identify(data: bytes):
     # 1人だけ写っているときは、数枚ためて平均で決める。
     # 2人以上のときは誰の顔かの取り違えが起きるので、1枚ずつ決める。
     solo = len(found) == 1
-    people = [_identify_one(f["crop"], f["px"], f.get("edge"), solo, f.get("pos"))
+    people = [_identify_one(f["crop"], f["px"], f.get("edge"), solo, f.get("pos"),
+                           f.get("up"), f.get("ratio"))
               for f in found]
     people = [x for x in people if x]
     if not people:
@@ -432,7 +433,8 @@ def _identify(data: bytes):
             "all": [x["person"] for x in people]}
 
 
-def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=None):
+def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=None,
+                  up: bool = True, ratio=None):
     """切り抜き1つを匿名IDに結びつける。
 
     solo=True（1人だけ写っている）のときは、この1枚だけでは決めない。
@@ -448,6 +450,12 @@ def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=Non
         # 照合できる大きさではない。ここで誰かを決めると別人に結びつく。
         # 「顔は見えた」ことだけ残して、呼ぶ側に撮り直しを任せる。
         _log_small("too_small_to_match", px)
+        return None
+    if not up:
+        # うつむいた顔。誰かを決めるのにも、覚えるのにも使わない。
+        # 記憶に混ぜると、そのIDが誰でも吸い込む網になる（2026-09-05の実測）。
+        # 「人が居る」の合図としては、このあとも変わらず使われる。
+        _log_small("looking_down", px, ratio=round(ratio, 2) if ratio else None)
         return None
     if _is_furniture(pos, px):
         # 同じ場所から動かない「顔」。置いてある物なので、
