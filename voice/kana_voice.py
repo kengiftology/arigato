@@ -59,6 +59,9 @@ SR = 24000
 V = {"a": (700, 1300, 2700), "i": (330, 2400, 3100), "u": (380, 1250, 2500),
      "e": (520, 1900, 2750), "o": (500, 1000, 2650)}
 F4, F5 = 3569, 4600                    # 上の共鳴。明るさを支える（実測より）
+# さらに上。これが無いと6kHzより上が空になり、息の音が本物と別物になる
+# （実測：私の し は6kHz以上が−60dB、VOICEVOXは−10dB）
+F6, F7 = 6800, 8300
 
 # 子音の種類と、口を閉じる場所（そこから母音へ滑る）
 C = {
@@ -74,6 +77,19 @@ C = {
     "r":  ("flap", (350, 1600, 2600)),
     "y":  ("glide", (300, 2400, 3000)), "w": ("glide", (350, 800, 2200)),
 }
+# 子音の息の音そのものの形（中心Hz, 幅Hz）。
+# 以前は母音と同じ共鳴に通していたので、し が 2〜4kHz に落ちていた。
+# 本物の し は 5〜7kHz に山が立つ（VOICEVOX実測）。まったく別の音だった。
+NOISE = {
+    "s": (6500, 3500), "z": (6000, 3500),
+    "sh": (5000, 3500), "ch": (5000, 3500), "j": (5000, 3500),
+    "ts": (6000, 3000),
+    "t": (4000, 3000), "d": (4000, 3000),
+    "k": (3000, 2500), "g": (3000, 2500),
+    "p": (1200, 1800), "b": (1200, 1800),
+    "h": (1600, 2500), "f": (2500, 2500),
+}
+
 # 声帯を使わない子音。これにはさまれた い・う は息だけになる（無声化）
 VOICELESS = {"k", "t", "p", "s", "h", "f", "sh", "ch", "ts"}
 
@@ -192,7 +208,7 @@ def prosody(items, rng):
 
 
 # 共鳴の幅（Hz）。狭いほど母音がはっきりする。広すぎると谷が埋まってこもる
-BW = (60, 90, 120, 150, 200)
+BW = (60, 90, 120, 150, 200, 260, 320)
 
 
 def _smooth(x, ms):
@@ -247,40 +263,83 @@ CTIME = {"stop": 0.052, "vstop": 0.052, "aff": 0.085, "fric": 0.070,
 def plan(items, size):
     """読み方を、時間の流れに沿った区間の並びに直す。
 
-    区間 = (長さ, 種類, 共鳴の位置, 声の強さ, 息の強さ, 高さ)
-    種類は 声 / 雑音 / 沈黙。"""
+    区間 = (長さ, 種類, 共鳴の位置, 声の強さ, 息の強さ, 高さ, 息の音の形, 鼻)
+    種類は 声 / 雑音 / 沈黙。
+
+    息の音（息の音の形）は母音の共鳴とは別に持つ。息はすき間の前の
+    短い空洞で鳴っていて、口ぜんたいの共鳴を通らないため。"""
     segs = []
     for con, vow, dur, pit, dev, amp in items:
         if con in ("pause", "sokuon"):
-            segs.append((dur, "sil", None, 0.0, 0.0, None))
+            segs.append((dur, "sil", None, 0.0, 0.0, None, None, 0.0))
             continue
         kind, locus = C.get(con, ("none", None))
         vt = V.get(vow, V["u"]) if vow != "n" else (300, 1000, 2200)
         vt = tuple(f * size for f in vt)
         lo = tuple(f * size for f in locus) if locus else vt
+        ns = NOISE.get(con)
+        ns = (ns[0] * size, ns[1]) if ns else (3000 * size, 3000)
         vowel = max(0.045, dur - CTIME.get(kind, 0.0))
         if kind in ("stop", "vstop", "aff"):
-            segs.append((0.040, "sil", lo, 0.0, 0.0, None))        # 口を閉じる
+            segs.append((0.040, "sil", lo, 0.0, 0.0, None, ns, 0.0))  # 口を閉じる
         if kind in ("stop", "vstop"):
             segs.append((0.012, "noise", lo, 0.0,
-                         0.50 if kind == "stop" else 0.30, None))  # 破裂
+                         0.50 if kind == "stop" else 0.30, None, ns, 0.0))
+            if kind == "stop":
+                # 破裂のあと、声が出るまでの息だけの時間。
+                # ここを飛ばして破裂の直後から声を出すと、機械のように
+                # 切り替わって聞こえる。人は 20〜40ミリ秒かけて声に移る
+                segs.append((0.028, "noise", lo, 0.0, 0.16, None, ns, 0.0))
+                vowel = max(0.045, vowel - 0.028)
         if kind in ("fric", "aff"):
             segs.append((0.070 if kind == "fric" else 0.045, "noise",
-                         lo, 0.0, 0.35, None))                     # 摩擦
+                         lo, 0.0, 0.35, None, ns, 0.0))            # 摩擦
         if kind == "nasal":
-            segs.append((0.050, "voice", lo, 0.50 * amp, 0.0, pit))      # 鼻の共鳴
+            segs.append((0.050, "voice", lo, 0.50 * amp, 0.0, pit, ns, 1.0))
         if kind == "flap":
-            segs.append((0.018, "sil", lo, 0.0, 0.0, None))        # はじき
+            segs.append((0.018, "sil", lo, 0.0, 0.0, None, ns, 0.0))  # はじき
         if dev:
-            # 無声化。声帯を使わず、子音の息がそのまま続く。
-            # 母音の形ではなく子音の場所で鳴らす（「し」なら し のまま消える）。
-            # 声より小さい。ここが大きいと、そこだけ砂を撒いたように浮く
-            segs.append((vowel * 0.7, "noise", lo, 0.0, 0.14 * amp, None))
+            # 無声化。声帯を使わず、子音の息がそのまま続く
+            segs.append((vowel * 0.7, "noise", lo, 0.0, 0.14 * amp, None, ns, 0.0))
         else:
-            segs.append((vowel, "voice", vt, amp, 0.0, pit))
+            segs.append((vowel, "voice", vt, amp, 0.0, pit, ns,
+                     1.0 if vow == "n" else 0.0))
     if not segs:
-        segs = [(0.2, "sil", None, 0.0, 0.0, None)]
+        segs = [(0.2, "sil", None, 0.0, 0.0, None, None, 0.0)]
     return segs
+
+
+def lowpass(x, cutoff):
+    """高い成分を落とす。切る高さを1標本ずつ動かせる。"""
+    n = len(x)
+    c = np.exp(-2.0 * np.pi * np.clip(np.asarray(cutoff, dtype=float),
+                                      300.0, SR / 2 - 200.0) / SR)
+    out = np.empty(n)
+    xin = np.asarray(x, dtype=float)
+    y1 = 0.0
+    for i in range(n):
+        y1 = (1.0 - c[i]) * xin[i] + c[i] * y1
+        out[i] = y1
+    return out
+
+
+def bandpass(x, cf, bw):
+    """息の音を、その音の形に整える。中心と幅は1標本ずつ動かす。"""
+    n = len(x)
+    f = np.clip(np.asarray(cf, dtype=float), 200.0, SR / 2 - 300.0)
+    b = np.clip(np.asarray(bw, dtype=float), 300.0, 6000.0)
+    r = np.exp(-np.pi * b / SR)
+    c = 2.0 * r * np.cos(2 * np.pi * f / SR)
+    g = (1.0 - r * r)                          # 山の高さをそろえる
+    out = np.empty(n)
+    y1 = y2 = 0.0
+    xin = np.asarray(x, dtype=float)
+    for i in range(n):
+        v = g[i] * xin[i] + c[i] * y1 - r[i] * r[i] * y2
+        out[i] = v
+        y2 = y1
+        y1 = v
+    return out
 
 
 def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
@@ -293,9 +352,12 @@ def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
     n = sum(lens)
 
     # --- 共鳴の位置・声の強さ・息の強さを、時間の帯として並べる ---
-    tr = np.zeros((5, n))
+    tr = np.zeros((7, n))
     vg = np.zeros(n)
     ng = np.zeros(n)
+    ncf = np.zeros(n)
+    nbw = np.zeros(n)
+    dark = np.zeros(n)
     marks, vals = [], []
     last = None
     pos = 0
@@ -308,13 +370,19 @@ def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
     # 点は、子音の場所と母音の中心に打つ。あいだは滑らかにつなぐので、
     # 短い拍では母音の形に届ききらない。これは人でも起きること（言い崩し）。
     fa, fv = [], []
-    for (d, kind, ff, v, b, pit), L in zip(segs, lens):
+    lastn = (3000.0 * size, 3000.0)
+    for (d, kind, ff, v, b, pit, ns, dk), L in zip(segs, lens):
         ff = ff or last or tuple(f * size for f in V["u"])
         last = ff
+        ns = ns or lastn
+        lastn = ns
         fa.append(pos + L // 2)
         fv.append(ff)
         vg[pos:pos + L] = v
         ng[pos:pos + L] = b
+        ncf[pos:pos + L] = ns[0]
+        nbw[pos:pos + L] = ns[1]
+        dark[pos:pos + L] = dk
         if pit is not None:
             marks.append(pos + L // 2)
             vals.append(pit)
@@ -326,12 +394,14 @@ def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
         tr[i] = np.interp(idx, fa, [f[i] for f in fv])
     tr[3, :] = F4 * size
     tr[4, :] = F5 * size
+    tr[5, :] = F6 * size
+    tr[6, :] = F7 * size
     for i in range(3):
         tr[i] = _smooth(tr[i], 8.0)
     # 揺らぎ。人の口は狙った形にぴたりと静止しない。
     # ゆっくりのものだけだと、20〜50ミリ秒の「止まり」が残った（実測）。
     # 速い揺らぎを重ねて、止まる時間そのものをなくす。
-    for i in range(5):
+    for i in range(7):
         slow = _smooth(rng.normal(0, 0.012, n), 90.0) * 6.0
         fast = _smooth(rng.normal(0, 0.010, n), 30.0) * 3.5
         tr[i] = tr[i] * (1.0 + slow + fast)
@@ -339,6 +409,9 @@ def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
     ng = _smooth(ng, 4.0)
     # 息の強さも一定ではない。1拍のなかでもわずかに上下する
     vg = vg * (1.0 + _smooth(rng.normal(0, 0.05, n), 70.0) * 5.0)
+    ncf = _smooth(ncf, 8.0)
+    nbw = _smooth(nbw, 8.0)
+    dark = _smooth(dark, 15.0)
 
     # --- 声の高さ。文の頭から終わりまで1本の線でつなぐ ---
     if len(marks) < 2:
@@ -363,10 +436,26 @@ def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
     src[m2] = np.cos(0.5 * np.pi * (ph[m2] - op) / cl)
 
     # --- 息と雑音。高い成分だけ（低い方は口の中では作られない） ---
-    nz = lfilter([1.0, -0.97], [1.0], rng.normal(0, 1, n))
+    white = rng.normal(0, 1, n)                  # 息の音のもと（そのまま）
+    nz = lfilter([1.0, -0.97], [1.0], white)     # 声にまぜる息（高い方だけ）
 
-    x = (src * (1.0 - breath * 0.35) + nz * breath * 0.12) * vg + nz * ng
-    y = cascade(x, tr)
+    # 声は口ぜんたいの共鳴を通る。息の音は通らない（すき間の前の空洞で鳴る）。
+    # 以前は両方を同じ共鳴に通していた。そのせいで し が2〜4kHzに落ち、
+    # 6kHzより上が空になっていた（実測−60dB、本物は−10dB）。別の道にする。
+    v = (src * (1.0 - breath * 0.35) + nz * breath * 0.12) * vg
+    y = cascade(v, tr)
+    # 鼻に抜ける音（ん・な・ま）は暗い。鼻の中で高い成分が吸われるため。
+    # 実測：本物の ん は4kHzで−56dB、私は−21dBだった（35dBも明るかった）
+    # 1段だけでは足りなかった。1段は1オクターブで6dBしか落ちず、
+    # 4kHzがまだ−6dBしか下がらない（実測でも ん が明るいままだった）。
+    # 3段重ねて、1オクターブ18dB落とす
+    cut = 9000.0 - 7000.0 * np.clip(dark, 0, 1)
+    for _ in range(3):
+        y = lowpass(y, cut)
+    # 息の音は、白い雑音を2段の帯域で削る。1段だと上が落ちきらず、
+    # 8〜9kHzまで同じ強さで残って砂を撒いたように聞こえた（実測）
+    fr = bandpass(bandpass(white * ng, ncf, nbw), ncf, nbw)
+    y = y + fr * 0.32                      # VOICEVOX と同じ明るさになる大きさ
     y = lfilter([1.0, -0.94], [1.0], y)    # 唇から外へ出るときの変化
 
     e = np.ones(n)                         # 文の頭と尻だけ、そっと始めて終わる
