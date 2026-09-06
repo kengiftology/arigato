@@ -2392,6 +2392,45 @@ async def zones_refresh(key: str = ""):
 STORY_PREFIX = "spirit/story/"
 
 
+def _post_to_app(zones: list, what: list, before_url: str, after_url: str) -> str:
+    """片づいたことを、ありがとうアプリの整備記録として投稿する（2026-09-06）。
+
+    ここが「埋もれているありがとうを掘り起こして届ける装置」の、届ける側。
+    今まで地霊とアプリは一本も繋がっておらず、気づいたことは記録に落ちて
+    そのまま埋まっていた。整備した本人が投稿するのを待たずに済むようにする。
+
+    名前は入れない。誰がやったか分かっていても入れない（台帳#12）。
+    良い知らせは名前なしで第三者へ、という決まりに従う。数も順位も書かない。
+
+    person_name は投稿者の欄なので「だれか」と置く。ありがとうは
+    その場所へ向かって送られる。"""
+    try:
+        import uuid
+        from datetime import datetime, timezone, timedelta
+        jst = timezone(timedelta(hours=9))
+        name = "・".join(zones[:3])
+        line = "、".join(x for x in what[:3] if x)
+        rid = str(uuid.uuid4())
+        get_db().collection("maintenance").document(rid).set({
+            "zone_id": "spirit",
+            "zone_name": name,
+            "person_name": "だれか",
+            "content": line,
+            "before_photo": before_url,
+            "after_photo": after_url,
+            "before_suggestion": None,
+            "place_line": _sanitize(_load().get("comment") or ""),
+            "created_at": datetime.now(jst).isoformat(),
+            "thanks_count": 0,
+            "status": "completed",
+            "by_spirit": True,               # 人の投稿と見分けるための印
+        })
+        return rid
+    except Exception as e:
+        logger.warning("post to app failed: %s", e)
+        return ""
+
+
 def _keep_story(before: bytes, after: bytes, cared: list, who: list) -> None:
     """片づいた前後の2枚を、その場所の積み重ねとして残す。
 
@@ -2402,10 +2441,11 @@ def _keep_story(before: bytes, after: bytes, cared: list, who: list) -> None:
         t = int(time.time())
         a = upload_to(STORY_PREFIX + "%d_a.jpg" % t, before, "image/jpeg")
         b = upload_to(STORY_PREFIX + "%d_b.jpg" % t, after, "image/jpeg")
+        zones = [c[0] for c in cared]
+        what = [w.get("what") for c in cared for w in c[1]][:5]
+        rid = _post_to_app(zones, what, a, b)      # アプリの整備記録にも載せる
         _log_event("story", {"before": a, "after": b, "who": who,
-                             "zones": [c[0] for c in cared],
-                             "what": [w.get("what") for c in cared
-                                      for w in c[1]][:5]})
+                             "zones": zones, "what": what, "record": rid})
     except Exception as e:
         logger.warning("keep story failed: %s", e)
 
