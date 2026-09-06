@@ -1774,47 +1774,40 @@ async def list_lines():
 
 @router.get("/voice.pcm")
 async def voice_pcm():
-    """C3が取りに来る声。
+    """C3が取りに来る声。作り置きの日本語（VOICEVOX:ずんだもん）だけを返す。
 
     まず持ち歌を見る。決まっていて、鳴らしてよい時刻を過ぎていれば、それを返す。
     時刻より前なら何も返さない――その沈黙が「間」になる（憲法第5条）。
-    持ち歌が無いときだけ、従来の合成に落ちる。"""
+
+    2026-09-07: 合成（espeak-ng）の経路を外した。クラウドにespeak-ngは
+    入っておらず（No such file or directory）、一度も成功していない。
+    それでいて古い版が残した音声が配られ続け、どの声が鳴っているのか
+    分からない状態になっていた。作り置きだけにすれば、鳴る声は必ず
+    GCSに置いた19本のどれかになる。
+
+    言うことが決まっていないときは、その場の様子から選ぶ。
+    何も当てはまらなければ204で黙る。503はエラーであって沈黙ではない。"""
     st = _load()
     name = st.get("speak_line")
     if name:
         if time.time() < st.get("speak_at", 0):
             return Response(status_code=204)       # まだ。これが間になる
-        try:
-            pcm = read_object(LINES_PREFIX + name + ".pcm")
-        except Exception as e:
-            logger.warning("line read failed: %s", e)
-            pcm = None
         st["speak_line"] = None                    # 一度鳴らしたら下ろす
         _save(st)
-        if pcm:
-            return Response(content=pcm, media_type="application/octet-stream")
-    text = st.get("comment", "")
-    if _voice_cache["text"] != text or _voice_cache["pcm"] is None:
-        pcm = _synth_ja(text)
-        if pcm is None:
-            # 合成が使えない場でも、持ち歌はGCSに19本ある。
-            # 503を返していた頃は、本体がそれを受けて素の鳴き声に落ちていた
-            # （2026-09-06、4回続けて503。ユーザーが聞いたのは日本語ではなく
-            # あつ森語のほうだった）。何も言うことが無いなら204で黙る。
-            name = _pick_line("alone")
-            if name:
-                try:
-                    pcm = read_object(LINES_PREFIX + name + ".pcm")
-                except Exception as e:
-                    logger.warning("fallback line read failed: %s", e)
-                    pcm = None
-            if pcm:
-                return Response(content=pcm,
-                                media_type="application/octet-stream")
-            return Response(status_code=204)
-        _voice_cache["pcm"] = pcm
-        _voice_cache["text"] = text
-    return Response(content=_voice_cache["pcm"], media_type="application/octet-stream")
+    else:
+        # 散らかっているならそわそわ、そうでなければひとりごと。
+        name = _pick_line("worse" if st.get("score", 0) >= M_HI else "alone")
+    if not name:
+        return Response(status_code=204)
+    try:
+        pcm = read_object(LINES_PREFIX + name + ".pcm")
+    except Exception as e:
+        logger.warning("line read failed (%s): %s", name, e)
+        pcm = None
+    if not pcm:
+        return Response(status_code=204)
+    _log_event("voice", {"line": name, "bytes": len(pcm)})
+    return Response(content=pcm, media_type="application/octet-stream")
 
 
 _PANEL = """<!doctype html><html lang=ja><meta charset=utf-8>
