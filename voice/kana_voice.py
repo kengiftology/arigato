@@ -93,15 +93,33 @@ def parse(text):
     return out
 
 
-def reson(x, freqs, bw=(80, 110, 150)):
-    y = np.zeros_like(x)
-    for f, b, g in zip(freqs, bw, (1.0, 0.5, 0.25)):
-        r = np.exp(-np.pi * b / SR)
-        th = 2 * np.pi * f / SR
+# 共鳴の幅（Hz）。狭いほど母音がはっきりする。広すぎると谷が埋まってこもる
+BW = (60, 90, 120, 150, 200)
+
+
+def reson(x, freqs, bw=None):
+    """喉と口の共鳴を通す。
+
+    以前は共鳴を並べて足していた。これだと山と山のあいだの谷が埋まり、
+    母音が母音として立たない（こもる）のに、余計な成分は残る（ざらつく）。
+    実際の喉と口は直列につながった1本の管なので、順に通していく。
+    こうすると谷が深くなり、母音がはっきりする。
+
+    上の方の共鳴（4番目・5番目）も足す。無いと 高い成分が死んでこもる。"""
+    f = list(freqs)
+    while len(f) < 5:                     # 上の共鳴。声の明るさを支える
+        f.append(f[-1] + 1000)
+    b = bw or BW
+    y = x
+    for fi, bi in zip(f, b):
+        if fi >= SR / 2 - 100:
+            continue
+        r = np.exp(-np.pi * bi / SR)
+        th = 2 * np.pi * fi / SR
         a = [1.0, -2 * r * np.cos(th), r * r]
-        k = (1 - r) * np.sqrt(1 - 2 * r * np.cos(2 * th) + r * r)
-        y += lfilter([k], a, x) * g
-    return y
+        k = 1 - 2 * r * np.cos(th) + r * r      # 直流で利得1になるようにする
+        y = lfilter([k], a, y)
+    return y.astype(np.float32)
 
 
 def glottal(n, f0, jitter, breath, rng):
@@ -180,7 +198,7 @@ def mora(con, vow, dur, f0, size, breath, jitter, rng):
     return np.concatenate(pre + [y]) if pre else y
 
 
-def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.030, seed=0,
+def speak(text, f0=300, size=1.35, breath=0.20, jitter=0.010, seed=0,
           contour=None):
     rng = np.random.default_rng(seed)
     items = parse(text)
@@ -214,13 +232,13 @@ def main():
         rep.flush()
 
     lines = [
-        ("1_なのり",   "あのね、わたし、きっちんちゃん。", dict(f0=300, size=1.35)),
-        ("2_小さめ",   "あのね、わたし、きっちんちゃん。", dict(f0=360, size=1.55)),
-        ("3_息おおめ", "あのね、わたし、きっちんちゃん。", dict(f0=300, size=1.35, breath=0.40)),
-        ("4_あいさつ", "あ、きた。", dict(f0=310, size=1.35)),
+        ("1_なのり",   "あのね、わたし、きっちんちゃん。", dict(f0=300, size=1.30)),
+        ("2_小さめ",   "あのね、わたし、きっちんちゃん。", dict(f0=360, size=1.45)),
+        ("3_息おおめ", "あのね、わたし、きっちんちゃん。", dict(f0=300, size=1.30, breath=0.30)),
+        ("4_あいさつ", "あ、きた。", dict(f0=310, size=1.30)),
         ("5_しらせ",   "あのね、さっきね、だれかがね、きれいにしてくれたのかなあ。",
-                       dict(f0=295, size=1.35)),
-        ("6_そわそわ", "なんだかね、そわそわするなあ。", dict(f0=290, size=1.35)),
+                       dict(f0=295, size=1.30)),
+        ("6_そわそわ", "なんだかね、そわそわするなあ。", dict(f0=290, size=1.30)),
     ]
     for i, (name, text, kw) in enumerate(lines):
         y = speak(text, seed=i, **kw)
