@@ -416,7 +416,14 @@ _face_buf = []            # [(特徴量, 顔の幅, 時刻, 位置), ...]
 MOVE_MIN = 0.5           # 顔の幅に対して、これだけ離れたら「動いた」
 FACE_BUF_SEC = 25.0       # これより古い顔は忘れる（別の人が来ているかもしれない）
 FACE_BUF_MAX = 8          # ためる枚数の上限
-FACE_BUF_MIN_NEW = 3      # 新しいIDを出すのに、最低これだけの枚数が要る
+FACE_BUF_MIN_NEW = 2      # 新しいIDを出すのに、最低これだけの枚数が要る
+# ただし、十分に大きく起きた顔なら1枚で足りる。
+# 実測（同一人物・正面・200px以上）で、本人を認める91%・
+# 他人を誤る0%。一方で、大きい写真は1枚送るのに3.9秒かかり、
+# 人は数秒で通り過ぎるので、そもそも1枚しか撮れない。
+# 279px・259px・155pxの正面顔が3つ、枚数だけを理由に捨てられていた
+# （2026-09-07）。130pxの顔三枚より、279pxの正面顔一枚のほうが確か。
+FACE_SOLO_PX = 200
 
 
 def _blend(vecs: list) -> list:
@@ -532,7 +539,8 @@ def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=Non
         # 相手——を弾いていた（実測：240pxの正面顔が did_not_move で流れた）。
         # 残る守りは、起きた顔であること・120px以上・数枚そろうこと、
         # そして同じ場所に居つづける「顔」を物として外す仕組み。
-        if n < FACE_BUF_MIN_NEW and not _confirm_new(vec, pos, px):
+        enough = (n >= FACE_BUF_MIN_NEW or best_px >= FACE_SOLO_PX)
+        if not enough and not _confirm_new(vec, pos, px):
             _log_small("not_enough", best_px, n=n)
             return None
         pid = _new_person_id()
