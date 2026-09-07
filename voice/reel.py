@@ -32,13 +32,13 @@ SECTIONS = [
         "cute/cute1_高さ+4.wav", "cute/cute3_両方.wav"]),
     ("3. 誰の声でもない声の試み", [
         "nobody/0_平均ひとつ.wav", "nobody/1_4人が同時に.wav", "nobody/2_平均を薄く重ねる.wav",
-        "nobody/3_平均＋部屋.wav", "nobody/4_高さをずらして重ねる.wav", "nobody/5_低い声と高い声.wav"]),
+        "nobody/3_平均＋部屋.wav", "nobody/4_4人同時＋部屋.wav", "nobody/5_薄い重ね＋部屋.wav"]),
     ("4. 言葉にならない鳴き声。あつ森方式", [
         "babble/きづいた.wav", "babble/うれしい.wav", "babble/きになる.wav", "babble/しょんぼり.wav",
         "babble3/half_きづいた.wav", "babble3/half_うれしい.wav", "babble3/half_こまった.wav"]),
     ("5. 宛名。ねを足す、発語片、ためらい", [
         "atena/1_流暢.wav", "atena/2_ねを足す.wav", "atena/3_発語片.wav", "atena/4_ためらい.wav",
-        "atena/5_全部.wav", "atena/6_全部_実機.wav"]),
+        "atena/5_知らせ_流暢.wav", "atena/6_知らせ_宛名.wav"]),
     ("6. 甥っ子の声から", [
         "kidsolo/1_流暢.wav", "kidsolo/2_発語片.wav", "kidsolo/3_ためらい.wav",
         "mix/kid30.wav", "mix/kid50.wav", "mix/kid70.wav"]),
