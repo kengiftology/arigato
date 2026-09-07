@@ -115,9 +115,12 @@ def main():
     def mmss(s):
         return "%d:%02d" % (int(s) // 60, int(s) % 60)
 
+    for f in OUT.glob("[0-9][0-9]_*.mp3"):
+        f.unlink()
     for title, files in SECTIONS:
         push(np.zeros(int(GAP_SEC * SR), np.float32))
         idx.write("\n[%s] %s\n" % (mmss(t), title))
+        start = len(pieces)                     # 種類ごとに別ファイルにもする
         push(narrate(title))
         push(np.zeros(int(GAP * SR), np.float32))
         for f in files:
@@ -128,6 +131,13 @@ def main():
             idx.write("  %s  %s\n" % (mmss(t), f))
             push(load(p))
             push(np.zeros(int(GAP * SR), np.float32))
+        sec = np.concatenate(pieces[start:])
+        num, name = title.split(". ", 1)
+        stem = "%02d_%s" % (int(num), name.split("。")[0].replace(" ", "").replace("/", "・"))
+        sf.write(str(OUT / (stem + ".wav")), sec, SR)
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(OUT / (stem + ".wav")),
+                        "-b:a", "96k", str(OUT / (stem + ".mp3"))], check=True)
+        (OUT / (stem + ".wav")).unlink()
     y = np.concatenate(pieces)
     wav = OUT / "声の記録_2026-09-07.wav"
     sf.write(str(wav), y, SR)
