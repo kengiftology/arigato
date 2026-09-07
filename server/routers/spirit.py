@@ -1748,6 +1748,47 @@ def _synth_ja(text: str) -> bytes | None:
         return None
 
 
+SAY_NAME = "say_0"          # その場で作った、いまの一言の声
+
+
+@router.post("/say")
+async def put_say(text: str = "", request: Request = None,
+                  x_upload_key: str = Header(None)):
+    """いまの一言を声にしたものを置く（2026-09-07）。
+
+    クラウドには音声合成が無い（espeak-ngも入っていない）。VOICEVOXは
+    宅内で動いていて、クラウドから宅内へは入れない。そこで宅内の側から
+    「いまの一言を読み上げた音」を持ってきてもらう。
+
+    text には、何を読み上げたのかを添える。地霊の一言は判断のたびに
+    変わるので、これが今の一言と食い違っていたら、その音は古い。
+    古い音を鳴らすくらいなら、場面に合った作り置きを鳴らすほうがよい。"""
+    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty body")
+    upload_to(LINES_PREFIX + SAY_NAME + ".pcm", data, "application/octet-stream")
+    st = _load()
+    st["say_text"] = text
+    st["say_at"] = time.time()
+    _save(st)
+    _log_event("say_made", {"text": text[:40], "bytes": len(data)})
+    return {"ok": True, "bytes": len(data), "text": text}
+
+
+@router.get("/say", response_class=PlainTextResponse)
+async def get_say():
+    """いま声にしてほしい一言。宅内の合成係が数十秒おきに覗きにくる。
+
+    もう声にしてあるなら空を返す。同じものを何度も作らせない。"""
+    st = _load()
+    text = st.get("comment") or ""
+    if not text or st.get("say_text") == text:
+        return "\n"
+    return text + "\n"
+
+
 @router.post("/lines/{name}")
 async def put_line(name: str, request: Request, x_upload_key: str = Header(None)):
     """持ち歌を1本置く。手元のGPUで作ったものを送り込むための口。
@@ -1795,8 +1836,14 @@ async def voice_pcm():
         st["speak_line"] = None                    # 一度鳴らしたら下ろす
         _save(st)
     else:
-        # 散らかっているならそわそわ、そうでなければひとりごと。
-        name = _pick_line("worse" if st.get("score", 0) >= M_HI else "alone")
+        # いまの一言を声にしたものがあれば、それを鳴らす。
+        # 一言は判断のたびに変わるので、食い違っていたら古い音。
+        if st.get("say_text") and st.get("say_text") == (st.get("comment") or ""):
+            name = SAY_NAME
+        else:
+            # 無ければ場面に合った作り置き。
+            # 散らかっているならそわそわ、そうでなければひとりごと。
+            name = _pick_line("worse" if st.get("score", 0) >= M_HI else "alone")
     if not name:
         return Response(status_code=204)
     try:
