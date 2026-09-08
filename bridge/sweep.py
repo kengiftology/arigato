@@ -48,12 +48,27 @@ def _wsdl_dir() -> str | None:
     return None
 
 
+ONVIF_TIMEOUT = 10     # 首振りの相談に、これ以上は待たない（秒）
+
+
 def _connect():
+    """カメラの首振り口につなぐ。
+
+    2026-09-08: 待ち時間の上限を付けた。付けていなかった頃、カメラが返事を
+    しなくなった瞬間に主スレッドが接続を握ったまま止まり（実測：wait_woken の
+    まま7.5時間）、同じスレッドにある「写真が古ければ繋ぎ直す」見張りごと
+    固まって、目が閉じたまま走りつづけた。上限を超えれば例外になり、
+    呼び出し側の except で接続を捨てて次に進める。"""
     if _ptz[0] is None:
         from onvif import ONVIFCamera
         d = _wsdl_dir()
         args = (HOST, PORT, USER, PWD)
-        cam = ONVIFCamera(*args, wsdl_dir=d) if d else ONVIFCamera(*args)
+        from zeep.transports import Transport
+        # ONVIFCamera は transport を全サービス（首振り・映像設定）に配る。
+        # timeout=定義ファイルの読み込み / operation_timeout=命令1回の待ち
+        tr = Transport(timeout=ONVIF_TIMEOUT, operation_timeout=ONVIF_TIMEOUT)
+        kw = {"wsdl_dir": d} if d else {}
+        cam = ONVIFCamera(*args, transport=tr, **kw)
         media = cam.create_media_service()
         _ptz[0] = cam.create_ptz_service()
         _ptz[1] = media.GetProfiles()[0].token
