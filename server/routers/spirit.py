@@ -753,14 +753,18 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
             logger.warning("identify failed: %s", e)
             _identify_err[0] = "%s: %s" % (type(e).__name__, str(e)[:200])
 
-    # 人が去った直後（5分以内）は細かく見る。それ以外は間隔を空けて無駄打ちを避ける
-    recent_visit = (now - st.get("last_seen", 0)) < 300
-    gap = JUDGE_GAP_AFTER_VISIT if recent_visit else JUDGE_GAP_IDLE
-    # 見回りの1枚だけは間引かない。わざわざ首を振って撮りに行った1枚が
-    # 「10分たっていない」で捨てられては、行った意味がなくなる
-    # （実際に1回目の見回りがそれで消えた・2026-09-06）。
-    if not check and now - st["last_judge"] < gap:
-        return {"ok": True, "judged": False, "why": "throttled",
+    # 動きがあって送られてきた1枚（big=1）は「誰かが動いている」証拠として時刻だけ残す。
+    # AIには見せない。人が居る間に何度見ても、物は片づかないし散らからない。
+    if big:
+        st["last_motion"] = now
+    # 2026-09-09 本人の方針：人が居ない間はAIを一切呼ばない。人が去ったあとに
+    # 1回撮って判断すれば、次に人が来るまで何も変わらないので撮り直しは要らない。
+    # それまでは「人が居る間、動きのたびに15秒に1回」呼んでいて、1日378回・
+    # 上限400回に張り付いていた（9/1〜9/9で$13〜15）。判断するのは見回り(check)の
+    # 1枚だけ。見回りは hint() が「人が去って静かになった」ときにだけ出す。
+    if not check:
+        _save(st)
+        return {"ok": True, "judged": False, "why": "wait_for_check",
                 "hires": now < st.get("want_hires", 0)}
     if now - st["day_start"] > 86400:
         st["day_start"], st["day_calls"] = now, 0
@@ -959,8 +963,15 @@ async def hint():
     # 誰も居ないと分かってから、キッチンを見に行く。
     # 目はここを3秒おきに覗きにくるので、札を立てるだけで伝わる。
     check = st.get("check_pose") or ""
-    if (check and now - st.get("last_seen", 0) > CHECK_QUIET_SEC
-            and now - st.get("checked_at", 0) > CHECK_GAP):
+    # 「人が来た」の手がかりは3つ：顔・人感・動きのあるコマ(big=1)。どれかの最後の時刻。
+    active = max(st.get("last_seen", 0), st.get("last_motion", 0))
+    checked = st.get("checked_at", 0)
+    # 出す条件（2026-09-09）：静かになってから CHECK_QUIET_SEC 経った ＋
+    # 前回の見回りのあとに人が来ている ＋ 見回り同士は CHECK_GAP 以上あける。
+    # 誰も来なければ何度見ても同じなので出さない（AIも呼ばれない）。
+    if (check and now - active > CHECK_QUIET_SEC
+            and active > checked
+            and now - checked > CHECK_GAP):
         return "check " + check + "\n"
     # 人を探して首を振る仕組みは止めた（2026-09-06）。
     # カメラは入り口を向いて待っているので、探しに行く先がもう無い。
@@ -2134,7 +2145,10 @@ BASELINE_PREFIX = "spirit/zonecheck/base_"           # 向きごとの基準写�
 # 見張りはカメラではなく人感センサーがしている（24時間で110回）。
 # カメラを見張りから降ろせるのは、そのおかげ。
 CHECK_QUIET_SEC = 180.0     # 人が去ってこれだけ静かなら、見に行ってよい
-CHECK_GAP = 1800.0          # 見回りの間隔。これより短くは行かない
+CHECK_GAP = 300.0           # 見回り同士の最短間隔。2026-09-09: 1800→300。
+                            # 「人が来るたびに去ったあと1回」に変えたので、30分だと
+                            # 続けて来た人の分を取りこぼす。誰も来なければ出さないので、
+                            # 短くしても無駄打ちにはならない
 
 
 def _baseline_key(pose: str) -> str:
