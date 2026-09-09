@@ -745,10 +745,15 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                     alone = len(st.get("visit_people") or []) <= 1
                     if res["state"] == "egg" and len(doc.get("vecs") or []) <= 1:
                         kind, slow = "hello_new", True     # 初対面はためらう
+                        ready = _ready_line("new", doc, st)
                     elif b >= 6:                       # なついている／べったり
                         kind, slow = "hello_close", False
+                        ready = _ready_line(res["person"], doc, st)
                     else:                              # 見たことある／顔見知り
                         kind, slow = "hello_known", False
+                        ready = _ready_line(res["person"], doc, st)
+                    if ready:                          # その人向けに先に作ってあった一言
+                        kind = ready
                     _plan_speech(st, kind, slow)
                 # 前回の判断からこちら、誰が居たかを溜めておく。
                 # 判断の時点で cur_person を見ると、とうに帰った人の名が残り、
@@ -1872,7 +1877,7 @@ async def put_line(name: str, request: Request, x_upload_key: str = Header(None)
     声を作り直したくなったら、同じ名前で上書きすればよい。"""
     if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
-    if not re.fullmatch(r"[a-z_]+_\d+", name):
+    if not re.fullmatch(r"[a-z0-9_]+_\d+", name):
         raise HTTPException(status_code=400, detail="bad name")
     data = await request.body()
     if not data:
@@ -1880,6 +1885,94 @@ async def put_line(name: str, request: Request, x_upload_key: str = Header(None)
     url = upload_to(LINES_PREFIX + name + ".pcm", data, "application/octet-stream")
     _line_cache["at"] = 0.0                 # 覚え直させる
     return {"ok": True, "name": name, "bytes": len(data), "url": url}
+
+
+# ---- 声を裏で事前に作る（本人決定 2026-09-09 深夜）----
+# 人が去った直後は誰も居ないので、その時間に「知っている人ごとの次の一言」を文にして
+# おき、宅内の声係（ラズパイの VOICEVOX・1本30秒）が音にして置いておく。
+# 次に来た瞬間、その人の分（for_<ID>_0）を鳴らす。初めての人向けは for_new_0。
+def _todo_name(pid: str) -> str:
+    return "for_" + pid + "_0"
+
+
+async def _prepare_greetings(st: dict, now: float) -> int:
+    """知っている人ぜんぶと「初めての人」向けに、次の一言の文を作って覚えておく。"""
+    persona = st.get("persona", "")
+    n = 0
+    try:
+        db = get_db()
+        for d in db.collection("faces").stream():
+            doc = d.to_dict() or {}
+            manner = _bond_stage(_bond_now(doc))[1]
+            text = await _greet_line(persona, manner, _fresh_news(d.id))
+            if text and text != doc.get("next_text"):
+                d.reference.update({"next_text": text, "next_at": now})
+                n += 1
+        text = await _greet_line(persona, BOND_STAGES[0][2], "")
+        if text and text != st.get("next_new_text"):
+            st["next_new_text"], st["next_new_at"] = text, now
+            n += 1
+    except Exception as e:
+        logger.warning("prepare greetings failed: %s", e)
+    if n:
+        _log_event("prepared", {"lines": n})
+    return n
+
+
+@router.get("/todo")
+async def todo():
+    """声係が覗きにくる：まだ音になっていない一言の一覧。"""
+    out = []
+    try:
+        for d in get_db().collection("faces").stream():
+            doc = d.to_dict() or {}
+            t = doc.get("next_text")
+            if t and t != doc.get("made_text"):
+                out.append({"name": _todo_name(d.id), "text": t})
+    except Exception as e:
+        logger.warning("todo list failed: %s", e)
+    st = _load()
+    t = st.get("next_new_text")
+    if t and t != st.get("made_new_text"):
+        out.append({"name": _todo_name("new"), "text": t})
+    return {"todo": out}
+
+
+@router.post("/todo/{name}")
+async def todo_done(name: str, request: Request, text: str = "",
+                    x_upload_key: str = Header(None)):
+    """声係が作った音を置き、何を読んだかを覚える（同じ文を二度作らせない）。"""
+    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    if not re.fullmatch(r"for_[a-z0-9]+_0", name):
+        raise HTTPException(status_code=400, detail="bad name")
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty body")
+    upload_to(LINES_PREFIX + name + ".pcm", data, "application/octet-stream")
+    _line_cache["at"] = 0.0
+    pid = name[len("for_"):-2]
+    if pid == "new":
+        st = _load()
+        st["made_new_text"] = text
+        _save(st)
+    else:
+        try:
+            get_db().collection("faces").document(pid).update({"made_text": text})
+        except Exception as e:
+            logger.warning("todo done update failed: %s", e)
+    _log_event("voice_made", {"name": name, "bytes": len(data)})
+    return {"ok": True, "name": name, "bytes": len(data)}
+
+
+def _ready_line(pid: str, doc: dict, st: dict) -> str | None:
+    """その人向けに作り置いた一言があれば、その持ち歌の場面名を返す。"""
+    if pid == "new":
+        ok = st.get("next_new_text") and st.get("next_new_text") == st.get("made_new_text")
+    else:
+        ok = doc.get("next_text") and doc.get("next_text") == doc.get("made_text")
+    kind = "for_" + pid
+    return kind if ok and _pick_line(kind) else None
 
 
 @router.get("/lines")
@@ -2689,6 +2782,8 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
                 st["score"] = st["raw_score"] = 0.0
                 for pid in who:
                     _bond_up(pid, "sink_empty", now)
+        # 誰も居ない今のうちに、次に来る人向けの一言を文にしておく（声係が音にする）
+        await _prepare_greetings(st, now)
         upload_to(key, data, "image/jpeg")
         ats[pose] = now
         st["baseline_ats"] = ats
