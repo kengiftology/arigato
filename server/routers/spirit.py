@@ -558,6 +558,24 @@ def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=Non
     return {"person": pid, "state": state}
 
 
+def _touch_visit(st: dict, now: float) -> None:
+    """滞在の始まりを覚える。前の気配から VISIT_MERGE_GAP 以上あいていれば新しい滞在。
+
+    「一瞬しか居なかった人」と「出たり入ったりした人」を分けるため、
+    滞在の長さ＝最後の気配 − 始まり、で測る。気配は顔・人感・動きのどれでもよい。"""
+    prev = max(st.get("last_seen", 0), st.get("last_motion", 0))
+    if not st.get("visit_start") or now - prev > VISIT_MERGE_GAP:
+        st["visit_start"] = now
+
+
+def _stay_seconds(st: dict) -> float:
+    """いまの滞在の長さ（秒）。始まりが無ければ0。"""
+    if not st.get("visit_start"):
+        return 0.0
+    last = max(st.get("last_seen", 0), st.get("last_motion", 0))
+    return max(0.0, last - st["visit_start"])
+
+
 def _mark_seen(st: dict, now: float, by: str = "") -> None:
     """この前後比較のあいだに、人が居たことを記す。
 
@@ -568,6 +586,7 @@ def _mark_seen(st: dict, now: float, by: str = "") -> None:
 
     台帳#5（表情だけで手が出る）は世話イベントの数で測る。あれは
     「誰が」が無くても成立する主張なので、実装のほうもそう分ける。"""
+    _touch_visit(st, now)
     st["empty"] = False
     st["last_seen"] = now
     st["visit_seen"] = True
@@ -754,6 +773,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     # 動きがあって送られてきた1枚（big=1）は「誰かが動いている」証拠として時刻だけ残す。
     # AIには見せない。人が居る間に何度見ても、物は片づかないし散らからない。
     if big:
+        _touch_visit(st, now)
         st["last_motion"] = now
     # 2026-09-09 本人の方針：人が居ない間はAIを一切呼ばない。人が去ったあとに
     # 1回撮って判断すれば、次に人が来るまで何も変わらないので撮り直しは要らない。
@@ -2312,6 +2332,10 @@ BOND_MAX = 10
 BOND_CARE = 1          # 片づけてくれた → +1
 BOND_USE = 0           # 使って、そのままにした → 動かさない
 BOND_FADE_DAYS = 7.0   # 会わない日が7日たつごとに −1
+# 滞在の扱い（本人決定 2026-09-09 夜）
+STAY_MIN = 120.0        # これより短い滞在は「一瞬」。なつき度は動かさない（人に付けない）
+VISIT_MERGE_GAP = 600.0 # 出たり入ったりがこれ以内なら、同じ滞在として続ける
+BOND_COOLDOWN = 1800.0  # 同じ人に続けて+1しない。一度の滞在で動くのは1回だけ
 
 # 段階（5つ）。なつき度 → (段階の名前, 地霊への「この相手への接し方」)
 # 表情は場所の状態で決まり誰が来ても同じ。人によって変わるのは話し方だけ。
@@ -2322,6 +2346,22 @@ BOND_STAGES = (
     (6, "なついている", "なついている人。来てくれてうれしい。声がはずむ。"),
     (9, "べったり",     "だいすきな人。まちきれなかった。甘えて、くっつきたい気分。"),
 )
+
+
+def _bond_up(pid: str, why: str, now: float) -> bool:
+    """その人のなつき度を1上げる。一度の滞在で1回だけ（BOND_COOLDOWN）。0〜10で止める。"""
+    try:
+        ref = get_db().collection("faces").document(pid)
+        doc = ref.get().to_dict() or {}
+        if now - float(doc.get("bond_at") or 0) < BOND_COOLDOWN:
+            return False
+        level = max(0, min(BOND_MAX, _bond_now(doc) + BOND_CARE))
+        ref.update({"bond": level, "bond_at": now, "last_at": now})
+        _log_event("bond_up", {"person": pid, "why": why, "bond": level})
+        return True
+    except Exception as e:
+        logger.warning("bond up failed: %s", e)
+        return False
 
 
 def _bond_stage(level: int) -> tuple:
@@ -2412,12 +2452,11 @@ def _tally(zone: str, who: list, better, changes: list, seen_by=None) -> None:
             doc = ref.get().to_dict() or {}
             # 世話をすればなつく。使って放置しても動かさない（BOND_USE=0）。
             # 「何もしなかったこと」では動かない――通っただけの人に
-            # 義務を作らないため（規則3）。会わなかった分の目減りは
-            # _bond_now が反映するので、その値に足して保存し直す。
-            bond = max(0, min(BOND_MAX, _bond_now(doc) + (BOND_CARE if kind == "care"
-                                                          else BOND_USE)))
+            # 義務を作らないため（規則3）。+1 は _bond_up（一度の滞在で1回だけ）。
             ref.update({kind + "s": (doc.get(kind + "s") or 0) + 1,
-                        "bond": bond, "last_at": time.time()})
+                        "last_at": time.time()})
+            if kind == "care":
+                _bond_up(pid, "care:" + (zone or ""), time.time())
     except Exception as e:
         logger.warning("tally failed: %s", e)
 
@@ -2431,6 +2470,38 @@ async def _zone_cycle_bg(st: dict, data: bytes, now: float, pose: str = "") -> N
         await _zone_cycle(st, data, now, pose)
     finally:
         _zone_busy[0] = False
+
+
+_SINK_EMPTY_Q = (
+    "写真は共有キッチンのシンク周りを天井近くから見下ろしたものです。"
+    "備え付けの物（ステンレスの水切りかご、壁の包丁立てと包丁、壁のフックに掛かっている道具、"
+    "蛇口、排水口の網）は見ません。『シンク（流し台の金属のくぼみ）の中』に物はありますか？ "
+    "JSONだけで答えてください：{\"empty\": true または false}"
+)
+
+
+async def _sink_empty(data: bytes):
+    """シンクの中が空か。分からなければ None（動かさない）。
+
+    2026-09-09の試験：同じ景色20枚で20/20、同じ1枚に10回で10/10揃った聞き方。"""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+    try:
+        from anthropic import AsyncAnthropic
+        client = AsyncAnthropic()
+        msg = await client.messages.create(
+            model=MODEL, max_tokens=60,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                             "data": base64.b64encode(data).decode()}},
+                {"type": "text", "text": _SINK_EMPTY_Q}]}])
+        text = "".join(b.text for b in msg.content if b.type == "text")
+        m = re.search(r"\{.*\}", text, re.S)
+        v = json.loads(m.group(0)).get("empty") if m else None
+        return v if isinstance(v, bool) else None
+    except Exception as e:
+        logger.warning("sink empty check failed: %s", e)
+        return None
 
 
 async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None:
@@ -2474,7 +2545,21 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         quiet = not st.get("visit_seen")
         if quiet and now - float(ats.get(pose) or 0) < IDLE_CHECK_GAP:
             return                             # 静かな時は、そう何度も点検しない
+        # 滞在の長さ。一瞬しか居なかった人には何も付けない（本人決定 2026-09-09）。
+        stay = _stay_seconds(st)
+        if who and stay < STAY_MIN:
+            _log_event("visit_short", {"who": who, "stay": round(stay)})
+            who = []
         await _zone_pass(st, base, data, who, quiet, st.get("seen_by") or [])
+        # 真ん中の案（本人決定 2026-09-09）：去った後にシンクが空なら、来る前がどうであれ
+        # 居た人ぜんぶに +1。自分の分を片づけて帰った人も、他人の分を片づけた人もなつく。
+        # 使って散らかしたままは 0（下げない）。一度の滞在で +1 は1回だけ（_bond_up）。
+        if who:
+            empty = await _sink_empty(data)
+            _log_event("visit", {"who": who, "stay": round(stay), "sink_empty": empty})
+            if empty:
+                for pid in who:
+                    _bond_up(pid, "sink_empty", now)
         upload_to(key, data, "image/jpeg")
         ats[pose] = now
         st["baseline_ats"] = ats
