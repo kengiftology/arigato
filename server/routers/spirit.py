@@ -726,11 +726,9 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                     alone = len(st.get("visit_people") or []) <= 1
                     if res["state"] == "egg" and len(doc.get("vecs") or []) <= 1:
                         kind, slow = "hello_new", True     # 初対面はためらう
-                    elif b >= 1.5:
+                    elif b >= 6:                       # なついている／べったり
                         kind, slow = "hello_close", False
-                    elif b <= -0.3 and alone:
-                        kind, slow = "hello_cold", False
-                    else:
+                    else:                              # 見たことある／顔見知り
                         kind, slow = "hello_known", False
                     _plan_speech(st, kind, slow)
                 # 前回の判断からこちら、誰が居たかを溜めておく。
@@ -1538,6 +1536,8 @@ async def people():
                         "cares": v.get("cares", 0),      # 片づいた方向の変化に居合わせた
                         "uses": v.get("uses", 0),        # 散らかった方向の変化に居合わせた
                         "shots": len(v.get("vecs", [])),
+                        "bond": _bond_now(v),            # いまのなつき度（0〜10）
+                        "stage": _bond_stage(_bond_now(v))[0],
                         "born": v.get("born"), "last_at": v.get("last_at")})
     except Exception as e:
         return {"people": [], "error": str(e)}
@@ -1577,6 +1577,28 @@ async def merge_people(keep: str, drop: str, key: str = ""):
     return {"ok": True, "keep": keep, "dropped": drop, "shots": len(vecs[:5])}
 
 
+@router.post("/bond")
+async def bond_set(who: str = "", value: int = 0, key: str = ""):
+    """なつき度を手で書き換える（0〜10で止める）。試験と手直し用。
+
+    2026-09-09: 段階を変えたときに地霊の言い方が変わるかを確かめるための口。
+    数そのものは地霊が口に出さない（台帳#12）。研究者だけが触る。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    if not who:
+        raise HTTPException(status_code=400, detail="who is required")
+    value = max(0, min(BOND_MAX, int(value)))
+    try:
+        ref = get_db().collection("faces").document(who)
+        if not ref.get().exists:
+            return {"ok": False, "error": "そのIDが見つかりません"}
+        ref.update({"bond": value, "last_at": time.time()})
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    _log_event("bond_set", {"person": who, "bond": value})
+    return {"ok": True, "person": who, "bond": value, "stage": _bond_stage(value)[0]}
+
+
 @router.post("/people/reset")
 async def people_reset(key: str = "", who: str = ""):
     """世話・利用・なつき度をゼロに戻す（顔は覚えたまま）。
@@ -1592,7 +1614,7 @@ async def people_reset(key: str = "", who: str = ""):
         for d in db.collection("faces").stream():
             if who and d.id != who:
                 continue
-            d.reference.update({"cares": 0, "uses": 0, "bond": 0.0})
+            d.reference.update({"cares": 0, "uses": 0, "bond": 0})
             n += 1
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -2272,9 +2294,34 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
 
 
 # なつき度の動き（2026-09-03・台帳#12改訂に沿う）
-BOND_CARE = 0.5        # 片づけてくれた
-BOND_USE = -0.2        # 使って、そのままにした
-BOND_FADE_DAYS = 14.0  # 会わない日が続くと、ゆっくり薄れる
+# なつき度（設計の数字 2026-09-08 / 実装 2026-09-09）
+# 0〜10の整数。初対面0。片づけ1回で+1（その時居た人ぜんぶ）。会わない7日ごとに−1。
+# 使って放置しても下げない（台帳#12：「何もしなかったこと」では動かさない。
+# 下がるのは会っていない時間だけ。ペットが久しぶりの人によそよそしいのと同じ）。
+BOND_MAX = 10
+BOND_CARE = 1          # 片づけてくれた → +1
+BOND_USE = 0           # 使って、そのままにした → 動かさない
+BOND_FADE_DAYS = 7.0   # 会わない日が7日たつごとに −1
+
+# 段階（5つ）。なつき度 → (段階の名前, 地霊への「この相手への接し方」)
+# 表情は場所の状態で決まり誰が来ても同じ。人によって変わるのは話し方だけ。
+BOND_STAGES = (
+    (0, "知らない",     "初めて見る顔。初対面のあいさつ。少しよそよそしく、ていねいな言葉づかいで。名前を尋ねない。"),
+    (1, "見たことある", "見覚えのある相手。ていねいな言葉づかいで、短く。まだ少し距離がある。"),
+    (3, "顔見知り",     "顔見知り。少しくだけた話し方で、親しみを込めて短く。"),
+    (6, "なついている", "よくなついている相手。くだけた話し方で、うれしさがにじむ。"),
+    (9, "べったり",     "べったり甘えている相手。甘えるような調子で、うれしさが隠せない。"),
+)
+
+
+def _bond_stage(level: int) -> tuple:
+    """なつき度（0〜10）→ (段階の名前, 接し方の指示文)。"""
+    level = max(0, min(BOND_MAX, int(level)))
+    name, manner = BOND_STAGES[0][1], BOND_STAGES[0][2]
+    for lo, n, m in BOND_STAGES:
+        if level >= lo:
+            name, manner = n, m
+    return name, manner
 NEWS_WINDOW = 86400.0  # 「さっき誰かが」と伝えられる範囲
 
 
@@ -2283,10 +2330,13 @@ def _bond_now(doc: dict) -> float:
 
     薄れるのは「掃除しなかったから」ではなく「会っていないから」。
     ペットが久しぶりの人によそよそしいのと同じで、罰ではない。"""
-    b = float(doc.get("bond") or 0.0)
+    try:
+        b = int(round(float(doc.get("bond") or 0)))
+    except (TypeError, ValueError):
+        b = 0
     last = doc.get("last_at") or doc.get("born") or 0
     days = max(0.0, (time.time() - last) / 86400.0)
-    return b * max(0.0, 1.0 - days / BOND_FADE_DAYS)
+    return max(0, min(BOND_MAX, b - int(days // BOND_FADE_DAYS)))
 
 
 def _manner(doc: dict, alone: bool) -> str:
@@ -2298,19 +2348,10 @@ def _manner(doc: dict, alone: bool) -> str:
     if not doc:
         return ("初めて見る顔。誰だったか思い出せない。とぼけて、はぐらかす。"
                 "名前を尋ねるようなことも言わない。")
-    b = _bond_now(doc)
-    seen = len(doc.get("vecs") or [])
-    if b >= 1.5:
-        return "よくなついている相手。うれしさが隠せず、甘えるような調子で。"
-    if b >= 0.5:
-        return "顔なじみ。親しみを込めて、短く。"
-    if b <= -0.3 and alone:
-        return ("少しそっけない。ふい、と顔をそむけたい気分。"
-                "ただし責めない。何をしなかったかには一切触れない。"
-                "不機嫌なのではなく、ただ気が乗らないだけ。")
-    if seen <= 1:
-        return "見覚えはあるが、まだよく知らない。短く、控えめに。"
-    return "顔は知っている相手。ふつうに、短く。"
+    # 2026-09-09: 5段階（0／1-2／3-5／6-8／9-10）に統一。段階の名前と指示文は BOND_STAGES。
+    # 「そっけない」段階は無くした。なつき度は0で止まり、下がるのは会わない時間だけなので、
+    # 冷たさが罰として働く回路がそもそも生まれない（台帳#12）。alone は将来のために残す。
+    return _bond_stage(_bond_now(doc))[1]
 
 
 def _fresh_news(pid: str) -> str:
@@ -2359,13 +2400,12 @@ def _tally(zone: str, who: list, better, changes: list, seen_by=None) -> None:
         for pid in who:
             ref = db.collection("faces").document(pid)
             doc = ref.get().to_dict() or {}
-            bond = float(doc.get("bond") or 0.0)
-            # 世話をすればなつき、使って放置すれば少し離れる。
+            # 世話をすればなつく。使って放置しても動かさない（BOND_USE=0）。
             # 「何もしなかったこと」では動かない――通っただけの人に
-            # 義務を作らないため（規則3）。ここに来るのは実際に場所が
-            # 変わった時だけなので、その条件は自然に満たされる。
-            bond = max(-1.0, min(3.0, bond + (BOND_CARE if kind == "care"
-                                              else BOND_USE)))
+            # 義務を作らないため（規則3）。会わなかった分の目減りは
+            # _bond_now が反映するので、その値に足して保存し直す。
+            bond = max(0, min(BOND_MAX, _bond_now(doc) + (BOND_CARE if kind == "care"
+                                                          else BOND_USE)))
             ref.update({kind + "s": (doc.get(kind + "s") or 0) + 1,
                         "bond": bond, "last_at": time.time()})
     except Exception as e:
