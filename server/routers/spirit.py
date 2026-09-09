@@ -2334,10 +2334,17 @@ BOND_USE = 0           # 使って、そのままにした → 動かさない
 BOND_FADE_DAYS = 7.0   # 会わない日が7日たつごとに −1
 # 滞在の扱い（本人決定 2026-09-09 夜）
 STAY_MIN = 300.0        # 5分以下の滞在には何も付けない（本人決定：5分から）
-VISIT_MERGE_GAP = 600.0 # 出たり入ったりがこれ以内なら、同じ滞在として続ける
+VISIT_MERGE_GAP = 1800.0 # 出たり入ったりが30分以内なら、同じ滞在として続ける（本人：30分）
 # 一度の滞在で +1 は最大1回（30分居ても+1）。滞在の始まりの時刻を「滞在の番号」として
 # 人ごとに覚え、同じ番号では二度と上げない。
 _cur_visit = [0.0]      # いま突き合わせている滞在の番号（_zone_cycle が入れる）
+BOND_DAILY_MAX = 3      # 1人1日に上がるのは最大3回（朝・昼・晩のだいたい3回。本人決定）
+JST = 9 * 3600
+
+
+def _jst_day(now: float) -> str:
+    """日本時間の日付（1日の上限を数える単位）。"""
+    return time.strftime("%Y-%m-%d", time.gmtime(now + JST))
 
 # 段階（5つ）。なつき度 → (段階の名前, 地霊への「この相手への接し方」)
 # 表情は場所の状態で決まり誰が来ても同じ。人によって変わるのは話し方だけ。
@@ -2357,9 +2364,14 @@ def _bond_up(pid: str, why: str, now: float) -> bool:
         doc = ref.get().to_dict() or {}
         if _cur_visit[0] and float(doc.get("bond_visit") or 0) == _cur_visit[0]:
             return False                       # この滞在ではもう上げた
+        day = _jst_day(now)
+        n_today = int(doc.get("bond_day_n") or 0) if doc.get("bond_day") == day else 0
+        if n_today >= BOND_DAILY_MAX:
+            _log_event("bond_cap", {"person": pid, "day": day})
+            return False                       # 今日はもう3回上がった
         level = max(0, min(BOND_MAX, _bond_now(doc) + BOND_CARE))
         ref.update({"bond": level, "bond_at": now, "bond_visit": _cur_visit[0],
-                    "last_at": now})
+                    "bond_day": day, "bond_day_n": n_today + 1, "last_at": now})
         _log_event("bond_up", {"person": pid, "why": why, "bond": level})
         return True
     except Exception as e:
