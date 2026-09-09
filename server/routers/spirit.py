@@ -2298,7 +2298,7 @@ async def _compare_zone(before: bytes, after: bytes, name: str) -> dict:
                 "where": name} for w in what[:5]] if verdict != "none" else []
     return {"same": verdict == "none",
             "better": True if verdict == "less" else (False if verdict == "more" else None),
-            "changes": changes, "forward": f, "backward": b}
+            "changes": changes, "forward": f, "backward": b, "shift": [dx, dy]}
 
 
 @router.post("/compare")
@@ -2309,7 +2309,7 @@ async def compare(before: UploadFile = File(...), after: UploadFile = File(...),
     if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
     a, b = await before.read(), await after.read()
-    return await _compare_images(a, b, focus)
+    return await _compare_zone(a, b, focus or "シンク")     # 本番と同じ見方C（2026-09-09）
 
 
 _ZONE_SYSTEM = (
