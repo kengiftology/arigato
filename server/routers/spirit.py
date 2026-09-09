@@ -1559,7 +1559,11 @@ async def merge_people(keep: str, drop: str, key: str = ""):
     da, dbb = a.get().to_dict(), b.get().to_dict()
     if not da or not dbb:
         return {"ok": False, "error": "そのIDが見つかりません"}
-    vecs = (da.get("vecs") or []) + (dbb.get("vecs") or [])
+    # 2026-09-09: 消す側(drop)の見え方を前に置く。割れるのは、カメラの向きが
+    # 変わって新しい角度の顔が古い顔と結べなかったときなので、新しい角度の
+    # 見え方を残さないと、まとめた翌日にまた割れる（p01は古い向きの5枚で
+    # 埋まっていて、今日の見下ろす角度の p02〜p04 が全部別人になった）。
+    vecs = (dbb.get("vecs") or []) + (da.get("vecs") or [])
     a.update({"vecs": vecs[:5],
               "cares": (da.get("cares") or 0) + (dbb.get("cares") or 0),
               "uses": (da.get("uses") or 0) + (dbb.get("uses") or 0),
