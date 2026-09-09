@@ -2114,6 +2114,100 @@ async def _compare_images(a: bytes, b: bytes, focus: str = "") -> dict:
         return {"error": "%s: %s" % (type(e).__name__, str(e)[:200])}
 
 
+# ---- 見方C（2026-09-09 本人決定）----
+# 見るのはシンクだけ。前→今と今→前の両方向で聞き、答えが裏返しのときだけ変化と認める。
+# 備え付けを文で説明する。シンク全体が写っていなければ何もしない。
+# 根拠（9/9の実測・本番と同じモデル）：同じ景色20枚で誤報0／コップ1→5個は10/10「増えた」／
+# 5個→コップ1は10/10「減った」／散らかった同士では片方向だと5組中4組が「減った」と誤報し、
+# 両方向ルールで0になった／横0.05〜0.10のずれは平気、シンクが切れると誤報。
+ZONE_NAMES = ("シンク",)          # 見張る区画。首振りで増やすときはここに足す
+ZONE_FIXTURES = {
+    "シンク": ("備え付けの物（ステンレスの水切りかご、壁の包丁立てと包丁、壁のフックに掛かっている道具、"
+              "蛇口、排水口の網）は見ません。見るのは『シンク（流し台の金属のくぼみ）の底に置かれている物』だけです。"),
+}
+_ZONE_SCENE = "写真は共有キッチンのシンク周りを天井近くから見下ろしたものです。"
+
+
+async def _ask_json(content: list, max_tokens: int = 150) -> dict:
+    """写真つきの問いをJSONで返してもらう共通口。失敗は {"error": ...}。"""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return {"error": "no api key"}
+    try:
+        from anthropic import AsyncAnthropic
+        client = AsyncAnthropic()
+        msg = await client.messages.create(model=MODEL, max_tokens=max_tokens,
+                                           messages=[{"role": "user", "content": content}])
+        text = "".join(x.text for x in msg.content if x.type == "text")
+        i, j = text.find("{"), text.rfind("}")
+        if i < 0 or j <= i:
+            return {"error": "not json: " + text[:160]}
+        return json.loads(text[i:j + 1])
+    except Exception as e:
+        return {"error": "%s: %s" % (type(e).__name__, str(e)[:200])}
+
+
+def _img_block(d: bytes) -> dict:
+    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                        "data": base64.standard_b64encode(d).decode()}}
+
+
+SHIFT_MAX_PX = 150     # 前後の写真がこれ以上ずれていたら比べない（1280幅の画素）
+
+
+def _frame_shift(a: bytes, b: bytes) -> tuple:
+    """2枚の写真の位置ずれ（画素）を測る。AIを使わない・その場で終わる。
+
+    「シンク全体が写っているか」をAIに聞くと、定位置の写真でも「切れている」と
+    答えてしまい門にならなかった（2026-09-09・3通りの聞き方で全部 false）。
+    代わりに写真そのものの位置合わせで測る。実測：同じ向き 0px／中身が変わっただけ 20px／
+    横0.05ずれ 124px（比べても平気だった）／横0.10ずれ 270px（シンクが切れて誤報した）。"""
+    try:
+        import cv2
+        import numpy as np
+        def g(d):
+            im = cv2.imdecode(np.frombuffer(d, np.uint8), cv2.IMREAD_GRAYSCALE)
+            return np.float32(cv2.resize(im, (640, 360))) / 255.0
+        ga, gb = g(a), g(b)
+        win = cv2.createHanningWindow((640, 360), cv2.CV_32F)
+        (dx, dy), _resp = cv2.phaseCorrelate(ga, gb, win)
+        return round(dx * 2), round(dy * 2)
+    except Exception as e:
+        logger.warning("frame shift failed: %s", e)
+        return (0, 0)
+
+
+async def _compare_zone(before: bytes, after: bytes, name: str) -> dict:
+    """前後2枚で、その区画の物が 増えた／減った／同じ かを決める（両方向ルール）。
+
+    返す形は _compare_images と同じ（same / better / changes）ので、_zone_pass はそのまま。
+    better＝減った（片づいた方向）。判断できないときは skip を付けて返す。"""
+    dx, dy = _frame_shift(before, after)
+    if abs(dx) > SHIFT_MAX_PX or abs(dy) > SHIFT_MAX_PX:
+        return {"skip": "shifted", "same": True, "shift": [dx, dy]}
+    fix = ZONE_FIXTURES.get(name, "")
+    q = (_ZONE_SCENE + fix + "2枚の写真は同じ場所で、1枚目が前、2枚目が今です。"
+         "『" + name + "』の中の物は前と比べてどうなりましたか？ 何が変わったかも短く。"
+         "JSONだけで答えてください："
+         "{\"change\": \"none\" | \"more\" | \"less\", \"what\": [\"変わった物を短く\"]}")
+    fw = await _ask_json([_img_block(before), _img_block(after), {"type": "text", "text": q}], 200)
+    bw = await _ask_json([_img_block(after), _img_block(before), {"type": "text", "text": q}], 200)
+    if fw.get("error") or bw.get("error"):
+        return {"error": fw.get("error") or bw.get("error")}
+    f, b = fw.get("change"), bw.get("change")
+    if f == "more" and b == "less":
+        verdict = "more"
+    elif f == "less" and b == "more":
+        verdict = "less"
+    else:
+        verdict = "none"                       # 裏返しにならなければ「変化なし」（迷ったら何もしない）
+    what = fw.get("what") if isinstance(fw.get("what"), list) else []
+    changes = [{"what": str(w)[:20], "how": "減った" if verdict == "less" else "増えた",
+                "where": name} for w in what[:5]] if verdict != "none" else []
+    return {"same": verdict == "none",
+            "better": True if verdict == "less" else (False if verdict == "more" else None),
+            "changes": changes, "forward": f, "backward": b}
+
+
 @router.post("/compare")
 async def compare(before: UploadFile = File(...), after: UploadFile = File(...),
                   focus: str = "", x_upload_key: str = Header(None)):
@@ -2234,7 +2328,11 @@ def _live_zones(st: dict) -> list:
 
 
 async def _derive_zones(data: bytes) -> list:
-    """画角を見て、見張るべき区画の名前を起こす。座標は受け取らない。"""
+    """見張る区画。2026-09-09からは ZONE_NAMES に決め打ち（シンクだけ）。
+
+    AIに起こさせる方式（下）は残してあるが使わない。見る先を人が決めたので、
+    区画の名前がぶれない。首振りで区画を増やすときは ZONE_NAMES に足す。"""
+    return [{"name": n} for n in ZONE_NAMES]
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return []
     try:
@@ -2287,11 +2385,23 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
         st["zone_rotate"] = i + 1
     results = []
     for z in zones:
-        r = await _compare_images(before, after, z["name"])
+        r = await _compare_zone(before, after, z["name"])     # 見方C（両方向ルール）
         if r.get("error"):
             logger.warning("zone compare failed (%s): %s", z["name"], r["error"])
             continue
+        if r.get("skip"):
+            _log_event("zone_skip", {"zone": z["name"], "why": r["skip"]})
+            continue                           # 全体が写っていない → 何もしない
         results.append((z, r))
+        if z["name"] == "シンク":
+            # 表情は3段階（0きれい／1ふつう／2散らかっている）。向きだけで動かす。
+            lvl = int(st.get("sink_level", 1))
+            if r.get("better") is True:
+                lvl = max(0, lvl - 1)
+            elif r.get("better") is False:
+                lvl = min(2, lvl + 1)
+            st["sink_level"] = lvl
+            st["score"] = st["raw_score"] = lvl / 2.0     # C3は score(0〜1) を読む
     # 片づけも散らかしも、場所ごとに起きる。区画がまとめて変わったなら、
     # それは誰かの手ではなく、光か露出かカメラの向きが変わったということ。
     n_changed = sum(1 for _z, r in results if not r.get("same"))
@@ -2525,7 +2635,8 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
     「前」は最後に無人と確かめた1枚。「後」はいま届いた1枚。
     突き合わせが済んだら、いまの1枚が次の「前」になる。"""
     try:
-        if not st.get("zones"):
+        # 区画は ZONE_NAMES に決め打ち。古い状態（AIが起こした調理台・棚など）が残っていたら立て直す
+        if [z.get("name") for z in (st.get("zones") or [])] != list(ZONE_NAMES):
             st["zones"] = await _derive_zones(data)
             if st["zones"]:
                 _log_event("zones_set", {"zones": [z["name"] for z in st["zones"]]})
@@ -2574,6 +2685,8 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
             empty = await _sink_empty(data)
             _log_event("visit", {"who": who, "stay": round(stay), "sink_empty": empty})
             if empty:
+                st["sink_level"] = 0                      # 空＝一番きれい（Aは戻す合図）
+                st["score"] = st["raw_score"] = 0.0
                 for pid in who:
                     _bond_up(pid, "sink_empty", now)
         upload_to(key, data, "image/jpeg")
