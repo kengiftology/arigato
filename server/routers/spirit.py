@@ -2333,9 +2333,11 @@ BOND_CARE = 1          # 片づけてくれた → +1
 BOND_USE = 0           # 使って、そのままにした → 動かさない
 BOND_FADE_DAYS = 7.0   # 会わない日が7日たつごとに −1
 # 滞在の扱い（本人決定 2026-09-09 夜）
-STAY_MIN = 120.0        # これより短い滞在は「一瞬」。なつき度は動かさない（人に付けない）
+STAY_MIN = 300.0        # 5分以下の滞在には何も付けない（本人決定：5分から）
 VISIT_MERGE_GAP = 600.0 # 出たり入ったりがこれ以内なら、同じ滞在として続ける
-BOND_COOLDOWN = 1800.0  # 同じ人に続けて+1しない。一度の滞在で動くのは1回だけ
+# 一度の滞在で +1 は最大1回（30分居ても+1）。滞在の始まりの時刻を「滞在の番号」として
+# 人ごとに覚え、同じ番号では二度と上げない。
+_cur_visit = [0.0]      # いま突き合わせている滞在の番号（_zone_cycle が入れる）
 
 # 段階（5つ）。なつき度 → (段階の名前, 地霊への「この相手への接し方」)
 # 表情は場所の状態で決まり誰が来ても同じ。人によって変わるのは話し方だけ。
@@ -2349,14 +2351,15 @@ BOND_STAGES = (
 
 
 def _bond_up(pid: str, why: str, now: float) -> bool:
-    """その人のなつき度を1上げる。一度の滞在で1回だけ（BOND_COOLDOWN）。0〜10で止める。"""
+    """その人のなつき度を1上げる。一度の滞在で最大1回。0〜10で止める。"""
     try:
         ref = get_db().collection("faces").document(pid)
         doc = ref.get().to_dict() or {}
-        if now - float(doc.get("bond_at") or 0) < BOND_COOLDOWN:
-            return False
+        if _cur_visit[0] and float(doc.get("bond_visit") or 0) == _cur_visit[0]:
+            return False                       # この滞在ではもう上げた
         level = max(0, min(BOND_MAX, _bond_now(doc) + BOND_CARE))
-        ref.update({"bond": level, "bond_at": now, "last_at": now})
+        ref.update({"bond": level, "bond_at": now, "bond_visit": _cur_visit[0],
+                    "last_at": now})
         _log_event("bond_up", {"person": pid, "why": why, "bond": level})
         return True
     except Exception as e:
@@ -2545,9 +2548,10 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         quiet = not st.get("visit_seen")
         if quiet and now - float(ats.get(pose) or 0) < IDLE_CHECK_GAP:
             return                             # 静かな時は、そう何度も点検しない
-        # 滞在の長さ。一瞬しか居なかった人には何も付けない（本人決定 2026-09-09）。
+        # 滞在の長さ。5分以下しか居なかった人には何も付けない（本人決定 2026-09-09）。
         stay = _stay_seconds(st)
-        if who and stay < STAY_MIN:
+        _cur_visit[0] = float(st.get("visit_start") or now)   # この滞在の番号
+        if who and stay <= STAY_MIN:
             _log_event("visit_short", {"who": who, "stay": round(stay)})
             who = []
         await _zone_pass(st, base, data, who, quiet, st.get("seen_by") or [])
