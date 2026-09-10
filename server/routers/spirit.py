@@ -2932,17 +2932,18 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
                     _bond_up(pid, "sink_empty", now)
         # 誰も居ない今のうちに、次に来る人向けの一言を文にしておく（声係が音にする）
         await _prepare_greetings(st, now)
-        # Notion に1行（本人「必要最低限でよいので履歴を残す」2026-09-10）
+        # Notion「地霊の記録」に1行（本人決定 2026-09-10：別アカウントの専用DB）
         try:
-            title = "%s 見回り｜%s｜シンク%s｜居た %s｜なつき度 %s" % (
-                time.strftime("%m-%d %H:%M", time.gmtime(now + JST)),
-                st.get("patrol_zone") or "比べず",
-                "空" if empty is True else ("物あり" if empty is False else "未確認"),
-                "・".join(who) if who else "なし",
-                "・".join(_patrol_ups) if _patrol_ups else "変わらず")
+            pz = st.get("patrol_zone") or ""
+            result = ("片づいた" if "片づいた" in pz else "散らかった" if "散らかった" in pz
+                      else "比べず" if ("比べず" in pz or not pz) else "同じ")
+            what = pz[pz.find("（") + 1:pz.rfind("）")] if "（" in pz else ""
+            sink = "空" if empty is True else ("物あり" if empty is False else "未確認")
+            title = "%s 見回り｜%s｜シンク%s" % (time.strftime("%m-%d %H:%M", time.gmtime(now + JST)), result, sink)
             await asyncio.to_thread(_notion_patrol, now, title,
                                     st.get("patrol_url") or st.get("photo_url") or "",
-                                    int(st.get("patrol_bytes") or 0))
+                                    int(st.get("patrol_bytes") or 0),
+                                    result, sink, list(who), list(_patrol_ups), what)
         except Exception as e:
             logger.warning("notion patrol failed: %s", e)
         upload_to(key, data, "image/jpeg")
@@ -3034,34 +3035,42 @@ def _post_to_app(zones: list, what: list, before_url: str, after_url: str) -> st
         return ""
 
 
-def _notion_patrol(when: float, title: str, image_url: str, size_bytes: int) -> None:
-    """見回りの結果を Notion のデータベースに1行足す。
+def _notion_patrol(when: float, title: str, image_url: str, size_bytes: int,
+                   result: str = "", sink: str = "", who=None, ups=None, what: str = "") -> None:
+    """見回りの結果を Notion の「地霊の記録」に1行足す（2026-09-10・本人決定）。
 
-    タイムラプス（timelapse.py）と同じデータベース・同じ欄を使う（新しい欄を作らない）。
-    名前＝要点（区画の結果・シンクが空か・居た人・なつき度の変化）、ゾーン＝「地霊」。
+    タイムラプスとは別のアカウント・別のデータベース。鍵とIDは環境変数
+    SPIRIT_NOTION_TOKEN / SPIRIT_NOTION_DB（GitHub Secrets → Cloud Run）。
+    1行＝見回り1回。列：時刻・種別・結果・シンク・居た人・なつき度・変化・写真。
     失敗しても本体は止めない。"""
-    token = os.environ.get("NOTION_TOKEN", "")
-    dbid = os.environ.get("NOTION_DATABASE_ID", "")
+    token = os.environ.get("SPIRIT_NOTION_TOKEN", "")
+    dbid = os.environ.get("SPIRIT_NOTION_DB", "")
     if not (token and dbid):
         return
     try:
         import httpx
         from datetime import datetime, timezone, timedelta
         at = datetime.fromtimestamp(when, timezone(timedelta(hours=9)))
-        payload = {
-            "parent": {"database_id": dbid},
-            "properties": {
-                "名前": {"title": [{"text": {"content": title[:180]}}]},
-                "撮影時刻": {"date": {"start": at.isoformat()}},
-                "ゾーン": {"select": {"name": "地霊"}},
-                "サイズ": {"number": size_bytes},
-            },
+        props = {
+            "名前": {"title": [{"text": {"content": title[:180]}}]},
+            "時刻": {"date": {"start": at.isoformat()}},
+            "種別": {"select": {"name": "見回り"}},
         }
+        if result:
+            props["結果"] = {"select": {"name": result}}
+        if sink:
+            props["シンク"] = {"select": {"name": sink}}
+        if who:
+            props["居た人"] = {"multi_select": [{"name": str(w)} for w in who]}
+        if ups:
+            props["なつき度"] = {"rich_text": [{"text": {"content": "・".join(ups)[:200]}}]}
+        if what:
+            props["変化"] = {"rich_text": [{"text": {"content": what[:200]}}]}
+        payload = {"parent": {"database_id": dbid}, "properties": props}
         if image_url:
             payload["cover"] = {"type": "external", "external": {"url": image_url}}
-            payload["properties"]["画像"] = {"files": [
-                {"type": "external", "name": at.strftime("%Y-%m-%d %H:%M") + ".jpg",
-                 "external": {"url": image_url}}]}
+            props["写真"] = {"files": [{"type": "external", "name": at.strftime("%Y-%m-%d %H:%M") + ".jpg",
+                                       "external": {"url": image_url}}]}
         r = httpx.post("https://api.notion.com/v1/pages", json=payload, timeout=15,
                        headers={"Authorization": "Bearer " + token,
                                 "Notion-Version": "2022-06-28",
@@ -3071,6 +3080,7 @@ def _notion_patrol(when: float, title: str, image_url: str, size_bytes: int) -> 
             _log_event("notion_error", {"status": r.status_code, "text": r.text[:120]})
     except Exception as e:
         logger.warning("notion patrol error: %s", e)
+        _log_event("notion_error", {"text": str(e)[:120]})
 
 
 def _keep_story(before: bytes, after: bytes, cared: list, who: list) -> None:
