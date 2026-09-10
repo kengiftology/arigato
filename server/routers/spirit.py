@@ -2507,7 +2507,10 @@ async def _derive_zones(data: bytes) -> list:
 
     AIに起こさせる方式（下）は残してあるが使わない。見る先を人が決めたので、
     区画の名前がぶれない。首振りで区画を増やすときは ZONE_NAMES に足す。"""
-    return [{"name": n} for n in ZONE_NAMES]
+    # 記録の欄（試した数・当たり・誤報・状態）も揃えて返す。名前だけだと、
+    # あとで誤報率を出すところで KeyError: 'false' になり、比較が途中で落ちた
+    # （2026-09-10 15:32・15:43 の zone_error）。
+    return [{"name": n, "trials": 0, "hits": 0, "false": 0, "state": "採用"} for n in ZONE_NAMES]
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return []
     try:
@@ -2540,10 +2543,10 @@ async def _derive_zones(data: bytes) -> list:
 
 def _score_zone(z: dict) -> None:
     """試した数と誤報の数から、その区画を続けるか決める。"""
-    if z["trials"] < ZONE_MIN_TRIALS:
+    if z.get("trials", 0) < ZONE_MIN_TRIALS:
         z["state"] = "試用中"
         return
-    rate = z["false"] / max(1, z["trials"])
+    rate = z.get("false", 0) / max(1, z.get("trials", 0))
     z["state"] = "見送り" if rate > ZONE_MAX_FALSE else "採用"
 
 
@@ -2855,9 +2858,11 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
     try:
         # 区画は ZONE_NAMES に決め打ち。古い状態（AIが起こした調理台・棚など）が残っていたら立て直す
         if [z.get("name") for z in (st.get("zones") or [])] != list(ZONE_NAMES):
+            st["zones_prev"] = st.get("zones") or []     # なぜ立て直したかを記録に残す
             st["zones"] = await _derive_zones(data)
             if st["zones"]:
-                _log_event("zones_set", {"zones": [z["name"] for z in st["zones"]]})
+                _log_event("zones_set", {"zones": [z["name"] for z in st["zones"]],
+                                         "was": [z.get("name") for z in (st.get("zones_prev") or [])]})
         key = _baseline_key(pose)
         base = read_object(key)
         # 時刻も向きごとに持つ。1つしか持っていなかった頃は、2箇所を
