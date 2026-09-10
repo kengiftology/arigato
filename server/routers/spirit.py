@@ -2993,6 +2993,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
                                     result, sink, list(who), list(_patrol_ups), what)
         except Exception as e:
             logger.warning("notion patrol failed: %s", e)
+            _log_event("notion_error", {"text": ("%s: %s" % (type(e).__name__, e))[:120]})
         upload_to(key, data, "image/jpeg")
         ats[pose] = now
         st["baseline_ats"] = ats
@@ -3094,6 +3095,9 @@ def _notion_patrol(when: float, title: str, image_url: str, size_bytes: int,
     token = os.environ.get("SPIRIT_NOTION_TOKEN", "")
     dbid = os.environ.get("SPIRIT_NOTION_DB", "")
     if not (token and dbid):
+        # 鍵かIDが本番に渡っていない。黙って戻ると原因が追えない（2026-09-10 夜：
+        # 22:34の見回りで行が出ず、記録にも何も残らなかった）。
+        _log_event("notion_skip", {"token": bool(token), "db": bool(dbid)})
         return
     try:
         import httpx
