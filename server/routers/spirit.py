@@ -1852,6 +1852,17 @@ def _synth_ja(text: str) -> bytes | None:
 SAY_NAME = "say_0"          # その場で作った、いまの一言の声
 VOICE_GAP = 60.0            # 声と声のあいだは1分あける（本人決定 2026-09-10）
 VOICE_GAIN = 0.5            # 音量。1.0＝作り置きのまま。本人「下げてよい」→ まず半分（2026-09-10）
+# 「何も鳴らさない」の返し方（2026-09-10）。
+# C3のファーム（spirit_body.ino）は、クラウドから声が届かないと（204・1000バイト以下）
+# 従来のあつ森語で鳴く作りになっている。声を1分に1回に絞ったとたん、残りの
+# 問い合わせが全部あつ森語になった（本人「アツモリの声になってる」）。
+# ファームを焼き直すまでは、黙るときも「無音の声」を返して、あつ森語に落ちないようにする。
+# 16kHz・16bit・モノラルで 0.1秒 = 3200バイト（C3は1000バイト超で「喋った」とみなす）。
+_SILENCE = bytes(3200)
+
+
+def _quiet() -> Response:
+    return Response(content=_SILENCE, media_type="application/octet-stream")
 
 
 def _scale_pcm(pcm: bytes, gain: float) -> bytes:
@@ -2043,16 +2054,18 @@ async def voice_pcm():
     name = st.get("speak_line")
     if name:
         if now < st.get("speak_at", 0):
-            return Response(status_code=204)       # まだ。これが間になる
+            return _quiet()                        # まだ。これが間になる
         st["speak_line"] = None                    # 一度鳴らしたら下ろす
         _save(st)
     else:
-        # 場所の一言。C3は人が居るあいだ20秒おきに取りに来るので、毎回返すと
+        # 場所の一言。C3は人が居るあいだ12秒おきに取りに来るので、毎回返すと
         # 1回の来訪で3回鳴ってしつこい（2026-09-10 実測）。1回だけだと聞き逃す。
         # 本人決定：1分に1回、滞在の最初の5分まで。
+        # ※ファーム側の「1滞在3回まで・12秒おき」が残っているので、実機では
+        #   今のところ1回しか鳴らない。9/12のファーム作業で 60秒おき・5回に直す。
         since = now - float(st.get("visit_start") or 0)
         if since >= VOICE_WINDOW or now - float(st.get("voiced_at") or 0) < VOICE_GAP:
-            return Response(status_code=204)
+            return _quiet()
         # いまの一言を声にしたものがあれば、それを鳴らす。
         # 一言は判断のたびに変わるので、食い違っていたら古い音。
         if st.get("say_text") and st.get("say_text") == (st.get("comment") or ""):
@@ -2062,14 +2075,14 @@ async def voice_pcm():
             # 散らかっているならそわそわ、そうでなければひとりごと。
             name = _pick_line("worse" if st.get("score", 0) >= M_HI else "alone")
     if not name:
-        return Response(status_code=204)
+        return _quiet()
     try:
         pcm = read_object(LINES_PREFIX + name + ".pcm")
     except Exception as e:
         logger.warning("line read failed (%s): %s", name, e)
         pcm = None
     if not pcm:
-        return Response(status_code=204)
+        return _quiet()
     st["voiced_at"] = now                          # 次の声は VOICE_GAP 後
     _save(st)
     _log_event("voice", {"line": name, "bytes": len(pcm)})
