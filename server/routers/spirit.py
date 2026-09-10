@@ -2300,6 +2300,10 @@ ZONE_FIXTURES = {
               "蛇口、排水口の網）は見ません。見るのは『シンク（流し台の金属のくぼみ）の底に置かれている物』だけです。"),
 }
 _ZONE_SCENE = "写真は共有キッチンのシンク周りを天井近くから見下ろしたものです。"
+_SINK_CROP_SCENE = ("写真は、共有キッチンのシンク（流し台のステンレスのくぼみ）の底だけを、真上から写したものです。"
+                    "くぼみの中の『黒い丸いもの』は排水口のふたで備え付け、端に写る蛇口や水切りかごの縁も備え付けです。"
+                    "見るのは、くぼみの中に置かれている物（食器・コップ・鍋・ざる・道具など）だけです。"
+                    "水滴・水の跡・汚れ・光の反射は物ではありません。")
 
 
 async def _ask_json(content: list, max_tokens: int = 150) -> dict:
@@ -2358,8 +2362,15 @@ async def _compare_zone(before: bytes, after: bytes, name: str) -> dict:
     dx, dy = _frame_shift(before, after)
     if abs(dx) > SHIFT_MAX_PX or abs(dy) > SHIFT_MAX_PX:
         return {"skip": "shifted", "same": True, "shift": [dx, dy]}
-    fix = ZONE_FIXTURES.get(name, "")
-    q = (_ZONE_SCENE + fix + "2枚の写真は同じ場所で、1枚目が前、2枚目が今です。"
+    if name == "シンク":
+        # くぼみだけを切り出して比べる（2026-09-10）。写真全体だと、文で「水切りかごは見ない」と
+        # 書いても、かごの中身の入れ替わりを「シンクの白い容器が減った」と答えた
+        # （17:17・両方向とも裏返ったので世話として数えられた）。切り出せば見えない。
+        scene = _SINK_CROP_SCENE
+        before, after = _sink_crop(before), _sink_crop(after)
+    else:
+        scene = _ZONE_SCENE + ZONE_FIXTURES.get(name, "")
+    q = (scene + "2枚の写真は同じ場所で、1枚目が前、2枚目が今です。"
          "『" + name + "』の中の物は前と比べてどうなりましたか？ 何が変わったかも短く。"
          "JSONだけで答えてください："
          "{\"change\": \"none\" | \"more\" | \"less\", \"what\": [\"変わった物を短く\"]}")
