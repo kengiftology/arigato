@@ -997,8 +997,14 @@ async def hint():
     # 目はここを3秒おきに覗きにくるので、札を立てるだけで伝わる。
     check = st.get("check_pose") or ""
     # 「人が来た」の手がかりは3つ：顔・人感・動きのあるコマ(big=1)。どれかの最後の時刻。
-    active = max(st.get("last_seen", 0), st.get("last_motion", 0))
     checked = st.get("checked_at", 0)
+    # 見回りでカメラが動くと、その動き自体が「動きのあるコマ」として届き、
+    # 3分後にまた見回りが出る（2026-09-10 朝：誰も居ないのに5分おきに判断が走り、
+    # 10:45で118回）。見回りの直後 CHECK_SELF_SEC 以内の動きは、人ではなくカメラ自身。
+    motion = st.get("last_motion", 0)
+    if motion < checked + CHECK_SELF_SEC:
+        motion = 0
+    active = max(st.get("last_seen", 0), motion)
     # 出す条件（2026-09-09）：静かになってから CHECK_QUIET_SEC 経った ＋
     # 前回の見回りのあとに人が来ている ＋ 見回り同士は CHECK_GAP 以上あける。
     # 誰も来なければ何度見ても同じなので出さない（AIも呼ばれない）。
@@ -2453,6 +2459,7 @@ BASELINE_PREFIX = "spirit/zonecheck/base_"           # 向きごとの基準写�
 # カメラを見張りから降ろせるのは、そのおかげ。
 CHECK_QUIET_SEC = 180.0     # 人が去ってこれだけ静かなら、見に行ってよい
 CHECK_GAP = 300.0           # 見回り同士の最短間隔。2026-09-09: 1800→300。
+CHECK_SELF_SEC = 90.0       # 見回りのあと、これだけの間の「動き」はカメラ自身の首振り（人ではない）
                             # 「人が来るたびに去ったあと1回」に変えたので、30分だと
                             # 続けて来た人の分を取りこぼす。誰も来なければ出さないので、
                             # 短くしても無駄打ちにはならない
