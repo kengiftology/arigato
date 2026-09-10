@@ -468,6 +468,9 @@ static String processCmd(String cmd) {
         out += "M " + String(g_M, 3) + " N " + String(g_N, 3) + "\n";
         out += "CARE " + String(careCount) + "\n";
         out += String("QUIET ") + (QUIET ? "on" : "off") + "\n";
+        // 人感の生死を無線から見る（2026-09-10：手を振っても「!」が出ないと報告あり）
+        out += String("PIR ") + (pirNow() ? "HIGH" : "LOW")
+             + " lastMotion " + String((millis() - lastMotion) / 1000) + "s ago\n";
     }
     else if (cmd.startsWith("voice ")) {                    // voice 550 85 （高さHz・1文字ms）
         float b; int p;
