@@ -541,7 +541,7 @@ static int pendingScene = 0;                   // 0=なし 1=notice 2=happy
 static const uint32_t STAY_MS         = 15000;                  // これ以上いたら「滞在」＝声を許す
 static const uint32_t PRESENCE_GAP_MS = 90000;                  // これだけ気配が絶えたら滞在おわり
 // ※人感の死角（カウンター・調理位置）で20秒だと在室中に「不在」誤判定→巡回撮影が走った(8/30)。90秒に延長
-static const int      VOICE_BUDGET    = 3;                      // 1回の滞在で声を出すのは最大3回
+static const int      VOICE_BUDGET    = 5;                      // 1回の滞在で声を出すのは最大5回（2026-09-10 本人：1分に1回・5分まで）
 static bool     inEpisode = false;             // 今この場に人がいる一続き
 static uint32_t episodeStart = 0;              // その滞在が始まった時刻
 static int      voiceUsed = 0;                 // その滞在で声を出した回数
@@ -698,14 +698,19 @@ void loop() {
         winIdx = (winIdx + 1) % N_WINS;        // 声の抑揚の選択に今も使っている
         bool staying = inEpisode && (now - episodeStart >= STAY_MS);   // 通過でなく居続けている
         if (!QUIET && staying && voiceUsed < VOICE_BUDGET) {
-            // まずクラウドの日本語で喋る。届かなければ従来のあつ森語で鳴く
-            if (!speakCloud()) speak(VOWS[winIdx], VOW_LEN[winIdx], VOW_NOISY[winIdx]);
+            // クラウドの日本語だけで喋る。届かなければ黙る。
+            // 以前は届かないとあつ森語で鳴いていたが、クラウドが「いまは黙る」と
+            // 返すたびに鳴いてしまい、意味のない音になっていた（2026-09-10 本人「いらない」）。
+            speakCloud();
             voiceUsed++;
         } else if (voiceOnce) {                // murコマンドの強制発声（テスト用・上限外）
             voiceOnce = false;
-            if (!speakCloud()) speak(VOWS[winIdx], VOW_LEN[winIdx], VOW_NOISY[winIdx]);
+            speakCloud();
         }
-        nextMurmur = millis() + 12000;
+        // 何を・いつ鳴らすかはクラウドが決める（1分に1回・滞在の最初の5分）。
+        // ここは1分おきに取りに行くだけ。12秒おきだった頃は、3回の上限を
+        // 最初の36秒で使い切っていた。
+        nextMurmur = millis() + 60000;
     }
 
     // 来訪の瞬間は定期を待たず即報告（目へLAN直0.3秒級＋クラウドへ1〜2秒）
