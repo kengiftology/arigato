@@ -78,6 +78,9 @@ HIRES_GAP = 8.0                              # 撮り直しを頼まれたとき
 SHOT_STALE_LIMIT = 90.0
 
 GAP_BUSY = 3.0        # 動きがある間、クラウドへ送る最短間隔
+GAP_ARRIVE = 1.5      # 動き始めの最初のうちは、もっと細かく送る（2026-09-10）
+ARRIVE_SEC = 30.0     # その「最初のうち」の長さ。入ってくる人の正面は1回の入室で3〜4コマしか無く、
+                      # 3秒に1枚だと半分がクラウドに届かなかった（実測）。登録は25秒に2回要る
 GAP_HEARTBEAT = 300.0 # 何も起きなくても、これだけ経ったら1枚送る（定時報告）
 GAP_ERROR = 15.0      # 失敗した時
 HINT_GAP = 3.0        # 「探しに行け」の札を覗きにいく間隔
@@ -454,6 +457,7 @@ def main():
         w.start()
         last_sent = last_hint = last_sweep = last_pose = last_hires = 0.0
         last_fresh = time.time()         # 最後に新しい写真を読めた時刻
+        busy_since, was_busy = 0.0, False
         refresh_pose()
         refresh_home()
         try:
@@ -499,6 +503,9 @@ def main():
                 if not w.ready:
                     continue
                 busy = (now - w.last_move) < STILL_HOLD
+                if busy and not was_busy:
+                    busy_since = now             # 動き始めの時刻（入室の最初のうちを測る）
+                was_busy = busy
 
                 # 人を探しに行った先に留まったままだと、物の前後比較が成り立たない。
                 # 落ち着いたら定位置へ戻す。比べられるのは同じ向きの2枚だけ。
@@ -506,7 +513,10 @@ def main():
                     sweep.go_home()
                     refresh_pose()
                     continue
-                gap = GAP_BUSY if busy else GAP_HEARTBEAT
+                if busy and now - busy_since < ARRIVE_SEC:
+                    gap = GAP_ARRIVE             # 入ってきた直後は細かく
+                else:
+                    gap = GAP_BUSY if busy else GAP_HEARTBEAT
                 if now - last_sent >= gap:
                     last_sent = now
                     # 動いている間は大きいほうを送る。顔の幅が1.8倍になり、
