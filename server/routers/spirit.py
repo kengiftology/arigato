@@ -1474,8 +1474,14 @@ _GREET_SYSTEM = (
 )
 
 
-async def _greet_line(persona: str, manner: str, thanks: bool = False) -> str:
-    """その人へ向けた一言をつくる。thanks＝この人が前に片づけていた（ありがとうを言う）。"""
+async def _greet_line(persona: str, manner: str, thanks: bool = False,
+                      news: bool = False) -> str:
+    """その人へ向けた一言をつくる。
+
+    thanks＝この人が前に片づけていた（ありがとうを言う）。
+    news＝最近シンクがきれいになっていた（場所の様子として伝える。誰がやったかは言わない）。
+    2026-09-10 本人決定：「だれかがきれいにしてくれた」は負債感になるので言わない。
+    「シンクがきれいになってた」と場所の様子を言うのはよい。"""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return ""
     ask = "【この相手への接し方】" + manner
@@ -1483,6 +1489,10 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False) -> str:
         ask += ("\n【伝えたいこと】このまえ、この人が帰ったあと、シンクがきれいになっていた。"
                 "ありがとう・うれしかった、という気持ちをこの人に伝えたい。"
                 "何をしたかは言わない。評価する言葉（えらい・すごい）は使わない。"
+                "このときだけ25字まで使ってよい。")
+    elif news:
+        ask += ("\n【伝えたいこと】さっき見たら、シンクがきれいになっていた。うれしい。"
+                "場所の様子だけを言う。誰がやったかは言わない。『だれかが』『だれだろう』とも言わない。"
                 "このときだけ25字まで使ってよい。")
     try:
         from anthropic import AsyncAnthropic
@@ -1517,7 +1527,8 @@ async def greet():
         doc = {}
     alone = len(st.get("visit_people") or []) <= 1
     thanks = _own_care(pid)               # 本人が片づけていたときだけ、ありがとう
-    line = await _greet_line(st.get("persona", ""), _manner(doc, alone), thanks)
+    news = (not thanks) and _recent_care()   # そうでなければ、場所の様子として
+    line = await _greet_line(st.get("persona", ""), _manner(doc, alone), thanks, news)
     if not line:
         return ""
     st["greet_for"], st["greet_line"] = pid, line
@@ -1840,6 +1851,23 @@ def _synth_ja(text: str) -> bytes | None:
 
 SAY_NAME = "say_0"          # その場で作った、いまの一言の声
 VOICE_GAP = 60.0            # 声と声のあいだは1分あける（本人決定 2026-09-10）
+VOICE_GAIN = 0.5            # 音量。1.0＝作り置きのまま。本人「下げてよい」→ まず半分（2026-09-10）
+
+
+def _scale_pcm(pcm: bytes, gain: float) -> bytes:
+    """16bit・モノラルの生PCMの音量を変える。C3を焼き直さずに済ませるため。"""
+    if gain == 1.0 or not pcm:
+        return pcm
+    try:
+        import array
+        a = array.array("h")
+        a.frombytes(pcm[:len(pcm) - len(pcm) % 2])
+        for i in range(len(a)):
+            a[i] = int(max(-32768, min(32767, a[i] * gain)))
+        return a.tobytes()
+    except Exception as e:
+        logger.warning("pcm scale failed: %s", e)
+        return pcm
 VOICE_WINDOW = 300.0        # 場所の一言を鳴らすのは、滞在の最初の5分だけ（同）
 
 
@@ -1913,14 +1941,16 @@ async def _prepare_greetings(st: dict, now: float) -> int:
     n = 0
     try:
         db = get_db()
+        news = _recent_care()                  # 場所の様子。誰がやったかは言わない
         for d in db.collection("faces").stream():
             doc = d.to_dict() or {}
             manner = _bond_stage(_bond_now(doc))[1]
-            text = await _greet_line(persona, manner, _own_care(d.id))
+            thanks = _own_care(d.id)
+            text = await _greet_line(persona, manner, thanks, news and not thanks)
             if text and text != doc.get("next_text"):
                 d.reference.update({"next_text": text, "next_at": now})
                 n += 1
-        text = await _greet_line(persona, BOND_STAGES[0][2], "")
+        text = await _greet_line(persona, BOND_STAGES[0][2], False, news)
         if text and text != st.get("next_new_text"):
             st["next_new_text"], st["next_new_at"] = text, now
             n += 1
@@ -2043,7 +2073,7 @@ async def voice_pcm():
     st["voiced_at"] = now                          # 次の声は VOICE_GAP 後
     _save(st)
     _log_event("voice", {"line": name, "bytes": len(pcm)})
-    return Response(content=pcm, media_type="application/octet-stream")
+    return Response(content=_scale_pcm(pcm, VOICE_GAIN), media_type="application/octet-stream")
 
 
 _PANEL = """<!doctype html><html lang=ja><meta charset=utf-8>
@@ -2642,6 +2672,23 @@ def _manner(doc: dict, alone: bool) -> str:
     # 「そっけない」段階は無くした。なつき度は0で止まり、下がるのは会わない時間だけなので、
     # 冷たさが罰として働く回路がそもそも生まれない（台帳#12）。alone は将来のために残す。
     return _bond_stage(_bond_now(doc))[1]
+
+
+def _recent_care() -> bool:
+    """最近（NEWS_WINDOW 内）、シンクが片づいた変化があったか。誰がやったかは見ない。"""
+    try:
+        docs = get_db().collection("spirit_log").order_by(
+            "t", direction="DESCENDING").limit(60).stream()
+        now = time.time()
+        for d in docs:
+            e = d.to_dict() or {}
+            if now - (e.get("t") or 0) > NEWS_WINDOW:
+                break
+            if e.get("kind") == "care" or (e.get("kind") == "visit" and e.get("sink_empty")):
+                return True
+    except Exception as e:
+        logger.warning("recent care lookup failed: %s", e)
+    return False
 
 
 def _own_care(pid: str) -> bool:
