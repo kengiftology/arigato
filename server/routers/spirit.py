@@ -19,6 +19,7 @@
 """
 import json
 import os
+import sys
 import re
 import time
 import asyncio
@@ -3133,6 +3134,36 @@ def _notion_patrol(when: float, title: str, image_url: str, size_bytes: int,
     except Exception as e:
         logger.warning("notion patrol error: %s", e)
         _log_event("notion_error", {"text": str(e)[:120]})
+
+
+@router.get("/notion_test")
+async def notion_test(key: str = ""):
+    """Notion「地霊の記録」に試しの1行を書けるかを、その場で確かめる（週1点検にも使う）。
+
+    2026-09-10 夜：見回りは走ったのに行が出ず、原因が推測しかできなかったので足した。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    token = os.environ.get("SPIRIT_NOTION_TOKEN", "")
+    dbid = os.environ.get("SPIRIT_NOTION_DB", "")
+    out = {"token": bool(token), "db": bool(dbid), "python": sys.version.split()[0]}
+    if not (token and dbid):
+        return out
+    try:
+        import httpx
+        from datetime import datetime, timezone, timedelta
+        at = datetime.now(timezone(timedelta(hours=9)))
+        r = httpx.post("https://api.notion.com/v1/pages", timeout=15,
+                       json={"parent": {"database_id": dbid}, "properties": {
+                           "名前": {"title": [{"text": {"content": at.strftime("%m-%d %H:%M") + " 試し（点検）"}}]},
+                           "時刻": {"date": {"start": at.isoformat()}},
+                           "種別": {"select": {"name": "見回り"}}}},
+                       headers={"Authorization": "Bearer " + token, "Notion-Version": "2022-06-28",
+                                "Content-Type": "application/json"})
+        out["status"] = r.status_code
+        out["url"] = r.json().get("url") if r.status_code == 200 else r.text[:200]
+    except Exception as e:
+        out["error"] = "%s: %s" % (type(e).__name__, e)
+    return out
 
 
 def _keep_story(before: bytes, after: bytes, cared: list, who: list) -> None:
