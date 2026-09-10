@@ -2357,14 +2357,35 @@ def _frame_shift(a: bytes, b: bytes) -> tuple:
         return (0, 0)
 
 
-async def _compare_zone(before: bytes, after: bytes, name: str) -> dict:
+async def _compare_zone(before: bytes, after: bytes, name: str, sink=None) -> dict:
     """前後2枚で、その区画の物が 増えた／減った／同じ かを決める（両方向ルール）。
 
     返す形は _compare_images と同じ（same / better / changes）ので、_zone_pass はそのまま。
-    better＝減った（片づいた方向）。判断できないときは skip を付けて返す。"""
+    better＝減った（片づいた方向）。判断できないときは skip を付けて返す。
+
+    sink＝(前が空か, 今が空か)。2026-09-10 夜：「空か」の答え（20/20で安定）を軸にする。
+      空→空＝同じ（光が違っても比べない）／物あり→空＝片づいた／空→物あり＝散らかった。
+      物あり→物あり（と、どちらか不明）のときだけ、くぼみ以外を塗りつぶしてAIに聞く。"""
     dx, dy = _frame_shift(before, after)
     if abs(dx) > SHIFT_MAX_PX or abs(dy) > SHIFT_MAX_PX:
         return {"skip": "shifted", "same": True, "shift": [dx, dy]}
+    if name == "シンク":
+        eb, ea = (sink or (None, None))
+        base = {"shift": [dx, dy], "forward": "rule", "backward": "rule"}
+        if eb is True and ea is True:
+            return dict(base, same=True, better=None, changes=[], rule="空→空")
+        if eb is False and ea is True:
+            return dict(base, same=False, better=True, rule="物あり→空",
+                        changes=[{"what": "シンクが空になった", "how": "減った", "where": name}])
+        if eb is True and ea is False:
+            return dict(base, same=False, better=False, rule="空→物あり",
+                        changes=[{"what": "シンクに物が置かれた", "how": "増えた", "where": name}])
+        if eb is None and ea is True:
+            # 前が分からなくても、今が空なら「散らかった」はあり得ない。片づいたかも
+            # 分からないので「同じ」（迷ったら何もしない）。光の違いで「増えた」と
+            # 言う誤りを、ここで止める（実測：前が不明の空どうしで 3/3 誤り）。
+            return dict(base, same=True, better=None, changes=[], rule="不明→空")
+        before, after = _sink_mask(before), _sink_mask(after)   # 物あり→物あり か不明
     fix = ZONE_FIXTURES.get(name, "")
     q = (_ZONE_SCENE + fix + "2枚の写真は同じ場所で、1枚目が前、2枚目が今です。"
          "『" + name + "』の中の物は前と比べてどうなりましたか？ 何が変わったかも短く。"
@@ -2558,7 +2579,7 @@ def _score_zone(z: dict) -> None:
 
 
 async def _zone_pass(st: dict, before: bytes, after: bytes,
-                     who: list, quiet: bool, seen_by=None) -> None:
+                     who: list, quiet: bool, seen_by=None, sink=None) -> None:
     """区画ごとに前後を見比べて、結果を記録する。
 
     quiet＝この間、誰も来ていない。そこで出た変化はすべて誤報とみなす。"""
@@ -2570,7 +2591,8 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
         st["zone_rotate"] = i + 1
     results = []
     for z in zones:
-        r = await _compare_zone(before, after, z["name"])     # 見方C（両方向ルール）
+        r = await _compare_zone(before, after, z["name"],     # 見方C（両方向ルール）
+                                sink if z["name"] == "シンク" else None)
         if r.get("error"):
             logger.warning("zone compare failed (%s): %s", z["name"], r["error"])
             continue
@@ -2613,7 +2635,7 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
         if changed:
             _log_event("zone", {"zone": z["name"], "who": who,
                                 "quiet": quiet, "better": r.get("better"),
-                                "seen_by": seen_by,
+                                "seen_by": seen_by, "rule": r.get("rule", "AI"),
                                 "changes": r.get("changes") or []})
             if not quiet:
                 _tally(z["name"], who, r.get("better"), r.get("changes") or [],
@@ -2841,6 +2863,29 @@ def _sink_crop(data: bytes) -> bytes:
         return data
 
 
+def _sink_mask(data: bytes) -> bytes:
+    """シンクのくぼみ以外を灰色で塗りつぶす。塗れなければ元のまま。
+
+    2026-09-10 夜の実測（5組×3回）：水切りかごの入れ替わりを「シンクの容器が減った」と
+    読む誤りが 3/3 消え、物の増減は 6/6 正しい。ただし光の違う空どうしは 0/3
+    （排水口の見え方の違いを「増えた」と言う）。空どうしは _sink_empty の答えで決め、
+    ここへ来るのは「物あり→物あり」のときだけにする（_compare_zone）。"""
+    try:
+        import io
+        from PIL import Image
+        im = Image.open(io.BytesIO(data)).convert("RGB")
+        w, h = im.size
+        box = (int(w * SINK_BOX[0]), int(h * SINK_BOX[1]), int(w * SINK_BOX[2]), int(h * SINK_BOX[3]))
+        out = Image.new("RGB", (w, h), (128, 128, 128))
+        out.paste(im.crop(box), box[:2])
+        buf = io.BytesIO()
+        out.save(buf, "JPEG", quality=85)
+        return buf.getvalue()
+    except Exception as e:
+        logger.warning("sink mask failed: %s", e)
+        return data
+
+
 async def _sink_empty(data: bytes):
     """シンクのくぼみの中が空か。分からなければ None（動かさない）。
 
@@ -2898,6 +2943,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
             ats[pose] = now
             st["baseline_ats"] = ats
             st["baseline_at"], st["baseline_pose"] = now, pose   # 表示用
+            st["sink_empty_prev"] = await _sink_empty(data)      # 次の比較の「前」の答え
             st["visit_people"] = []            # 比べられなかった来訪は数えない
             st["visit_seen"], st["seen_by"] = False, []
             _save(st)
@@ -2917,13 +2963,14 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         if who and stay <= STAY_MIN:
             _log_event("visit_short", {"who": who, "stay": round(stay)})
             who = []
-        await _zone_pass(st, base, data, who, quiet, st.get("seen_by") or [])
+        # 「今、シンクは空か」は毎回1回聞く（比較の軸にも、+1の判断にも使う）
+        empty = await _sink_empty(data)
+        await _zone_pass(st, base, data, who, quiet, st.get("seen_by") or [],
+                         sink=(st.get("sink_empty_prev"), empty))
         # 真ん中の案（本人決定 2026-09-09）：去った後にシンクが空なら、来る前がどうであれ
         # 居た人ぜんぶに +1。自分の分を片づけて帰った人も、他人の分を片づけた人もなつく。
         # 使って散らかしたままは 0（下げない）。一度の滞在で +1 は1回だけ（_bond_up）。
-        empty = None
         if who:
-            empty = await _sink_empty(data)
             _log_event("visit", {"who": who, "stay": round(stay), "sink_empty": empty})
             if empty:
                 st["sink_level"] = 0                      # 空＝一番きれい（Aは戻す合図）
@@ -2950,6 +2997,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         ats[pose] = now
         st["baseline_ats"] = ats
         st["baseline_at"], st["baseline_pose"] = now, pose       # 表示用
+        st["sink_empty_prev"] = empty                            # 次の比較の「前」の答え
         st["visit_people"] = []
         st["visit_seen"], st["seen_by"] = False, []
         _save(st)
