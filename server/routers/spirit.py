@@ -813,6 +813,13 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
         url = upload_to("spirit/latest.jpg", data, "image/jpeg")
         st["photo_url"] = url
         st["photo_at"] = now
+        if check:
+            # 見回りの1枚は時刻つきでも残す（1枚150KB・1日50枚ほど）。
+            # 本人「写真を基本的に残したい」（2026-09-10）。人が居ない1枚だけなので
+            # 写真を残さない決まりには触れない。
+            stamp = time.strftime("%Y%m%d_%H%M%S", time.gmtime(now + JST))
+            st["patrol_url"] = upload_to("spirit/patrol/%s.jpg" % stamp, data, "image/jpeg")
+            st["patrol_bytes"] = len(data)
     except Exception as e:
         logger.warning("latest photo save failed: %s", e)
 
@@ -2570,8 +2577,14 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
         if r.get("skip"):
             _log_event("zone_skip", {"zone": z["name"], "why": r["skip"],
                                      "shift": r.get("shift")})
+            st["patrol_zone"] = z["name"] + " 比べず（ずれ）"
             continue                           # 全体が写っていない → 何もしない
         results.append((z, r))
+        st["patrol_zone"] = z["name"] + (
+            " 片づいた" if r.get("better") is True else
+            " 散らかった" if r.get("better") is False else " 同じ")
+        if r.get("changes"):
+            st["patrol_zone"] += "（" + "・".join(str(c.get("what"))[:12] for c in r["changes"][:2]) + "）"
         if z["name"] == "シンク":
             # 表情は3段階（0きれい／1ふつう／2散らかっている）。向きだけで動かす。
             lvl = int(st.get("sink_level", 1))
@@ -2627,6 +2640,7 @@ VISIT_MERGE_GAP = 1800.0 # 出たり入ったりが30分以内なら、同じ滞
 # 一度の滞在で +1 は最大1回（30分居ても+1）。滞在の始まりの時刻を「滞在の番号」として
 # 人ごとに覚え、同じ番号では二度と上げない。
 _cur_visit = [0.0]      # いま突き合わせている滞在の番号（_zone_cycle が入れる）
+_patrol_ups = []        # この見回りでなつき度が上がった人（Notionの1行に書く）
 BOND_DAILY_MAX = 3      # 1人1日に上がるのは最大3回（朝・昼・晩のだいたい3回。本人決定）
 JST = 9 * 3600
 
@@ -2662,6 +2676,7 @@ def _bond_up(pid: str, why: str, now: float) -> bool:
         ref.update({"bond": level, "bond_at": now, "bond_visit": _cur_visit[0],
                     "bond_day": day, "bond_day_n": n_today + 1, "last_at": now})
         _log_event("bond_up", {"person": pid, "why": why, "bond": level})
+        _patrol_ups.append("%s→%d" % (pid, level))
         return True
     except Exception as e:
         logger.warning("bond up failed: %s", e)
@@ -2888,6 +2903,8 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
             _save(st)
             return
         who = st.get("visit_people") or []
+        _patrol_ups.clear()
+        st["patrol_zone"] = ""
         # 「静か」＝この間に誰も来ていない。顔が取れたかどうかではない。
         # ここを who で見ていたため、顔が取れない日は片づけまで誤報として
         # 数えられ、区画の評判が下がりつづけていた。
@@ -2904,6 +2921,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         # 真ん中の案（本人決定 2026-09-09）：去った後にシンクが空なら、来る前がどうであれ
         # 居た人ぜんぶに +1。自分の分を片づけて帰った人も、他人の分を片づけた人もなつく。
         # 使って散らかしたままは 0（下げない）。一度の滞在で +1 は1回だけ（_bond_up）。
+        empty = None
         if who:
             empty = await _sink_empty(data)
             _log_event("visit", {"who": who, "stay": round(stay), "sink_empty": empty})
@@ -2914,6 +2932,19 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
                     _bond_up(pid, "sink_empty", now)
         # 誰も居ない今のうちに、次に来る人向けの一言を文にしておく（声係が音にする）
         await _prepare_greetings(st, now)
+        # Notion に1行（本人「必要最低限でよいので履歴を残す」2026-09-10）
+        try:
+            title = "%s 見回り｜%s｜シンク%s｜居た %s｜なつき度 %s" % (
+                time.strftime("%m-%d %H:%M", time.gmtime(now + JST)),
+                st.get("patrol_zone") or "比べず",
+                "空" if empty is True else ("物あり" if empty is False else "未確認"),
+                "・".join(who) if who else "なし",
+                "・".join(_patrol_ups) if _patrol_ups else "変わらず")
+            await asyncio.to_thread(_notion_patrol, now, title,
+                                    st.get("patrol_url") or st.get("photo_url") or "",
+                                    int(st.get("patrol_bytes") or 0))
+        except Exception as e:
+            logger.warning("notion patrol failed: %s", e)
         upload_to(key, data, "image/jpeg")
         ats[pose] = now
         st["baseline_ats"] = ats
@@ -3001,6 +3032,45 @@ def _post_to_app(zones: list, what: list, before_url: str, after_url: str) -> st
     except Exception as e:
         logger.warning("post to app failed: %s", e)
         return ""
+
+
+def _notion_patrol(when: float, title: str, image_url: str, size_bytes: int) -> None:
+    """見回りの結果を Notion のデータベースに1行足す。
+
+    タイムラプス（timelapse.py）と同じデータベース・同じ欄を使う（新しい欄を作らない）。
+    名前＝要点（区画の結果・シンクが空か・居た人・なつき度の変化）、ゾーン＝「地霊」。
+    失敗しても本体は止めない。"""
+    token = os.environ.get("NOTION_TOKEN", "")
+    dbid = os.environ.get("NOTION_DATABASE_ID", "")
+    if not (token and dbid):
+        return
+    try:
+        import httpx
+        from datetime import datetime, timezone, timedelta
+        at = datetime.fromtimestamp(when, timezone(timedelta(hours=9)))
+        payload = {
+            "parent": {"database_id": dbid},
+            "properties": {
+                "名前": {"title": [{"text": {"content": title[:180]}}]},
+                "撮影時刻": {"date": {"start": at.isoformat()}},
+                "ゾーン": {"select": {"name": "地霊"}},
+                "サイズ": {"number": size_bytes},
+            },
+        }
+        if image_url:
+            payload["cover"] = {"type": "external", "external": {"url": image_url}}
+            payload["properties"]["画像"] = {"files": [
+                {"type": "external", "name": at.strftime("%Y-%m-%d %H:%M") + ".jpg",
+                 "external": {"url": image_url}}]}
+        r = httpx.post("https://api.notion.com/v1/pages", json=payload, timeout=15,
+                       headers={"Authorization": "Bearer " + token,
+                                "Notion-Version": "2022-06-28",
+                                "Content-Type": "application/json"})
+        if r.status_code != 200:
+            logger.warning("notion patrol row failed %s: %s", r.status_code, r.text[:200])
+            _log_event("notion_error", {"status": r.status_code, "text": r.text[:120]})
+    except Exception as e:
+        logger.warning("notion patrol error: %s", e)
 
 
 def _keep_story(before: bytes, after: bytes, cared: list, who: list) -> None:
