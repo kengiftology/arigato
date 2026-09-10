@@ -787,7 +787,10 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
 
     # 動きがあって送られてきた1枚（big=1）は「誰かが動いている」証拠として時刻だけ残す。
     # AIには見せない。人が居る間に何度見ても、物は片づかないし散らからない。
-    if big:
+    # ただし見回りの1枚そのもの（check）と、見回りの直後 CHECK_SELF_SEC の間の動きは、
+    # カメラ自身が首を振った跡なので数えない。数えていたせいで滞在が途切れず、
+    # 13:44の記録で「滞在56512秒（15時間）」になっていた（2026-09-10）。
+    if big and not check and now - st.get("checked_at", 0) > CHECK_SELF_SEC:
         _touch_visit(st, now)
         st["last_motion"] = now
     # 2026-09-09 本人の方針：人が居ない間はAIを一切呼ばない。人が去ったあとに
@@ -1723,6 +1726,14 @@ async def clear_faces(key: str = ""):
             n += 1
     except Exception as e:
         return {"ok": False, "error": str(e)}
+    st = _load()
+    # 顔を消しても「いま居る人」の覚えに古いIDが残り、次の見回りの滞在に
+    # 消したはずの p02 が付いていた（2026-09-10 13:44）。一緒に忘れる。
+    st["cur_person"] = st["cur_state"] = None
+    st["greeted_key"] = None
+    for k in ("seen_people", "visit_people", "seen_by"):
+        st[k] = []
+    _save(st)
     st = _load()
     st["cur_person"] = None
     st["cur_state"] = None
@@ -2782,28 +2793,50 @@ async def _zone_cycle_bg(st: dict, data: bytes, now: float, pose: str = "") -> N
         _zone_busy[0] = False
 
 
+# シンクのくぼみだけを切り出す枠（見る向き -0.70_-1.00 の写真での割合：左, 上, 右, 下）。
+# 2026-09-10：写真全体で「空か」を聞くと、水切りかごの食器を数えて空の写真30/30で「空でない」と
+# 答えた（9/9の20/20は「物あり」の写真だけで、空の写真は試していなかった）。
+# くぼみだけに切って、排水口のふたを備え付けと明記すると、空2枚×10回＝20/20「空」、
+# 物あり10/10「空でない」（当日実測）。
+SINK_BOX = (0.47, 0.0, 0.86, 0.75)
 _SINK_EMPTY_Q = (
-    "写真は共有キッチンのシンク周りを天井近くから見下ろしたものです。"
-    "備え付けの物（ステンレスの水切りかご、壁の包丁立てと包丁、壁のフックに掛かっている道具、"
-    "蛇口、排水口の網）は見ません。『シンク（流し台の金属のくぼみ）の中』に物はありますか？ "
-    "JSONだけで答えてください：{\"empty\": true または false}"
+    "この写真は、共有キッチンのシンク（流し台のステンレスのくぼみ）の底だけを、真上から写したものです。"
+    "くぼみの中に見える『黒い丸いもの』は排水口のふたで、備え付けです。物ではありません。蛇口も備え付けです。"
+    "排水口のふた以外に、くぼみの中に置かれている物（食器・コップ・鍋・ざる・スプーンなど）はありますか？ "
+    "JSONだけで答えてください：{\"empty\": true または false, \"items\": \"あれば短く\"}"
 )
 
 
-async def _sink_empty(data: bytes):
-    """シンクの中が空か。分からなければ None（動かさない）。
+def _sink_crop(data: bytes) -> bytes:
+    """写真からシンクのくぼみだけを切り出す。切れなければ元のまま。"""
+    try:
+        import io
+        from PIL import Image
+        im = Image.open(io.BytesIO(data))
+        w, h = im.size
+        c = im.crop((int(w * SINK_BOX[0]), int(h * SINK_BOX[1]), int(w * SINK_BOX[2]), int(h * SINK_BOX[3])))
+        buf = io.BytesIO()
+        c.save(buf, "JPEG", quality=85)
+        return buf.getvalue()
+    except Exception as e:
+        logger.warning("sink crop failed: %s", e)
+        return data
 
-    2026-09-09の試験：同じ景色20枚で20/20、同じ1枚に10回で10/10揃った聞き方。"""
+
+async def _sink_empty(data: bytes):
+    """シンクのくぼみの中が空か。分からなければ None（動かさない）。
+
+    2026-09-10：くぼみだけに切り出してから聞く（上の SINK_BOX の説明）。"""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return None
     try:
         from anthropic import AsyncAnthropic
         client = AsyncAnthropic()
         msg = await client.messages.create(
-            model=MODEL, max_tokens=60,
+            model=MODEL, max_tokens=80,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                             "data": base64.b64encode(data).decode()}},
+                                             "data": base64.b64encode(_sink_crop(data)).decode()}},
                 {"type": "text", "text": _SINK_EMPTY_Q}]}])
         text = "".join(b.text for b in msg.content if b.type == "text")
         m = re.search(r"\{.*\}", text, re.S)
