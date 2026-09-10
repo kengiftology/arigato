@@ -42,8 +42,10 @@ import urllib.request
 
 try:                                   # 手元では bridge/ の下、ラズパイでは同じ場所
     from bridge import sweep
+    from bridge import shot_check      # 見回りの1枚が使えるかを測る（2026-09-10）
 except ImportError:
     import sweep
+    import shot_check
 
 CAM_URL = os.environ.get("TAPO_URL", "rtsp://thankU:39Kitchen@192.168.0.230:554/stream1")
 SERVER = os.environ.get("SPIRIT_SERVER", "https://arigato-3ipecjbnha-an.a.run.app")
@@ -87,6 +89,8 @@ STILL_HOLD = 20.0     # 最後に動いてからこの秒数は「まだ居る�
 CALIB_FRAMES = 20     # 最初のこの枚数で、その部屋の「静かさ」を測る
 SETTLE_FRAMES = 8     # 首を振った直後、揺れが収まるまで捨てるコマ数
 SETTLE_AFTER_MOVE = 4.0  # 見回りで振ったあと、映像が入れ替わるのを待つ秒数
+CHECK_TRIES = 8          # 使える写真が撮れるまで撮り直す回数（1回10秒ほど）
+RECHECK_GAP = 300.0      # 撮れなかったとき、次に見に行くまでの間
 MAX_QUIET = 8.0          # 「静かさ」がこれを超えたら測り直す（動いている最中の値）
 
 
@@ -317,15 +321,63 @@ def checked() -> None:
         print("checked failed:", e, flush=True)
 
 
+_recheck = [0.0, ""]   # 使える写真が撮れなかったとき、いつ・どこを見直すか
+
+
+def _next_frame(prev: bytes | None) -> bytes | None:
+    """いまの1枚より新しい1枚を待って読む（最大6秒）。
+
+    大きい流れは2〜4秒に1枚しか更新されない。続けて2回読むと同じ1枚が
+    返り、「止まっている」と誤って判定するので、更新を待つ。"""
+    t0 = time.time()
+    while time.time() - t0 < 6.0:
+        jpg = grab_big(HIRES_MAX_AGE)
+        if jpg is not None and jpg != prev:
+            return jpg
+        time.sleep(0.3)
+    return grab_big(HIRES_MAX_AGE) or grab()
+
+
+def take_good_shot(x: float, y: float) -> bytes | None:
+    """使える1枚が撮れるまで撮り直す（2026-09-10・本人の方針「比べないことはしない」）。
+
+    「使える」＝ぶれていない・定位置の基準写真と位置が合っている・1枚前と同じ景色。
+    今朝09:18、首を振っている最中のぶれた1枚が「前」として保存され、その後の
+    見回りが全部「ずれている」で比べられなかった。原因はこの関数の前身が、
+    4秒待っただけで最大10秒古い1枚をそのまま送っていたこと。
+
+    ずれていれば向け直し、ぶれ・動きなら待って撮り直す。CHECK_TRIES 回で
+    だめなら None（送らない。RECHECK_GAP 後にもう一度来る）。"""
+    prev = None
+    for i in range(1, CHECK_TRIES + 1):
+        time.sleep(SETTLE_AFTER_MOVE if i == 1 else 1.0)
+        jpg = _next_frame(prev)
+        if jpg is None:
+            print(time.strftime("%H:%M:%S"), "見回りの写真 %d回目: 映像が無い" % i, flush=True)
+            continue
+        r = shot_check.check(jpg, prev)
+        print(time.strftime("%H:%M:%S"),
+              "見回りの写真 %d回目: ぶれ=%.1f ずれ=%s 動き=%s → %s"
+              % (i, r["blur"], r["shift"], r["still"], "使える" if r["ok"] else r["why"]),
+              flush=True)
+        if r["ok"] and prev is not None:
+            return jpg                 # 1枚前と同じ景色で、ぶれもずれもない
+        prev = jpg
+        if not r["ok"] and r["why"] == "ずれ":
+            sweep.look(x, y)           # 向け直してから撮り直す
+            prev = None
+    return None
+
+
 def go_check(pose: str, w) -> None:
-    """キッチンを見に行って、1枚だけ撮って、また戻る（2026-09-06）。
+    """キッチンを見に行って、使える1枚を撮って、また戻る（2026-09-06／撮り直し 2026-09-10）。
 
     普段は入り口を向いて待っている。人は数秒で通り過ぎるので、鳴ってから
     振ったのでは顔に間に合わないため。ただし物の増減は入り口からは見えない。
 
-    そこで、誰も居ないと分かってから見に行く。撮るのは1枚だけ。
+    そこで、誰も居ないと分かってから見に行く。撮るのは使える1枚だけ。
     前後比較は「誰も居ないキッチンの2枚」どうしになるので成立する。
-    往復で10秒ほど。この間に人が来たら入り口の顔は逃すが、人感は鳴るので
+    往復で20秒ほど。この間に人が来たら入り口の顔は逃すが、人感は鳴るので
     「誰か来ていた」ことは残る。"""
     try:
         x, y = (float(v) for v in pose.split("_"))
@@ -334,14 +386,18 @@ def go_check(pose: str, w) -> None:
         checked()
         return
     print(time.strftime("%H:%M:%S"), "キッチンを見に行く", pose, flush=True)
+    _recheck[0] = 0.0
     if not sweep.look(x, y):
         checked()                      # 振れなかった。次の機会に回す
         return
-    time.sleep(SETTLE_AFTER_MOVE)      # 映像が新しい向きに入れ替わるのを待つ
-    jpg = grab_big() or grab()
+    jpg = take_good_shot(x, y)
     if jpg is not None:
         _pose[0] = pose                # この1枚に添える向き
         report(jpg, "見回り", big=True, check=True)
+    else:
+        print(time.strftime("%H:%M:%S"),
+              "使える写真が撮れなかった → %d秒後にもう一度" % RECHECK_GAP, flush=True)
+        _recheck[0], _recheck[1] = time.time() + RECHECK_GAP, pose
     checked()
     sweep.go_home()                    # 入り口へ戻る（止まるまで待つ）
     refresh_pose()
@@ -412,6 +468,9 @@ def main():
                     tag = hint()
                     if tag.startswith("check "):
                         go_check(tag.split(None, 1)[1].strip(), w)
+                        continue
+                    if _recheck[0] and now >= _recheck[0] and now - w.last_move > STILL_HOLD:
+                        go_check(_recheck[1], w)   # さっき撮れなかった分をやり直す
                         continue
                     if now - last_sweep >= SWEEP_COOLDOWN and tag == "sweep":
                         last_sweep = now

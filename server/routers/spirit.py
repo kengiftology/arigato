@@ -75,7 +75,13 @@ _SYSTEM = (
     "【scoreの定義】score は散らかり度。0.0=完全にきれい、0.3=少し物がある、"
     "0.6=それなりに散らかっている、1.0=ひどく散らかっている。"
     "きれいなほど0に近い。間違えないこと。\n"
+    "【備え付け】ステンレスの水切りかご・壁の包丁立てと包丁・壁のフックに掛かっている道具・"
+    "蛇口・排水口の網は備え付けで、物として挙げず、散らかりにも数えない。"
+    "このキッチンに食洗機・食器乾燥機は無い（水切りかごを見間違えない）。\n"
     "【commentの掟】地霊が自分の気持ちをつぶやく独り言だけ。"
+    "口調は、ちいさな子どものひとりごと（ひらがな多め。『あのね』『〜なあ』『〜かなあ』『〜だね』）。"
+    "ていねい語や、『あら』『〜わ』『〜ですわ』のような大人の口調・店員の口調は使わない。"
+    "人格の設定に別の口調が書いてあっても、こちらを優先する。"
     "人に指図・お願い・提案は絶対にしない（『片付けましょう』『〜してね』は禁止）。"
     "『そわそわするなあ』『すっきりして気持ちいいなあ』のように自分の心もちだけ。"
     "責めない・皮肉らない・数字を言わない。\n"
@@ -735,7 +741,11 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 st["cur_state"] = res["state"]
                 st["last_seen"] = now
                 st["face_at"] = now              # 最後に顔で確かめた時刻
-                if st.get("cur_person") != res["person"] or not st.get("speak_line"):
+                # 同じ滞在で同じ人には1回だけ（2026-09-10）。前は「予定が空なら」で、
+                # 鳴らし終えるたびに次のコマでまた挨拶を予定し、居るあいだ何度も鳴っていた。
+                gkey = "%s@%d" % (res["person"], int(st.get("visit_start") or 0))
+                if st.get("greeted_key") != gkey:
+                    st["greeted_key"] = gkey
                     try:
                         doc = get_db().collection("faces").document(
                             res["person"]).get().to_dict() or {}
@@ -1464,15 +1474,15 @@ _GREET_SYSTEM = (
 )
 
 
-async def _greet_line(persona: str, manner: str, news: str) -> str:
-    """その人へ向けた一言をつくる。"""
+async def _greet_line(persona: str, manner: str, thanks: bool = False) -> str:
+    """その人へ向けた一言をつくる。thanks＝この人が前に片づけていた（ありがとうを言う）。"""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return ""
     ask = "【この相手への接し方】" + manner
-    if news:
-        ask += ("\n【伝えたいこと】さっき別の誰かが" + news +
-                "をきれいにしてくれた。それがうれしかったと伝えたい。"
-                "ただし誰がやったかは絶対に言わない（『だれかが』とだけ）。"
+    if thanks:
+        ask += ("\n【伝えたいこと】このまえ、この人が帰ったあと、シンクがきれいになっていた。"
+                "ありがとう・うれしかった、という気持ちをこの人に伝えたい。"
+                "何をしたかは言わない。評価する言葉（えらい・すごい）は使わない。"
                 "このときだけ25字まで使ってよい。")
     try:
         from anthropic import AsyncAnthropic
@@ -1506,13 +1516,13 @@ async def greet():
     except Exception:
         doc = {}
     alone = len(st.get("visit_people") or []) <= 1
-    news = _fresh_news(pid)               # 良い知らせは誰が居ても伝えてよい（規則1）
-    line = await _greet_line(st.get("persona", ""), _manner(doc, alone), news)
+    thanks = _own_care(pid)               # 本人が片づけていたときだけ、ありがとう
+    line = await _greet_line(st.get("persona", ""), _manner(doc, alone), thanks)
     if not line:
         return ""
     st["greet_for"], st["greet_line"] = pid, line
     _save(st)
-    _log_event("greet", {"person": pid, "alone": alone, "news": bool(news)})
+    _log_event("greet", {"person": pid, "alone": alone, "thanks": thanks})
     return line + "\n"
 
 
@@ -1829,6 +1839,8 @@ def _synth_ja(text: str) -> bytes | None:
 
 
 SAY_NAME = "say_0"          # その場で作った、いまの一言の声
+VOICE_GAP = 60.0            # 声と声のあいだは1分あける（本人決定 2026-09-10）
+VOICE_WINDOW = 300.0        # 場所の一言を鳴らすのは、滞在の最初の5分だけ（同）
 
 
 @router.post("/say")
@@ -1904,7 +1916,7 @@ async def _prepare_greetings(st: dict, now: float) -> int:
         for d in db.collection("faces").stream():
             doc = d.to_dict() or {}
             manner = _bond_stage(_bond_now(doc))[1]
-            text = await _greet_line(persona, manner, _fresh_news(d.id))
+            text = await _greet_line(persona, manner, _own_care(d.id))
             if text and text != doc.get("next_text"):
                 d.reference.update({"next_text": text, "next_at": now})
                 n += 1
@@ -1997,13 +2009,20 @@ async def voice_pcm():
     言うことが決まっていないときは、その場の様子から選ぶ。
     何も当てはまらなければ204で黙る。503はエラーであって沈黙ではない。"""
     st = _load()
+    now = time.time()
     name = st.get("speak_line")
     if name:
-        if time.time() < st.get("speak_at", 0):
+        if now < st.get("speak_at", 0):
             return Response(status_code=204)       # まだ。これが間になる
         st["speak_line"] = None                    # 一度鳴らしたら下ろす
         _save(st)
     else:
+        # 場所の一言。C3は人が居るあいだ20秒おきに取りに来るので、毎回返すと
+        # 1回の来訪で3回鳴ってしつこい（2026-09-10 実測）。1回だけだと聞き逃す。
+        # 本人決定：1分に1回、滞在の最初の5分まで。
+        since = now - float(st.get("visit_start") or 0)
+        if since >= VOICE_WINDOW or now - float(st.get("voiced_at") or 0) < VOICE_GAP:
+            return Response(status_code=204)
         # いまの一言を声にしたものがあれば、それを鳴らす。
         # 一言は判断のたびに変わるので、食い違っていたら古い音。
         if st.get("say_text") and st.get("say_text") == (st.get("comment") or ""):
@@ -2021,6 +2040,8 @@ async def voice_pcm():
         pcm = None
     if not pcm:
         return Response(status_code=204)
+    st["voiced_at"] = now                          # 次の声は VOICE_GAP 後
+    _save(st)
     _log_event("voice", {"line": name, "bytes": len(pcm)})
     return Response(content=pcm, media_type="application/octet-stream")
 
@@ -2483,7 +2504,8 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
             logger.warning("zone compare failed (%s): %s", z["name"], r["error"])
             continue
         if r.get("skip"):
-            _log_event("zone_skip", {"zone": z["name"], "why": r["skip"]})
+            _log_event("zone_skip", {"zone": z["name"], "why": r["skip"],
+                                     "shift": r.get("shift")})
             continue                           # 全体が写っていない → 何もしない
         results.append((z, r))
         if z["name"] == "シンク":
@@ -2622,25 +2644,28 @@ def _manner(doc: dict, alone: bool) -> str:
     return _bond_stage(_bond_now(doc))[1]
 
 
-def _fresh_news(pid: str) -> str:
-    """他の誰かが最近やってくれたこと。名前は出さない（規則1）。
+def _own_care(pid: str) -> bool:
+    """この人が最近、去ったあとにシンクをきれいにしていたか。
 
-    片づけた人は誰にも見られていない。地霊だけが見ていて、
-    次に来た人に伝える。これが「埋もれたありがとうを通す」本体。"""
+    2026-09-10 本人決定：「さっき別のだれかがきれいにしてくれた」は言わない。
+    聞いた人が「自分はやっていない」と責められたように感じ、負債感になる。
+    本人がやっていたときだけ、本人に「ありがとう」を伝える。
+    見るのは、片づいた変化（care）と、去ったあとシンクが空だった滞在（visit）。"""
     try:
         docs = get_db().collection("spirit_log").order_by(
-            "t", direction="DESCENDING").limit(40).stream()
+            "t", direction="DESCENDING").limit(60).stream()
         now = time.time()
         for d in docs:
             e = d.to_dict() or {}
-            if e.get("kind") != "care" or now - (e.get("t") or 0) > NEWS_WINDOW:
+            if now - (e.get("t") or 0) > NEWS_WINDOW:
+                break
+            if pid not in (e.get("who") or []):
                 continue
-            who = e.get("who") or []
-            if who and pid not in who:          # 本人の手柄は本人に言わない
-                return e.get("zone") or ""
+            if e.get("kind") == "care" or (e.get("kind") == "visit" and e.get("sink_empty")):
+                return True
     except Exception as e:
-        logger.warning("news lookup failed: %s", e)
-    return ""
+        logger.warning("own care lookup failed: %s", e)
+    return False
 
 
 def _tally(zone: str, who: list, better, changes: list, seen_by=None) -> None:
@@ -2793,6 +2818,9 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         _save(st)
     except Exception as e:
         logger.warning("zone cycle failed: %s", e)
+        # 失敗が表から見えないと、基準の写真が入れ替わらない理由を追えない
+        # （2026-09-10 朝、09:19の基準がそのまま残っていた）。記録に残す。
+        _log_event("zone_error", {"err": ("%s: %s" % (type(e).__name__, e))[:160]})
 
 
 @router.get("/zones")
