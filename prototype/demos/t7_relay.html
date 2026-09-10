@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>デモ7 リレー — ありがとう</title>
+<link rel="stylesheet" href="./proto.css">
+<style>
+  .proto-nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px; font-size: 0.7rem; color: var(--text-muted);
+    background: var(--surface);
+  }
+  .proto-nav a { color: var(--text-muted); text-decoration: none; }
+  .demo-bar {
+    position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 390px; background: var(--bg);
+    border-top: 1px dashed var(--border);
+    display: flex; gap: 8px; align-items: center; padding: 7px 14px;
+    z-index: 10;
+  }
+  .demo-bar-label { font-size: 0.62rem; color: var(--text-muted); letter-spacing: 0.06em; flex-shrink: 0; }
+  .demo-pill {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border-radius: 14px; padding: 5px 12px; font-size: 0.72rem;
+    font-family: inherit; cursor: pointer;
+  }
+  .demo-pill:active { transform: scale(0.96); }
+  .demo-pill:disabled { opacity: 0.45; cursor: default; }
+  .chat { padding-bottom: 160px; }
+
+  /* リレーバー：手入れが鎖になって見える */
+  .relay-bar {
+    position: sticky; top: 64px; z-index: 19;
+    background: var(--bg); border-bottom: 1px solid var(--border);
+    padding: 10px 14px 8px;
+  }
+  .relay-track {
+    display: flex; align-items: flex-start;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .relay-track::-webkit-scrollbar { display: none; }
+  .relay-node {
+    width: 46px; flex-shrink: 0;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .relay-dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--accent); margin-top: 4px;
+    position: relative; z-index: 1;
+  }
+  .relay-date { font-size: 10px; color: var(--text-muted); margin-top: 5px; white-space: nowrap; }
+  .relay-line {
+    flex-shrink: 0; width: 34px; height: 2px;
+    background: var(--border); margin: 9px -17px 0;
+  }
+  .relay-line.faint {
+    background: none; height: 0;
+    border-top: 2px dotted var(--border); margin-top: 9px;
+  }
+  .relay-node.today .relay-dot {
+    width: 14px; height: 14px; margin-top: 3px;
+    background: var(--accent-deep);
+    box-shadow: 0 0 0 4px rgba(91,158,122,0.22);
+  }
+  .relay-node.today .relay-date { color: var(--accent-deep); font-weight: 800; }
+  .relay-gap {
+    width: 40px; flex-shrink: 0;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .relay-gap-dots {
+    height: 12px; margin-top: 4px; display: flex; align-items: center;
+    font-size: 13px; letter-spacing: 2px; line-height: 1;
+    color: #c4bdb1; font-weight: 800;
+  }
+  .relay-gap-label { font-size: 10px; color: #c4bdb1; margin-top: 5px; white-space: nowrap; }
+  .relay-stat { font-size: 0.68rem; color: var(--text-muted); margin-top: 7px; letter-spacing: 0.03em; }
+  @keyframes nodeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .relay-track .enter { animation: nodeIn 0.55s ease both; }
+  @keyframes dotWave {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.55); box-shadow: 0 0 0 4px rgba(91,158,122,0.3); }
+  }
+  .relay-dot.wave { animation: dotWave 0.5s ease both; }
+
+  /* 一手つなぐボタン（大きめ）と喜び演出 */
+  .relay-cta { display: flex; justify-content: center; margin: 16px 0 6px; }
+  .relay-btn { font-size: 0.92rem; padding: 12px 24px 12px 20px; }
+  .relay-btn::before { content: "🖐"; }
+  .relay-btn:disabled {
+    border-color: var(--border); color: var(--text-muted);
+    background: var(--surface); cursor: default;
+  }
+  .chat-header-icon { transition: box-shadow 0.4s, transform 0.4s; }
+  body.beam .chat-header-icon { transform: scale(1.1); box-shadow: 0 0 0 7px rgba(91,158,122,0.22); }
+</style>
+</head>
+<body>
+
+<div class="proto-nav"><a href="./index.html">← デモ一覧</a><span>デモ7：リレー</span></div>
+
+<div class="chat-header">
+  <div class="chat-header-icon">🌿</div>
+  <div>
+    <div class="chat-header-name" id="zoneName">リビング</div>
+    <div class="chat-header-sub">手から手へ、つづいてる</div>
+  </div>
+</div>
+
+<div class="relay-bar">
+  <div class="relay-track" id="relayTrack"></div>
+  <div class="relay-stat" id="relayStat"></div>
+</div>
+
+<div class="chat" id="chat"></div>
+
+<div class="demo-bar">
+  <span class="demo-bar-label">デモ操作</span>
+  <button class="demo-pill" id="gapBtn" onclick="demoGap()">7日あいたことにする</button>
+</div>
+
+<div class="chat-compose">
+  <button class="chat-cam" onclick="camHint()">📷</button>
+  <input class="chat-input" id="chatInput" placeholder="メッセージを入力" onkeydown="if(event.key==='Enter')sendMsg()">
+  <button class="chat-send" onclick="sendMsg()">送る</button>
+</div>
+
+<div class="toast" id="toast">
+  <div class="toast-icon">🌱</div>
+  <div>
+    <div class="toast-app">ありがとう</div>
+    <div class="toast-msg" id="toastMsg"></div>
+    <div class="toast-sub" id="toastSub"></div>
+  </div>
+</div>
+
+<script src="./data.js"></script>
+<script>
+var connected = false;
+var gapped = false;
+var toastTimer = null;
+
+function fmtDay(iso) {
+  var d = new Date(iso);
+  return (d.getMonth() + 1) + "月" + d.getDate() + "日";
+}
+function fmtTime(iso) {
+  var d = new Date(iso);
+  var h = d.getHours(), m = d.getMinutes();
+  return h + ":" + (m < 10 ? "0" + m : m);
+}
+
+function showToast(msg, sub) {
+  var t = document.getElementById("toast");
+  document.getElementById("toastMsg").textContent = msg;
+  document.getElementById("toastSub").textContent = sub || "";
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.classList.remove("show"); }, 2600);
+}
+
+/* ── リレーバー ── */
+function setStat(n) {
+  document.getElementById("relayStat").textContent =
+    "リレー：" + n + "手・" + fmtDay(ZONE_DATA.summary.first_care_at) + "から";
+}
+function buildRelay() {
+  var html = "";
+  ZONE_DATA.cares.forEach(function (c, i) {
+    if (i > 0) html += '<div class="relay-line"></div>';
+    html += '<div class="relay-node"><div class="relay-dot"></div>' +
+      '<div class="relay-date">' + fmtDay(c.when) + "</div></div>";
+  });
+  document.getElementById("relayTrack").innerHTML = html;
+  setStat(ZONE_DATA.cares.length);
+}
+function wave() {
+  var dots = document.querySelectorAll("#relayTrack .relay-dot");
+  dots.forEach(function (d, i) {
+    d.style.animationDelay = (i * 90) + "ms";
+    d.classList.add("wave");
+  });
+  setTimeout(function () {
+    dots.forEach(function (d) { d.classList.remove("wave"); d.style.animationDelay = ""; });
+  }, dots.length * 90 + 700);
+}
+function beam() {
+  document.body.classList.add("beam");
+  setTimeout(function () { document.body.classList.remove("beam"); }, 1800);
+}
+
+/* ── チャット描画（t1と同じ実データ履歴） ── */
+function bubblePlace(inner, extra) {
+  return '<div class="msg-place ' + (extra || "") + '">' +
+    '<div class="msg-place-icon">' + (extra === "down" ? "🍂" : "🌿") + "</div>" +
+    '<div class="msg-place-bubbles">' + inner + "</div></div>";
+}
+
+function render() {
+  var cares = ZONE_DATA.cares.slice(-2);
+  var html = "";
+  html += bubblePlace('<div class="bubble-place">' + fmtDay(ZONE_DATA.summary.first_care_at) +
+    "にはじまった手のリレーが、いまもつづいてるんだ。</div>");
+  html += '<div class="chat-legend"><span>🍂 <b>散らかっていた姿</b></span><span>🌿 <b>整えてもらった姿</b></span></div>';
+
+  cares.forEach(function (c) {
+    html += '<div class="chat-day">' + fmtDay(c.when) + "</div>";
+    if (c.before_photo) {
+      html += bubblePlace(
+        '<div class="bubble-place photo down"><div class="photo-wrap"><img class="card-photo" src="' + c.before_photo + '" alt=""></div></div>' +
+        '<div class="bubble-place down">' + (c.before_line || "ここ、ちょっと気になっているんだ。") + "</div>" +
+        '<div class="chat-time">' + fmtTime(c.when) + "</div>", "down");
+    }
+    if (c.after_photo) {
+      var quote = c.before_photo
+        ? '<div class="quote-before"><img src="' + c.before_photo + '" alt=""><span>' + (c.before_line || "さっきの、散らかっていた姿") + "</span></div>"
+        : "";
+      var chips = c.thanks_count > 0
+        ? '<div class="care-thanks-cluster"><span class="thanks-chip">' + c.thanks_count + " のありがとう</span></div>"
+        : "";
+      html += bubblePlace(
+        '<div class="bubble-place photo"><div class="photo-wrap"><img class="card-photo" src="' + c.after_photo + '" alt=""></div></div>' +
+        quote +
+        '<div class="bubble-place">' + (c.after_line || "ここ、すっきり整った。") + "</div>" +
+        chips +
+        '<div class="chat-time">' + fmtTime(c.completed || c.when) + "</div>");
+    }
+  });
+
+  html += '<div class="chat-day">きょう</div>';
+  html += bubblePlace('<div class="bubble-place soft">とぎれても、だいじょうぶ。また始まればいいから。</div>');
+  html += '<div class="relay-cta"><button class="chat-thank-btn relay-btn" id="relayBtn" onclick="connectRelay()">わたしも一手つなぐ</button></div>';
+  document.getElementById("chat").innerHTML = html;
+}
+
+function appendPlace(text, extra) {
+  var chat = document.getElementById("chat");
+  var div = document.createElement("div");
+  div.innerHTML = bubblePlace('<div class="bubble-place ' + (extra === "down" ? "down" : "") + '">' + text + "</div>", extra);
+  chat.appendChild(div.firstChild);
+  chat.lastChild.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+/* ── 一手つなぐ ── */
+function connectRelay() {
+  if (connected) return;
+  connected = true;
+  var track = document.getElementById("relayTrack");
+  var line = document.createElement("div");
+  line.className = "relay-line" + (gapped ? " faint" : "");
+  track.appendChild(line);
+  var node = document.createElement("div");
+  node.className = "relay-node today enter";
+  node.innerHTML = '<div class="relay-dot"></div><div class="relay-date">きょう</div>';
+  track.appendChild(node);
+  track.scrollLeft = track.scrollWidth;
+  setStat(ZONE_DATA.cares.length + 1);
+  var btn = document.getElementById("relayBtn");
+  btn.textContent = "あすに、つづく";
+  btn.disabled = true;
+  appendPlace((ZONE_DATA.cares.length + 1) + "手め、つながった。ありがとう。");
+  wave();
+  beam();
+}
+
+/* ── デモ操作：間があく（責めない） ── */
+function demoGap() {
+  if (gapped) return;
+  gapped = true;
+  var track = document.getElementById("relayTrack");
+  var line = document.createElement("div");
+  line.className = "relay-line faint";
+  track.appendChild(line);
+  var gap = document.createElement("div");
+  gap.className = "relay-gap enter";
+  gap.innerHTML = '<div class="relay-gap-dots">…</div><div class="relay-gap-label">7日</div>';
+  track.appendChild(gap);
+  track.scrollLeft = track.scrollWidth;
+  document.getElementById("gapBtn").disabled = true;
+  appendPlace("ひさしぶり。でも、また会えたね。");
+}
+
+function sendMsg() {
+  var input = document.getElementById("chatInput");
+  var msg = input.value.trim();
+  input.value = "";
+  var chat = document.getElementById("chat");
+  var you = document.createElement("div");
+  you.className = "msg-you";
+  you.innerHTML = '<div class="bubble-you">' + (msg || "ありがとう") + "</div>";
+  chat.appendChild(you);
+  setTimeout(function () {
+    appendPlace("受け取ったよ。");
+    beam();
+  }, 600);
+  you.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+function camHint() {
+  showToast("これはデモ版です", "撮影・投稿は本物のアプリでどうぞ");
+}
+
+document.getElementById("zoneName").textContent = ZONE_DATA.zone.name;
+buildRelay();
+render();
+</script>
+</body>
+</html>

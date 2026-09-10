@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>デモ3 注ぐ — ありがとう</title>
+<link rel="stylesheet" href="./proto.css">
+<style>
+  .proto-nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px; font-size: 0.7rem; color: var(--text-muted);
+    background: var(--surface);
+  }
+  .proto-nav a { color: var(--text-muted); text-decoration: none; }
+  /* うつわ：注がれたありがとうが年輪になる */
+  .vessel {
+    padding: 16px 14px 10px; text-align: center;
+    border-bottom: 1px solid var(--border); background: var(--bg);
+  }
+  .vessel-stage { position: relative; width: 186px; height: 186px; margin: 0 auto; }
+  .vessel-stage svg { width: 100%; height: 100%; display: block; }
+  .vessel-icon {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: 46px; height: 46px; border-radius: 50%;
+    background: var(--accent-soft);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; box-shadow: 0 0 0 4px rgba(91,158,122,0.10);
+    transition: box-shadow 0.4s;
+  }
+  .vessel-note { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+  .chat-header-icon { transition: box-shadow 0.4s; }
+  body.pour-beam .vessel-icon,
+  body.pour-beam .chat-header-icon { box-shadow: 0 0 0 8px rgba(91,158,122,0.22); }
+</style>
+</head>
+<body>
+
+<div class="proto-nav"><a href="./index.html">← デモ一覧</a><span>デモ3：注ぐ</span></div>
+
+<div class="chat-header">
+  <div class="chat-header-icon">🌿</div>
+  <div>
+    <div class="chat-header-name">リビング</div>
+    <div class="chat-header-sub" id="pourCount">たまったありがとう 3</div>
+  </div>
+</div>
+
+<div class="vessel">
+  <div class="vessel-stage">
+    <svg viewBox="0 0 210 210" aria-hidden="true"><g id="ringGroup"></g></svg>
+    <div class="vessel-icon">🌿</div>
+  </div>
+  <div class="vessel-note">使えない・交換できない。ただ、溜まる。</div>
+</div>
+
+<div class="chat" id="chat"></div>
+
+<div class="chat-compose">
+  <input class="chat-input" id="pourInput" placeholder="ひとこと添えて注ぐ（任意）" onkeydown="if(event.key==='Enter')sendPour()">
+  <button class="chat-send" onclick="sendPour()">注ぐ</button>
+</div>
+
+<script src="./data.js"></script>
+<script>
+var POUR_LINES = [
+  "あったかい。",
+  "たまっていく、うれしいな。",
+  "ここ、好かれてる場所になってきた。",
+  "こんなに。ありがとう。"
+];
+var MAX_RINGS = 7; /* 8本目以降はリングを増やさず、カウンタだけ増える */
+var poured = 3;
+var ringsDrawn = 0;
+var lineIdx = 0;
+
+function fmtDay(iso) {
+  var d = new Date(iso);
+  return (d.getMonth() + 1) + "月" + d.getDate() + "日";
+}
+function fmtTime(iso) {
+  var d = new Date(iso);
+  var h = d.getHours(), m = d.getMinutes();
+  return h + ":" + (m < 10 ? "0" + m : m);
+}
+
+function addRing(animate) {
+  if (ringsDrawn >= MAX_RINGS) return;
+  ringsDrawn++;
+  var n = ringsDrawn;
+  var c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  c.setAttribute("cx", "105");
+  c.setAttribute("cy", "105");
+  c.setAttribute("r", String(34 + (n - 1) * 10));
+  c.setAttribute("fill", "none");
+  c.setAttribute("stroke", "#5b9e7a");
+  c.setAttribute("stroke-width", "2");
+  var op = Math.max(0.25, 0.95 - (n - 1) * 0.11);
+  document.getElementById("ringGroup").appendChild(c);
+  if (animate) {
+    c.style.opacity = "0";
+    c.style.transition = "opacity 1.1s ease";
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { c.style.opacity = String(op); });
+    });
+  } else {
+    c.style.opacity = String(op);
+  }
+}
+
+function beam() {
+  document.body.classList.add("pour-beam");
+  setTimeout(function () { document.body.classList.remove("pour-beam"); }, 1600);
+}
+
+function bubblePlace(inner, extra) {
+  return '<div class="msg-place ' + (extra || "") + '">' +
+    '<div class="msg-place-icon">' + (extra === "down" ? "🍂" : "🌿") + "</div>" +
+    '<div class="msg-place-bubbles">' + inner + "</div></div>";
+}
+
+function appendPlace(text, extra) {
+  var chat = document.getElementById("chat");
+  var div = document.createElement("div");
+  div.innerHTML = bubblePlace('<div class="bubble-place ' + (extra === "down" ? "down" : "") + '">' + text + "</div>", extra);
+  chat.appendChild(div.firstChild);
+  chat.lastChild.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+function render() {
+  var cares = ZONE_DATA.cares.slice(-2);
+  var html = "";
+  html += '<div class="msg-place"><div class="msg-place-icon">🌿</div><div class="msg-place-bubbles">' +
+    '<div class="bubble-place">やあ。上のまるいの、わたしのうつわ。<br>ありがとうが、年輪みたいにたまっていくんだ。</div></div></div>';
+  html += '<div class="chat-legend"><span>🍂 <b>散らかっていた姿</b></span><span>🌿 <b>整えてもらった姿</b></span></div>';
+
+  cares.forEach(function (c) {
+    html += '<div class="chat-day">' + fmtDay(c.when) + "</div>";
+    if (c.before_photo) {
+      html += bubblePlace(
+        '<div class="bubble-place photo down"><div class="photo-wrap"><img class="card-photo" src="' + c.before_photo + '" alt=""></div></div>' +
+        '<div class="bubble-place down">' + (c.before_line || "ここ、ちょっと気になっているんだ。") + "</div>" +
+        '<div class="chat-time">' + fmtTime(c.when) + "</div>", "down");
+    }
+    if (c.after_photo) {
+      var quote = c.before_photo
+        ? '<div class="quote-before"><img src="' + c.before_photo + '" alt=""><span>' + (c.before_line || "さっきの、散らかっていた姿") + "</span></div>"
+        : "";
+      html += bubblePlace(
+        '<div class="bubble-place photo"><div class="photo-wrap"><img class="card-photo" src="' + c.after_photo + '" alt=""></div></div>' +
+        quote +
+        '<div class="bubble-place">' + (c.after_line || "ここ、すっきり整った。") + "</div>" +
+        '<div><button class="chat-thank-btn" onclick="pour()">この姿に注ぐ</button></div>' +
+        '<div class="chat-time">' + fmtTime(c.completed || c.when) + "</div>");
+    }
+  });
+  document.getElementById("chat").innerHTML = html;
+}
+
+function pour(msg) {
+  poured++;
+  document.getElementById("pourCount").textContent = "たまったありがとう " + poured;
+  addRing(true);
+  if (msg) {
+    var chat = document.getElementById("chat");
+    var you = document.createElement("div");
+    you.className = "msg-you";
+    you.innerHTML = '<div class="bubble-you">' + msg + "</div>";
+    chat.appendChild(you);
+    you.scrollIntoView({ behavior: "smooth", block: "end" });
+  }
+  setTimeout(function () {
+    appendPlace(POUR_LINES[lineIdx % POUR_LINES.length]);
+    lineIdx++;
+    beam();
+  }, msg ? 600 : 450);
+}
+
+function sendPour() {
+  var input = document.getElementById("pourInput");
+  var msg = input.value.trim();
+  input.value = "";
+  pour(msg);
+}
+
+render();
+addRing(false); addRing(false); addRing(false);
+</script>
+</body>
+</html>

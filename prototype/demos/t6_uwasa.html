@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>デモ6 場所同士の噂 — ありがとう</title>
+<link rel="stylesheet" href="./proto.css">
+<style>
+  .proto-nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px; font-size: 0.7rem; color: var(--text-muted);
+    background: var(--surface);
+  }
+  .proto-nav a { color: var(--text-muted); text-decoration: none; }
+  .chat { padding-bottom: 140px; }
+  /* ヘッダー：3つの丸アイコンの重なり */
+  .talk-avatars { display: flex; flex-shrink: 0; }
+  .t-avatar {
+    width: 27px; height: 27px; border-radius: 50%;
+    border: 2px solid var(--bg); margin-left: -9px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.82rem; background: var(--accent-soft);
+  }
+  .t-avatar:first-child { margin-left: 0; }
+  .t-avatar.sink { background: #e8eef5; }
+  .t-avatar.door { background: #f3ebe0; }
+  /* 発言者名ラベル（3系統の色分け） */
+  .spk-name { font-size: 11px; font-weight: 800; letter-spacing: 0.04em; margin: 0 0 3px 2px; }
+  .spk-living .spk-name { color: var(--accent-deep); }
+  .spk-sink .spk-name { color: #5b7a9e; }
+  .spk-sink .msg-place-icon { background: #e8eef5; }
+  .spk-sink .bubble-place { background: #e8eef5; color: #5b7a9e; }
+  .spk-sink .bubble-place:not(.photo):not(.note):not(.soft)::before { background: #e8eef5; }
+  .spk-door .spk-name { color: #8a7a63; }
+  .spk-door .msg-place-icon { background: #f3ebe0; }
+  .spk-door .bubble-place { background: #f3ebe0; color: #8a7a63; }
+  .spk-door .bubble-place:not(.photo):not(.note):not(.soft)::before { background: #f3ebe0; }
+  /* 発言中の「…」 */
+  @keyframes uwTyping { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  .bubble-place.typing { animation: uwTyping 0.9s ease-in-out infinite; }
+  /* 下部：聞き耳バー（composeの代わり） */
+  .listen-bar {
+    position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 390px; background: var(--bg);
+    border-top: 1px solid var(--border);
+    padding: 10px 14px 12px;
+    display: flex; flex-direction: column; gap: 7px; align-items: center;
+  }
+  .listen-next {
+    width: 100%; padding: 12px; border-radius: 22px;
+    border: 1.5px solid var(--accent); background: var(--bg); color: var(--accent-deep);
+    font-size: 0.88rem; font-weight: 800; font-family: inherit; cursor: pointer;
+  }
+  .listen-next:active { transform: scale(0.98); }
+  .listen-next:disabled {
+    border-color: var(--border); color: var(--text-muted);
+    background: var(--surface); cursor: default;
+  }
+  .listen-note { font-size: 0.72rem; color: var(--text-muted); cursor: default; }
+</style>
+</head>
+<body>
+
+<div class="proto-nav"><a href="./index.html">← デモ一覧</a><span>デモ6：場所同士の噂</span></div>
+
+<div class="chat-header">
+  <div class="talk-avatars">
+    <div class="t-avatar">🌿</div>
+    <div class="t-avatar sink">🫧</div>
+    <div class="t-avatar door">🚪</div>
+  </div>
+  <div>
+    <div class="chat-header-name">場所たちのトーク</div>
+    <div class="chat-header-sub">リビング・流し・玄関 — あなたは聞き耳</div>
+  </div>
+</div>
+
+<div class="chat" id="chat">
+  <div class="chat-day">きょう</div>
+</div>
+
+<div class="listen-bar">
+  <button class="listen-next" id="nextBtn" onclick="next()">つぎを聞く</button>
+  <div class="listen-note" onclick="memberHint()">あなたはこのトークのメンバーではありません（聞き耳だけ）</div>
+</div>
+
+<div class="toast" id="toast">
+  <div class="toast-icon">🌱</div>
+  <div>
+    <div class="toast-app">ありがとう</div>
+    <div class="toast-msg" id="toastMsg"></div>
+    <div class="toast-sub" id="toastSub"></div>
+  </div>
+</div>
+
+<script src="./data.js"></script>
+<script>
+var lastCare = ZONE_DATA.cares[ZONE_DATA.cares.length - 1];
+
+var SPK = {
+  living: { name: "リビング", icon: "🌿", cls: "spk-living" },
+  sink: { name: "流し", icon: "🫧", cls: "spk-sink" },
+  door: { name: "玄関", icon: "🚪", cls: "spk-door" }
+};
+
+var STEPS = [
+  { who: "living",
+    inner: '<div class="bubble-place">この前、片づいてさ。まだ気分いいんだ。</div>' +
+      '<div class="bubble-place photo"><div class="photo-wrap"><img class="card-photo" src="' + lastCare.after_photo + '" alt=""></div></div>' },
+  { who: "sink", inner: '<div class="bubble-place">いいなあ。うち、マグが3日置きっぱなし…</div>' },
+  { who: "door", inner: '<div class="bubble-place">うちは今日、傘が2本迷子。</div>' },
+  { who: "living", inner: '<div class="bubble-place">あ、だれか来た。</div>' }
+];
+
+var AFTER = [
+  { who: "sink", inner: '<div class="bubble-place">聞いて！いま、すっきりした！</div>' },
+  { who: "living", inner: '<div class="bubble-place">わあ、よかったねえ。</div>' },
+  { who: "door", inner: '<div class="bubble-place">だれだろうね。ありがたいね。</div>' }
+];
+
+var step = 0;
+var phase = "listen";
+var busy = false;
+
+function say(who, inner, done) {
+  var s = SPK[who];
+  var chat = document.getElementById("chat");
+  var wrap = document.createElement("div");
+  wrap.className = "msg-place " + s.cls;
+  wrap.innerHTML = '<div class="msg-place-icon">' + s.icon + "</div>" +
+    '<div class="msg-place-bubbles">' +
+    '<div class="spk-name">' + s.name + "</div>" +
+    '<div class="bubble-place typing">…</div>' +
+    "</div>";
+  chat.appendChild(wrap);
+  wrap.scrollIntoView({ behavior: "smooth", block: "end" });
+  setTimeout(function () {
+    wrap.querySelector(".msg-place-bubbles").innerHTML =
+      '<div class="spk-name">' + s.name + "</div>" + inner;
+    wrap.scrollIntoView({ behavior: "smooth", block: "end" });
+    if (done) done();
+  }, 700);
+}
+
+function next() {
+  if (busy) return;
+  var btn = document.getElementById("nextBtn");
+  if (phase === "listen") {
+    var st = STEPS[step];
+    busy = true;
+    btn.disabled = true;
+    say(st.who, st.inner, function () {
+      step++;
+      busy = false;
+      if (step >= STEPS.length) {
+        phase = "act";
+        btn.textContent = "（そっと）流しを整える";
+      }
+      btn.disabled = false;
+    });
+  } else if (phase === "act") {
+    phase = "done";
+    busy = true;
+    btn.disabled = true;
+    btn.textContent = "噂はつづく…";
+    var chat = document.getElementById("chat");
+    var sys = document.createElement("div");
+    sys.className = "chat-day";
+    sys.textContent = "— あなたが、だまって流しを整えた —";
+    chat.appendChild(sys);
+    sys.scrollIntoView({ behavior: "smooth", block: "end" });
+    AFTER.forEach(function (msg, i) {
+      setTimeout(function () {
+        say(msg.who, msg.inner, i === AFTER.length - 1 ? function () { busy = false; } : null);
+      }, 600 + i * 1150);
+    });
+  }
+}
+
+function memberHint() {
+  var t = document.getElementById("toast");
+  document.getElementById("toastMsg").textContent = "このトークには参加できません";
+  document.getElementById("toastSub").textContent = "場所同士の会話は、聞き耳だけ";
+  t.classList.add("show");
+  setTimeout(function () { t.classList.remove("show"); }, 2400);
+}
+</script>
+</body>
+</html>
