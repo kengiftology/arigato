@@ -422,7 +422,8 @@ def _is_furniture(pos, px: int) -> bool:
 _face_buf = []            # [(特徴量, 顔の幅, 時刻, 位置), ...]
 MOVE_MIN = 0.5           # 顔の幅に対して、これだけ離れたら「動いた」
 FACE_BUF_SEC = 25.0       # これより古い顔は忘れる（別の人が来ているかもしれない）
-FACE_BUF_MAX = 8          # ためる枚数の上限
+FACE_BUF_MAX = 8          # 同じ顔として束ねる枚数の上限
+FACE_BUF_KEEP = 6         # Firestore に持ち回るコマ数（1本512個の数値・6本で約25KB）
 FACE_BUF_MIN_NEW = 2      # 新しいIDを出すのに、最低これだけの枚数が要る
 # ただし、十分に大きく起きた顔なら1枚で足りる。
 # 実測（同一人物・正面・200px以上）で、本人を認める91%・
@@ -503,7 +504,7 @@ def _blend(vecs: list) -> list:
     return [float(x) for x in (m / (float(np.linalg.norm(m)) + 1e-9))]
 
 
-def _remember_face(vec: list, px: int, pos=None) -> tuple:
+def _remember_face(st: dict, vec: list, px: int, pos=None) -> tuple:
     """この顔をためて、「同じ顔」だけを選んで返す。
 
     返すのは (同じ顔のコマたち, その枚数, 一番大きく写った幅,
@@ -522,8 +523,15 @@ def _remember_face(vec: list, px: int, pos=None) -> tuple:
     0.35 で切ると、同じ人の77.7%を拾って、別人は1組も巻き込まない。"""
     import numpy as np
     now = time.time()
-    _face_buf[:] = [x for x in _face_buf if now - x[2] <= FACE_BUF_SEC][-(FACE_BUF_MAX * 3):]
-    _face_buf.append((vec, px, now, pos))
+    # 2026-09-12 深夜：ためる場所をサーバーの中の変数からここへ移した。
+    # Cloud Run は混むとサーバーを複数立ち上げるので、1コマ目と2コマ目が
+    # 別のサーバーに届くと、ためた分が見えない。実測：23:30以降の278コマの
+    # うち259コマ（93%）が「まだ1コマしかない」で捨てられ、誰も認識できなかった。
+    buf = [x for x in (st.get("fbuf") or [])
+           if isinstance(x, dict) and x.get("v") and now - float(x.get("t") or 0) <= FACE_BUF_SEC]
+    buf.append({"v": vec, "px": px, "t": now, "pos": list(pos) if pos else None})
+    st["fbuf"] = buf[-FACE_BUF_KEEP:]
+    _face_buf[:] = [(x["v"], x["px"], x["t"], x.get("pos")) for x in st["fbuf"]]
     v = np.asarray(vec, dtype=np.float32)
     mine = []
     for x in _face_buf:
@@ -578,7 +586,7 @@ def _refresh_memory(vecs: list, vec: list):
         return None
 
 
-def _identify(data: bytes):
+def _identify(st: dict, data: bytes):
     """写真から顔を探して匿名IDに結びつける。顔が無ければ None。
     実名は扱わない。初めての顔には新しい匿名IDを発行して「卵」にする。
 
@@ -598,7 +606,7 @@ def _identify(data: bytes):
     # それぞれの顔が別々にまとまる（2026-09-12 夜）。
     people = []
     for f in found:
-        r = _identify_one(f["crop"], f["px"], f.get("edge"), f.get("pos"),
+        r = _identify_one(st, f["crop"], f["px"], f.get("edge"), f.get("pos"),
                           f.get("up"), f.get("ratio"), f.get("pts"), f.get("front"))
         _collect_face(f, (r or {}).get("person", ""))
         if r:
@@ -611,7 +619,7 @@ def _identify(data: bytes):
             "all": [x["person"] for x in people]}
 
 
-def _identify_one(crop, px: int, edge: bool = False, pos=None,
+def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
                   up: bool = True, ratio=None, pts=None, front: bool = True):
     """切り抜き1つを匿名IDに結びつける。
 
@@ -651,7 +659,7 @@ def _identify_one(crop, px: int, edge: bool = False, pos=None,
         # 人が居る合図には使うが、誰かを決めるのにも覚えるのにも使わない。
         _log_small("looks_like_object", px, sim=round(junk, 3))
         return None
-    frames, n, best_px, spread = _remember_face(one, px, pos)
+    frames, n, best_px, spread = _remember_face(st, one, px, pos)
     if n < FACE_MIN_FRAMES and known:
         # まだ1コマしか無い。人が居ることは確かなので、そう伝えるだけにして、
         # 誰かは決めない（次のコマが届けば2枚揃って決まる・数秒後）。
@@ -879,7 +887,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
 
     if FACE_ENABLED:                           # ① 顔があれば、それが在室の証拠かつ本人の手がかり
         try:
-            res = _identify(data)
+            res = _identify(st, data)
             _lap("face")
             if res and not res.get("person"):
                 # 顔は見えたのに小さすぎて誰とも結べなかった。
