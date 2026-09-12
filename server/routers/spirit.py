@@ -452,9 +452,13 @@ def _junk_vecs() -> list:
     out = []
     try:
         for d in get_db().collection("notfaces").stream():
-            out.extend((d.to_dict() or {}).get("vecs") or [])
+            # 顔の側と同じ形（[{"v": 特徴量}, ...]）。Firestore は配列の中に
+            # 配列を置けないので、必ず1段くるむ（2026-09-12 夜、ここで500を出した）。
+            out.extend([v.get("v") for v in ((d.to_dict() or {}).get("vecs") or [])
+                        if isinstance(v, dict) and v.get("v")])
     except Exception as e:
         logger.warning("junk read failed: %s", e)
+        _log_event("junk_error", {"text": ("%s: %s" % (type(e).__name__, e))[:120]})
         return _junk_cache[1]
     _junk_cache[0], _junk_cache[1] = now, out
     return out
@@ -1820,7 +1824,7 @@ async def notfaces_add(request: Request, key: str = ""):
     db = get_db()
     n = len(list(db.collection("notfaces").stream()))
     db.collection("notfaces").document("o%02d" % (n + 1)).set(
-        {"vecs": [vec], "born": time.time(), "px": int(img.shape[1]), "why": "手で登録"})
+        {"vecs": [{"v": vec}], "born": time.time(), "px": int(img.shape[1]), "why": "手で登録"})
     _junk_cache[0] = 0.0
     return {"ok": True, "id": "o%02d" % (n + 1), "px": int(img.shape[1]), "count": n + 1}
 
@@ -1836,7 +1840,7 @@ async def notfaces_from_person(who: str, key: str = ""):
     doc = db.collection("faces").document(who).get().to_dict()
     if not doc:
         return {"ok": False, "error": "そのIDが見つかりません"}
-    vecs = [v.get("v") for v in (doc.get("vecs") or []) if v.get("v")]
+    vecs = [v for v in (doc.get("vecs") or []) if isinstance(v, dict) and v.get("v")]
     if not vecs:
         return {"ok": False, "error": "覚えが空です"}
     n = len(list(db.collection("notfaces").stream()))
