@@ -433,6 +433,15 @@ FACE_BUF_MIN_NEW = 2      # 新しいIDを出すのに、最低これだけの�
 FACE_SOLO_PX = 200
 FACE_MEMORY = 8           # 1人につきおぼえる見え方の枚数（2026-09-12：5→8）
 FACE_SAME_TRACK = 0.35    # 直前の数秒のコマのうち、これ以上似ていれば「同じ顔」として束ねる
+# 1コマでは名前を呼ばない（2026-09-12 夜）。
+# 22:38、別の人が sim 0.318 で p02 と呼ばれた。境目0.30のすぐ上。
+# そこで線を上げてみたが、実測では効かない——1コマ判定の「別人と間違える」は
+#   線0.30 → 8.6% ／ 0.40 → 8.4% ／ 0.55 → 7.9%
+# ほとんど下がらず、本人を当てる率だけ 88.9%→42.8% に落ちる。
+# 間違えるときは高い一致度で間違えているので、線では止まらない。
+# 2コマまとめれば 別人1.4%・本人96.6%。だから1コマのときは決めない。
+# face.py 冒頭の原則「分からない時は分からないと答える」に従う。
+FACE_MIN_FRAMES = 2
 # 「人ではないもの」の覚え（2026-09-12 夜）。鍋・五徳・棚を顔と見てしまうのは
 # 顔認識では解けない——重いモデルほどひどく、glint360k_r100 は24枚中23枚を
 # 人に結びつけた。代わりに「これは人ではない」を覚えておいて弾く。
@@ -599,6 +608,11 @@ def _identify_one(crop, px: int, edge: bool = False, pos=None,
         _log_small("looks_like_object", px, sim=round(junk, 3))
         return None
     frames, n, best_px, spread = _remember_face(one, px, pos)
+    if n < FACE_MIN_FRAMES and known:
+        # まだ1コマしか無い。人が居ることは確かなので、そう伝えるだけにして、
+        # 誰かは決めない（次のコマが届けば2枚揃って決まる・数秒後）。
+        _log_small("one_frame", px, sim=round(sim1, 3))
+        return None
     pid, sim = face.match_frames(frames, known)
     vec = one                                        # 覚えに足すのは、いまの1枚
     note = {"sim": round(sim, 3), "sim1": round(sim1, 3), "n": n, "px": best_px}
