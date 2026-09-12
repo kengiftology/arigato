@@ -1771,6 +1771,7 @@ async def faces_similar():
     ここでも数値は外に出さない。出すのは似ている度だけ。
     1.0に近いほど同じ人、0.42が別人と判断される境目。"""
     import numpy as np
+    from server import face
     try:
         known = _known_faces()
     except Exception as e:
@@ -1779,16 +1780,22 @@ async def faces_similar():
     pairs = []
     for i, a in enumerate(ids):
         for b in ids[i + 1:]:
-            best = 0.0
+            best, ok = 0.0, False
             for va in known[a]:
                 for vb in known[b]:
-                    sc = float(np.dot(np.asarray(va, dtype=np.float32),
-                                      np.asarray(vb, dtype=np.float32)))
-                    best = max(best, sc)
-            pairs.append({"a": a, "b": b, "similarity": round(best, 3),
-                          "same_person": best >= 0.42})
-    pairs.sort(key=lambda x: -x["similarity"])
-    return {"pairs": pairs, "threshold": 0.42}
+                    xa = np.asarray(va, dtype=np.float32)
+                    xb = np.asarray(vb, dtype=np.float32)
+                    # 覚えの長さが違う組は比べられない。モデルを差し替えた前後の
+                    # IDが並ぶ間だけ起きる。ここで落ちるとパネル全体が止まり、
+                    # 「覚えた顔を忘れる」のボタンまで効かなくなった（2026-09-12）。
+                    if xa.shape != xb.shape:
+                        continue
+                    best, ok = max(best, float(np.dot(xa, xb))), True
+            pairs.append({"a": a, "b": b,
+                          "similarity": round(best, 3) if ok else None,
+                          "same_person": bool(ok and best >= face._SIM_THRESHOLD)})
+    pairs.sort(key=lambda x: -(x["similarity"] if x["similarity"] is not None else -1))
+    return {"pairs": pairs, "threshold": face._SIM_THRESHOLD}
 
 
 
