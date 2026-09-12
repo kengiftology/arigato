@@ -431,6 +431,7 @@ FACE_BUF_MIN_NEW = 2      # 新しいIDを出すのに、最低これだけの�
 # 279px・259px・155pxの正面顔が3つ、枚数だけを理由に捨てられていた
 # （2026-09-07）。130pxの顔三枚より、279pxの正面顔一枚のほうが確か。
 FACE_SOLO_PX = 200
+FACE_MEMORY = 8           # 1人につきおぼえる見え方の枚数（2026-09-12：5→8）
 
 
 def _blend(vecs: list) -> list:
@@ -454,7 +455,10 @@ def _remember_face(vec: list, px: int, pos=None) -> tuple:
     for i in range(len(ps)):
         for j in range(i + 1, len(ps)):
             spread = max(spread, abs(ps[i][0] - ps[j][0]), abs(ps[i][1] - ps[j][1]))
-    return (_blend([x[0] for x in _face_buf]), len(_face_buf),
+    # 2026-09-12：平均した1本ではなく、コマをそのまま返す。
+    # 照合の側（face.match_frames）で「人ごとに一番似た覚え」を出してから
+    # コマ全体で平均する方が、実測で別人の取り違えが7.8%→1.2%になった。
+    return ([x[0] for x in _face_buf], len(_face_buf),
             max(x[1] for x in _face_buf), spread)
 
 
@@ -472,15 +476,18 @@ def _identify(data: bytes):
     if not found:
         return None
     px = max(f["px"] for f in found)
-    for f in found:                       # 集める期間中だけ、弾く前に1枚ずつ残す
-        _collect_face(f)
+    # 弾く前に1枚ずつ残す。IDは決まる前なので、このあと結果が出てから書き足す
+    # （2026-09-12：798枚ぜんぶ unknown で、あとから誰の顔か追えなかった）。
     # 1人だけ写っているときは、数枚ためて平均で決める。
     # 2人以上のときは誰の顔かの取り違えが起きるので、1枚ずつ決める。
     solo = len(found) == 1
-    people = [_identify_one(f["crop"], f["px"], f.get("edge"), solo, f.get("pos"),
-                           f.get("up"), f.get("ratio"))
-              for f in found]
-    people = [x for x in people if x]
+    people = []
+    for f in found:
+        r = _identify_one(f["crop"], f["px"], f.get("edge"), solo, f.get("pos"),
+                          f.get("up"), f.get("ratio"), f.get("pts"))
+        _collect_face(f, (r or {}).get("person", ""))
+        if r:
+            people.append(r)
     if not people:
         return {"person": None, "px": px}
     # 先頭＝一番大きく写っている人。いま目の前に居る相手として扱う。
@@ -490,7 +497,7 @@ def _identify(data: bytes):
 
 
 def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=None,
-                  up: bool = True, ratio=None):
+                  up: bool = True, ratio=None, pts=None):
     """切り抜き1つを匿名IDに結びつける。
 
     solo=True（1人だけ写っている）のときは、この1枚だけでは決めない。
@@ -518,16 +525,17 @@ def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=Non
         # 誰かを決めるのにも、新しいIDを出すのにも使わない。
         _log_small("furniture", px)
         return None
-    one = face.embed(crop)
+    one = face.embed(crop, pts)
     if one is None:
         return None
     known = _known_faces()
     _, sim1 = face.match(one, known)                 # 1枚だけで決めた場合の値（比べる用）
     if solo:
-        vec, n, best_px, spread = _remember_face(one, px, pos)
+        frames, n, best_px, spread = _remember_face(one, px, pos)
     else:
-        vec, n, best_px, spread = one, 1, px, 0
-    pid, sim = face.match(vec, known)
+        frames, n, best_px, spread = [one], 1, px, 0
+    pid, sim = face.match_frames(frames, known)
+    vec = one                                        # 覚えに足すのは、いまの1枚
     note = {"sim": round(sim, 3), "sim1": round(sim1, 3), "n": n, "px": best_px}
     db = get_db()
     if pid is None:                                  # 初めて見る顔
@@ -557,7 +565,9 @@ def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=Non
         return {"person": pid, "state": "egg"}
     doc = db.collection("faces").document(pid).get().to_dict() or {}
     vecs = doc.get("vecs", [])
-    if len(vecs) < 5:                                # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
+    # 2026-09-12：5枚→8枚。同じ4人・同じ境目での実測で、新しいIDが
+    # 生まれる率が 8.2% → 3.8% と半分以下になった。計算は増えない。
+    if len(vecs) < FACE_MEMORY:                      # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
         vecs.append({"v": vec})
         db.collection("faces").document(pid).update({"vecs": vecs})
     state = "ready" if doc.get("persona") else "egg"
@@ -1403,7 +1413,7 @@ async def arrive(request: Request, raw: str = "", x_upload_key: str = Header(Non
             return {"person": pid, "state": "egg"}
         doc = db.collection("faces").document(pid).get().to_dict() or {}
         vecs = doc.get("vecs", [])
-        if len(vecs) < 5:                                # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
+        if len(vecs) < FACE_MEMORY:                  # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
             vecs.append({"v": vec})
             db.collection("faces").document(pid).update({"vecs": vecs})
         state = "ready" if doc.get("persona") else "egg"
@@ -1637,7 +1647,7 @@ async def merge_people(keep: str, drop: str, key: str = ""):
     # 見え方を残さないと、まとめた翌日にまた割れる（p01は古い向きの5枚で
     # 埋まっていて、今日の見下ろす角度の p02〜p04 が全部別人になった）。
     vecs = (dbb.get("vecs") or []) + (da.get("vecs") or [])
-    a.update({"vecs": vecs[:5],
+    a.update({"vecs": vecs[:FACE_MEMORY],
               "cares": (da.get("cares") or 0) + (dbb.get("cares") or 0),
               "uses": (da.get("uses") or 0) + (dbb.get("uses") or 0),
               "bond": max(float(da.get("bond") or 0), float(dbb.get("bond") or 0))})
@@ -1647,7 +1657,7 @@ async def merge_people(keep: str, drop: str, key: str = ""):
         st["cur_person"] = keep
         _save(st)
     _log_event("merge", {"keep": keep, "drop": drop})
-    return {"ok": True, "keep": keep, "dropped": drop, "shots": len(vecs[:5])}
+    return {"ok": True, "keep": keep, "dropped": drop, "shots": len(vecs[:FACE_MEMORY])}
 
 
 @router.post("/bond")
