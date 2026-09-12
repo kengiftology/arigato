@@ -442,6 +442,14 @@ FACE_SAME_TRACK = 0.35    # 直前の数秒のコマのうち、これ以上似�
 # 2コマまとめれば 別人1.4%・本人96.6%。だから1コマのときは決めない。
 # face.py 冒頭の原則「分からない時は分からないと答える」に従う。
 FACE_MIN_FRAMES = 2
+# 覚えの8本は「違う見え方」で埋める（2026-09-12 夜）。
+# 22:01、本人が自分の p01 と 0.131 しか合わず、新しいIDになった。p01 の8本は
+# 全部 14:53〜15:31 の38分間で埋まっていて、昼の光の顔しか持っていなかった。
+# 時間帯を1つ伏せて測ると（仕分け済み・6時間帯ある2人）：
+#   来た順・満杯で打ち止め（いまの作り） 中央0.354 ／ 結べない 43%
+#   似すぎなら入れず、違えば一番かぶった1本と交換  中央0.439 ／ 結べない 13%
+# 「時間帯をばらす」だけでは効かない（43%のまま）。効くのは見え方の違い。
+FACE_SAME_LOOK = 0.70     # これ以上似た覚えを既に持っていたら、入れない
 # 「人ではないもの」の覚え（2026-09-12 夜）。鍋・五徳・棚を顔と見てしまうのは
 # 顔認識では解けない——重いモデルほどひどく、glint360k_r100 は24枚中23枚を
 # 人に結びつけた。代わりに「これは人ではない」を覚えておいて弾く。
@@ -532,6 +540,29 @@ def _remember_face(vec: list, px: int, pos=None) -> tuple:
     # 出してからコマ全体で平均する。
     return ([x[0] for x in mine], len(mine),
             max(x[1] for x in mine), spread)
+
+
+def _refresh_memory(vecs: list, vec: list):
+    """覚えが満杯のとき、新しい見え方を入れるべきか決める。
+
+    入れるなら、一番かぶっている1本を捨てた新しい並びを返す。
+    入れないなら None（もう似た見え方を持っている）。"""
+    import numpy as np
+    try:
+        M = np.asarray([v["v"] for v in vecs], dtype=np.float32)
+        v = np.asarray(vec, dtype=np.float32)
+        if M.shape[1] != v.shape[0]:
+            return None
+        if float((M @ v).max()) >= FACE_SAME_LOOK:
+            return None                       # もう似た見え方がある
+        S = M @ M.T
+        np.fill_diagonal(S, -1.0)
+        drop = int(np.argmax(S.max(axis=1)))  # 他のどれかと一番似ている1本
+        out = [x for i, x in enumerate(vecs) if i != drop]
+        return out + [{"v": vec}]
+    except Exception as e:
+        logger.warning("memory refresh failed: %s", e)
+        return None
 
 
 def _identify(data: bytes):
@@ -638,8 +669,11 @@ def _identify_one(crop, px: int, edge: bool = False, pos=None,
         # 相手——を弾いていた（実測：240pxの正面顔が did_not_move で流れた）。
         # 残る守りは、起きた顔であること・120px以上・数枚そろうこと、
         # そして同じ場所に居つづける「顔」を物として外す仕組み。
-        enough = (n >= FACE_BUF_MIN_NEW or best_px >= FACE_SOLO_PX)
-        if not enough and not _confirm_new(vec, pos, px):
+        # 2026-09-12 夜：大きく写っていれば1コマで卵を作ってよい、という抜け道を
+        # 塞いだ。22:01、本人が278pxで写り、自分の p01 と 0.131 しか合わずに
+        # p03 として登録された。1コマで決めないという決まりは、照合だけでなく
+        # 登録にも要る。大きさは「小さい顔から作らない」の役だけに戻す。
+        if n < FACE_BUF_MIN_NEW and not _confirm_new(vec, pos, px):
             _log_small("not_enough", best_px, n=n)
             return None
         pid = _new_person_id()
@@ -654,6 +688,13 @@ def _identify_one(crop, px: int, edge: bool = False, pos=None,
     if len(vecs) < FACE_MEMORY:                      # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
         vecs.append({"v": vec})
         db.collection("faces").document(pid).update({"vecs": vecs})
+    else:
+        # 満杯。ここで打ち止めにすると、最初の数十分で埋まった見え方のまま
+        # 一生変わらない。違う見え方が来たら、一番かぶっている1本と入れ替える。
+        kept = _refresh_memory(vecs, vec)
+        if kept is not None:
+            db.collection("faces").document(pid).update({"vecs": kept})
+            _log_event("memory_swap", {"person": pid, "shots": len(kept)})
     state = "ready" if doc.get("persona") else "egg"
     _log_event("arrive", dict(note, person=pid, state=state))
     return {"person": pid, "state": state}
