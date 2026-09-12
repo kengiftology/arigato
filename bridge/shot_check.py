@@ -92,3 +92,15 @@ if __name__ == "__main__":
         g = gray(d)
         s = shift_px(r, g) if r is not None else None
         print("%-50s blur=%6.2f shift=%s" % (os.path.basename(p), blur_score(g), s), flush=True)
+
+
+def shift_of(jpg: bytes) -> tuple:
+    """この1枚が、基準の写真からどれだけずれているか (dx, dy, 確度)。
+
+    2026-09-12 夜：画角を探し直すのに使う。check() と同じ計算だが、
+    合否ではなく数字をそのまま返す。基準が読めなければ (None, None, 0.0)。"""
+    try:
+        ref = gray(open(REF, "rb").read())
+    except Exception:
+        return None, None, 0.0
+    return shift_px(ref, gray(jpg))

@@ -94,6 +94,117 @@ SETTLE_FRAMES = 8     # 首を振った直後、揺れが収まるまで捨て�
 SETTLE_AFTER_MOVE = 4.0  # 見回りで振ったあと、映像が入れ替わるのを待つ秒数
 CHECK_TRIES = 8          # 使える写真が撮れるまで撮り直す回数（1回10秒ほど）
 RECHECK_GAP = 300.0      # 撮れなかったとき、次に見に行くまでの間
+
+# 画角を探し直す（2026-09-12 夜・カメラが落ちた）。
+# 同じ向きの数値を送っても、台座が動いていれば別の場所を写す。
+# 見本（sink_ref.jpg）と一番よく合う向きを、首を少し振って探し、
+# 見つかった差を覚えて以後はそれを足す。
+AIM_STEPS = (0.04, 0.02)  # まず粗く、次に細かく
+AIM_MAX_TRIES = 16       # 首を振る回数の上限（1回 SETTLE_AFTER_MOVE 秒＋撮影）
+AIM_GOOD_PX = 60         # ここまで合えば探すのをやめる
+AIM_GAP = 1800.0         # 探し直すのは30分に1回まで（首を振るほど景色が揺れる）
+AIM_FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aim_fix.json")
+_aim_fix = [0.0, 0.0]    # 覚えた補正。看る向きに足す
+_aim_last = [0.0]        # 最後に探した時刻
+
+
+def load_aim_fix() -> None:
+    """覚えた補正を読む。無ければ 0。"""
+    try:
+        with open(AIM_FIX, encoding="utf-8") as f:
+            d = json.load(f)
+        _aim_fix[0], _aim_fix[1] = float(d.get("dx", 0.0)), float(d.get("dy", 0.0))
+        if _aim_fix[0] or _aim_fix[1]:
+            print("画角の補正を読んだ: %+.2f / %+.2f" % tuple(_aim_fix), flush=True)
+    except Exception:
+        pass
+
+
+def save_aim_fix() -> None:
+    try:
+        with open(AIM_FIX, "w", encoding="utf-8") as f:
+            json.dump({"dx": _aim_fix[0], "dy": _aim_fix[1], "at": time.time()}, f)
+    except Exception as e:
+        print("画角の補正を書けない:", e, flush=True)
+
+
+def aimed(x: float, y: float) -> tuple:
+    """覚えた補正を足した向き。カメラの動く範囲からは出さない。"""
+    return (max(-1.0, min(1.0, x + _aim_fix[0])),
+            max(-1.0, min(1.0, y + _aim_fix[1])))
+
+
+def _aim_score(x: float, y: float) -> tuple:
+    """その向きへ首を振って1枚撮り、見本からのずれを測る。(ずれ, dx, dy)。"""
+    sweep.look(x, y)
+    time.sleep(SETTLE_AFTER_MOVE)
+    jpg = grab()
+    if jpg is None:
+        return 10 ** 6, None, None
+    dx, dy, _resp = shot_check.shift_of(jpg)
+    if dx is None:
+        return 10 ** 6, None, None
+    return max(abs(dx), abs(dy)), dx, dy
+
+
+def realign(x: float, y: float) -> bool:
+    """見本と一番よく合う向きを探して、差を覚える。
+
+    9/12 の夜にカメラが落ちた。戻したつもりでも同じ画角には戻らず、
+    シンクの切り出し（画面の割合で決め打ち）がシンクから外れると、
+    「空です」を別の場所について答えてしまう。人が気づくのを待たずに、
+    ここで探し直す。
+
+    良くなる方向へ 0.04 刻みで進み、動けなくなったら 0.02 刻みに落とす。
+    首を振る回数は16回まで。振るほど景色が揺れるので、30分に1回までにしてある。"""
+    now = time.time()
+    if now - _aim_last[0] < AIM_GAP:
+        return False
+    _aim_last[0] = now
+    base = aimed(x, y)
+    best, bdx, bdy = _aim_score(*base)
+    bx, by = base
+    print(time.strftime("%H:%M:%S"),
+          "画角を探し直す。いま ずれ=%s (%s,%s)" % (best, bdx, bdy), flush=True)
+    if best <= AIM_GOOD_PX:
+        return False                    # ずれていない。触らない
+    # 坂を下る。良くなるあいだは同じ刻みで動き続け、動けなくなったら刻みを細かくする。
+    # 首を振る回数は AIM_MAX_TRIES で止める（振るほど景色が揺れて比較が壊れる）。
+    tries = 1
+    for s in AIM_STEPS:
+        while tries < AIM_MAX_TRIES and best > AIM_GOOD_PX:
+            moved = False
+            for ddx, ddy in ((s, 0), (-s, 0), (0, s), (0, -s)):
+                if tries >= AIM_MAX_TRIES:
+                    break
+                cx = max(-1.0, min(1.0, bx + ddx))
+                cy = max(-1.0, min(1.0, by + ddy))
+                if (cx, cy) == (bx, by):
+                    continue                      # 動く範囲の端
+                off, dx, dy = _aim_score(cx, cy)
+                tries += 1
+                print("   %+.2f/%+.2f → ずれ=%s" % (cx, cy, off), flush=True)
+                if off < best:
+                    best, bx, by, bdx, bdy = off, cx, cy, dx, dy
+                    moved = True
+                    break                         # 良くなった方向へ、そのまま進む
+            if not moved:
+                break                             # この刻みでは、もう良くならない
+        if best <= AIM_GOOD_PX:
+            break
+    if best >= 10 ** 6:
+        print("画角を探せなかった（映像が無い）", flush=True)
+        return False
+    if best > shot_check.SHIFT_MAX:
+        print("画角が見つからない。台座ごと動いた可能性。ずれ=%s" % best, flush=True)
+        return False
+    _aim_fix[0] = max(-0.2, min(0.2, _aim_fix[0] + (bx - base[0])))
+    _aim_fix[1] = max(-0.2, min(0.2, _aim_fix[1] + (by - base[1])))
+    save_aim_fix()
+    print(time.strftime("%H:%M:%S"),
+          "画角が合った。補正 %+.2f / %+.2f （ずれ=%s）" % (_aim_fix[0], _aim_fix[1], best),
+          flush=True)
+    return True
 MAX_QUIET = 8.0          # 「静かさ」がこれを超えたら測り直す（動いている最中の値）
 
 
@@ -352,6 +463,7 @@ def take_good_shot(x: float, y: float) -> bytes | None:
     ずれていれば向け直し、ぶれ・動きなら待って撮り直す。CHECK_TRIES 回で
     だめなら None（送らない。RECHECK_GAP 後にもう一度来る）。"""
     prev = None
+    off = 0                            # ずれで撮り直した回数
     for i in range(1, CHECK_TRIES + 1):
         time.sleep(SETTLE_AFTER_MOVE if i == 1 else 1.0)
         jpg = _next_frame(prev)
@@ -367,8 +479,21 @@ def take_good_shot(x: float, y: float) -> bytes | None:
             return jpg                 # 1枚前と同じ景色で、ぶれもずれもない
         prev = jpg
         if not r["ok"] and r["why"] == "ずれ":
-            sweep.look(x, y)           # 向け直してから撮り直す
+            off += 1
+            sweep.look(*aimed(x, y))   # 向け直してから撮り直す
             prev = None
+    # 何度振り直してもずれたまま＝カメラが動いている。画角を探し直す（30分に1回）
+    if off >= 2 and realign(x, y):
+        for i in range(1, 3):
+            time.sleep(SETTLE_AFTER_MOVE if i == 1 else 1.0)
+            jpg = _next_frame(prev)
+            if jpg is None:
+                continue
+            r = shot_check.check(jpg, prev)
+            if r["ok"] and prev is not None:
+                print(time.strftime("%H:%M:%S"), "探し直したあとで撮れた", flush=True)
+                return jpg
+            prev = jpg
     return None
 
 
@@ -388,9 +513,11 @@ def go_check(pose: str, w) -> None:
         print("bad check pose:", pose, flush=True)
         checked()
         return
-    print(time.strftime("%H:%M:%S"), "キッチンを見に行く", pose, flush=True)
+    print(time.strftime("%H:%M:%S"), "キッチンを見に行く", pose,
+          ("補正 %+.2f/%+.2f" % tuple(_aim_fix)) if (_aim_fix[0] or _aim_fix[1]) else "",
+          flush=True)
     _recheck[0] = 0.0
-    if not sweep.look(x, y):
+    if not sweep.look(*aimed(x, y)):      # 覚えた補正を足した向きへ
         checked()                      # 振れなかった。次の機会に回す
         return
     jpg = take_good_shot(x, y)
@@ -458,6 +585,7 @@ def main():
         last_sent = last_hint = last_sweep = last_pose = last_hires = 0.0
         last_fresh = time.time()         # 最後に新しい写真を読めた時刻
         busy_since, was_busy = 0.0, False
+        load_aim_fix()
         refresh_pose()
         refresh_home()
         try:
