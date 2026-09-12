@@ -1803,21 +1803,26 @@ async def notfaces_add(request: Request, key: str = ""):
     顔の覚え（faces）とは別の場所に置く。混ぜると照合が狂う。"""
     if UPLOAD_KEY and key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
+    # 送られてくるのは、すでに切り抜かれた1枚。もう一度顔を探させると、
+    # 自信度0.80では見つからず何も登録できない（2026-09-12 実測：8枚中0枚）。
+    # 切り抜きをそのまま特徴量にする。face.embed の中で目・鼻・口を取り直し、
+    # だめなら引き伸ばしに落ちる——測定に使った道すじと同じ（一致度 1.0000 で確認）。
+    import cv2
+    import numpy as np
     from server import face
     data = await request.body()
-    found = face.detect_faces(data, rotate=0)      # すでに切り抜いてあるので回さない
-    if not found:
-        return {"ok": False, "error": "顔らしきものが見つかりません"}
-    f = found[0]
-    vec = face.embed(f["crop"], f.get("pts"))
+    img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        return {"ok": False, "error": "写真として読めません"}
+    vec = face.embed(img)
     if vec is None:
         return {"ok": False, "error": "特徴量が作れません"}
     db = get_db()
     n = len(list(db.collection("notfaces").stream()))
     db.collection("notfaces").document("o%02d" % (n + 1)).set(
-        {"vecs": [vec], "born": time.time(), "px": f["px"], "why": "手で登録"})
+        {"vecs": [vec], "born": time.time(), "px": int(img.shape[1]), "why": "手で登録"})
     _junk_cache[0] = 0.0
-    return {"ok": True, "id": "o%02d" % (n + 1), "px": f["px"], "count": n + 1}
+    return {"ok": True, "id": "o%02d" % (n + 1), "px": int(img.shape[1]), "count": n + 1}
 
 
 @router.post("/notfaces/from_person")
