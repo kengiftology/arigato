@@ -2517,6 +2517,9 @@ async def _compare_zone(before: bytes, after: bytes, name: str, sink=None) -> di
       物あり→物あり（と、どちらか不明）のときだけ、くぼみ以外を塗りつぶしてAIに聞く。"""
     dx, dy = _frame_shift(before, after)
     if abs(dx) > SHIFT_MAX_PX or abs(dy) > SHIFT_MAX_PX:
+        # ずれすぎて比べられない。黙って止まると気づけないので記録に残す
+        # （2026-09-12 夜、カメラが落ちた。落ちたことは記録から分からなかった）。
+        _log_event("aim_off", {"zone": name, "shift": [dx, dy], "stop_px": SHIFT_MAX_PX})
         return {"skip": "shifted", "same": True, "shift": [dx, dy]}
     if name == "シンク":
         eb, ea = (sink or (None, None))
@@ -2628,6 +2631,8 @@ async def map_zones(request: Request, x_upload_key: str = Header(None)):
 # 良し悪しの判定も自分でやる。誰も来ていない時間帯の前後を比べて出た
 # 「変化」は、定義上すべて誤報である。それを数えれば、どの区画が
 # 信用できるかは人が決めなくても分かる。
+AIM_REF_OBJ = "spirit/aim_ref.jpg"    # 画角の見本。カメラが落ちたり動いたときに、ここへ戻す
+AIM_WARN_PX = 60                      # これを超えたら「ずれている」と言う（比較が止まるのは150px）
 BASELINE_OBJ = "spirit/zonecheck/baseline.jpg"        # 旧・単一の基準（読み残し用）
 BASELINE_PREFIX = "spirit/zonecheck/base_"           # 向きごとの基準写真
 
@@ -3158,6 +3163,45 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         _log_event("zone_error", {"err": ("%s: %s" % (type(e).__name__, e))[:160]})
 
 
+@router.get("/aim")
+async def aim():
+    """いまの画角が、見本からどれだけずれているか（2026-09-12 夜）。
+
+    カメラが落ちた。戻したつもりでも、同じ向きの数値を送っても台座が動いて
+    いれば別の場所を写す。そして今までは、ずれても表からは何も見えなかった
+    ——ラズパイが「撮れませんでした」と自分の画面に出して5分後にやり直す
+    だけで、記録にも画面にも残らない。比較が黙って止まる。
+
+    ここを開いたまま、カメラを手で動かすと、数字が動く。0に近づけば元の画角。
+    シンクの切り出し（SINK_BOX）は画面の割合で決め打ちなので、
+    ずれたままだとシンクでない場所を見て「空です」と答えてしまう。"""
+    ref = read_object(AIM_REF_OBJ)
+    now = read_object("spirit/latest.jpg")
+    if ref is None:
+        return {"ok": False, "error": "見本がありません。いまの画角でよければ /spirit/aim/ref に POST してください"}
+    if now is None:
+        return {"ok": False, "error": "いまの写真がありません"}
+    dx, dy = _frame_shift(ref, now)
+    off = max(abs(dx), abs(dy))
+    return {"ok": True, "dx": dx, "dy": dy,
+            "state": "合っている" if off <= AIM_WARN_PX else
+                     ("ずれている" if off <= SHIFT_MAX_PX else "ずれすぎ（比較が止まります）"),
+            "warn_px": AIM_WARN_PX, "stop_px": SHIFT_MAX_PX}
+
+
+@router.post("/aim/ref")
+async def aim_ref(key: str = ""):
+    """いまの画角を「見本」として覚える。据え付けが決まったときに一度押す。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    data = read_object("spirit/latest.jpg")
+    if data is None:
+        return {"ok": False, "error": "いまの写真がありません"}
+    upload_to(AIM_REF_OBJ, data, "image/jpeg")
+    _log_event("aim_ref", {"bytes": len(data)})
+    return {"ok": True, "bytes": len(data)}
+
+
 @router.get("/zones")
 async def zones_status():
     """区画の一覧と、それぞれの信用度。"""
@@ -3169,8 +3213,17 @@ async def zones_status():
                     "trials": t, "hits": z.get("hits", 0),
                     "false_alarms": z.get("false", 0),
                     "false_rate": round(z.get("false", 0) / t, 2) if t else None})
+    aim_now = None
+    try:
+        ref, now = read_object(AIM_REF_OBJ), read_object("spirit/latest.jpg")
+        if ref is not None and now is not None:
+            dx, dy = _frame_shift(ref, now)
+            aim_now = {"dx": dx, "dy": dy, "off": max(abs(dx), abs(dy))}
+    except Exception as e:
+        logger.warning("aim check failed: %s", e)
     return {"zones": out, "home": st.get("home_pose") or "",
             "paused": bool(st.get("sweep_paused")),
+            "aim": aim_now, "aim_warn_px": AIM_WARN_PX,
             "baseline_age": round(time.time() - st.get("baseline_at", 0))
             if st.get("baseline_at") else None}
 
