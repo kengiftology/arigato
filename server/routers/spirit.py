@@ -542,6 +542,19 @@ def _remember_face(vec: list, px: int, pos=None) -> tuple:
             max(x[1] for x in mine), spread)
 
 
+_ms_count = [0]
+
+
+def _log_ms(kind: str, ms: dict, nbytes: int) -> None:
+    """1コマの処理時間の内訳を、10コマに1回だけ記録に残す（2026-09-12 夜）。
+
+    毎コマ書くと記録が時間の話で埋まる。傾向が見たいだけなので間引く。"""
+    _ms_count[0] += 1
+    if _ms_count[0] % 10 == 1:
+        _log_event("frame_ms", dict(ms, kind=kind, kb=round(nbytes / 1024),
+                                    total=sum(ms.values())))
+
+
 def _refresh_memory(vecs: list, vec: list):
     """覚えが満杯のとき、新しい見え方を入れるべきか決める。
 
@@ -847,7 +860,19 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
             logger.warning("raw decode failed: %s", e)
             return {"ok": False, "why": "bad_raw"}
 
+    # 1コマにかかる時間の内訳（2026-09-12 夜）。
+    # 「動きがあるあいだ3秒に1枚」の設定に対し、実測は6.5秒だった
+    # （18:41〜18:43、人が立ちっぱなしの2分間で20枚）。送るのはラズパイだが、
+    # 待たせているのがクラウドなのか回線なのか、推測しかできなかった。
+    _t0 = time.perf_counter()
+    _ms = {}
+    def _lap(name):
+        nonlocal _t0
+        _ms[name] = round(1000 * (time.perf_counter() - _t0))
+        _t0 = time.perf_counter()
+
     st = _load()
+    _lap("state")
     now = time.time()
     if pose:
         st["last_pose"] = pose            # いまカメラが向いている先。待機位置を決める元
@@ -855,6 +880,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     if FACE_ENABLED:                           # ① 顔があれば、それが在室の証拠かつ本人の手がかり
         try:
             res = _identify(data)
+            _lap("face")
             if res and not res.get("person"):
                 # 顔は見えたのに小さすぎて誰とも結べなかった。
                 # ここで大きく撮り直させる。AIの判断待ちにすると、
@@ -864,10 +890,13 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 if not big:
                     st["want_hires"] = now + 30
                 _keep_shot(st, now, data, "small")
+                _lap("shot")
                 _save(st)
+                _lap("save")
+                _log_ms("small", _ms, len(data))
                 return {"ok": True, "person": None, "judged": False,
                         "why": "face_too_small", "px": res.get("px"),
-                        "hires": not big}
+                        "hires": not big, "ms": _ms}
             if res:
                 _mark_seen(st, now, "顔")
                 st["want_hires"] = 0          # 取れたので、もう大きく撮らなくてよい
@@ -913,10 +942,13 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                         vis.append(pid)
                 st["seen_people"], st["visit_people"] = seen[-8:], vis[-8:]
                 _keep_shot(st, now, data, res["person"])
+                _lap("shot")
                 _save(st)
+                _lap("save")
+                _log_ms("face", _ms, len(data))
                 return {"ok": True, "person": res["person"], "state": res["state"],
                         "people": res.get("all") or [res["person"]],
-                        "judged": False, "why": "person_seen"}
+                        "judged": False, "why": "person_seen", "ms": _ms}
         except Exception as e:
             logger.warning("identify failed: %s", e)
             _identify_err[0] = "%s: %s" % (type(e).__name__, str(e)[:200])
