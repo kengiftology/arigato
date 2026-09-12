@@ -432,6 +432,47 @@ FACE_BUF_MIN_NEW = 2      # 新しいIDを出すのに、最低これだけの�
 # （2026-09-07）。130pxの顔三枚より、279pxの正面顔一枚のほうが確か。
 FACE_SOLO_PX = 200
 FACE_MEMORY = 8           # 1人につきおぼえる見え方の枚数（2026-09-12：5→8）
+FACE_SAME_TRACK = 0.35    # 直前の数秒のコマのうち、これ以上似ていれば「同じ顔」として束ねる
+# 「人ではないもの」の覚え（2026-09-12 夜）。鍋・五徳・棚を顔と見てしまうのは
+# 顔認識では解けない——重いモデルほどひどく、glint360k_r100 は24枚中23枚を
+# 人に結びつけた。代わりに「これは人ではない」を覚えておいて弾く。
+# 仕分け済みの実測（鍋を8枚おぼえた場合・線0.45）：
+#   覚えていない鍋を弾ける 73.5% ／ Tシャツのプリントを巻き込む 0.0%
+#   **人を誤って弾く 0.2%**（線を0.30まで下げると3.2%に跳ねるので下げない）
+JUNK_SIM = 0.45
+_junk_cache = [0.0, []]   # (取り直した時刻, 特徴量たち)
+JUNK_TTL = 300.0
+
+
+def _junk_vecs() -> list:
+    """「人ではないもの」の覚えを読む。5分だけ手元に持つ。"""
+    now = time.time()
+    if now - _junk_cache[0] < JUNK_TTL:
+        return _junk_cache[1]
+    out = []
+    try:
+        for d in get_db().collection("notfaces").stream():
+            out.extend((d.to_dict() or {}).get("vecs") or [])
+    except Exception as e:
+        logger.warning("junk read failed: %s", e)
+        return _junk_cache[1]
+    _junk_cache[0], _junk_cache[1] = now, out
+    return out
+
+
+def _looks_like_object(vec: list) -> float:
+    """覚えている「人ではないもの」に、どれだけ似ているか。"""
+    import numpy as np
+    js = _junk_vecs()
+    if not js:
+        return 0.0
+    v = np.asarray(vec, dtype=np.float32)
+    best = 0.0
+    for w in js:
+        a = np.asarray(w, dtype=np.float32)
+        if a.shape == v.shape:
+            best = max(best, float(np.dot(v, a)))
+    return best
 
 
 def _blend(vecs: list) -> list:
@@ -442,24 +483,42 @@ def _blend(vecs: list) -> list:
 
 
 def _remember_face(vec: list, px: int, pos=None) -> tuple:
-    """この顔をためて、たまっている顔の平均を返す。
+    """この顔をためて、「同じ顔」だけを選んで返す。
 
-    返すのは (平均した特徴量, たまっている枚数, 一番大きく写った幅,
-    位置がどれだけ広がったか)。人が3秒おきに写るので、10秒立っていれば
-    3〜4枚たまる。位置の広がりは「本当に動いたか」を測るために使う。"""
+    返すのは (同じ顔のコマたち, その枚数, 一番大きく写った幅,
+    位置がどれだけ広がったか)。人が数秒おきに写るので、10秒立っていれば
+    2〜4枚たまる。位置の広がりは「本当に動いたか」を測るために使う。
+
+    2026-09-12 夜：以前は「1人しか写っていないとき」しかためられなかった。
+    台所に2人いると毎回1コマで決めることになり、一番効くはずの
+    「2コマまとめる」（別人の取り違え 7.8%→1.2%）がほとんど働かなかった
+    ——実測：この日の26回のうち25回が1コマ判定。
+
+    人数で分けるのをやめ、**似ている顔だけを束ねる**ようにした。
+    仕分け済み710枚の実測（25秒以内に写った顔どうし）：
+      同じ人 1651組  中央 0.580
+      別人      5組  最大 0.140
+    0.35 で切ると、同じ人の77.7%を拾って、別人は1組も巻き込まない。"""
+    import numpy as np
     now = time.time()
-    _face_buf[:] = [x for x in _face_buf if now - x[2] <= FACE_BUF_SEC][-(FACE_BUF_MAX - 1):]
+    _face_buf[:] = [x for x in _face_buf if now - x[2] <= FACE_BUF_SEC][-(FACE_BUF_MAX * 3):]
     _face_buf.append((vec, px, now, pos))
-    ps = [x[3] for x in _face_buf if x[3]]
+    v = np.asarray(vec, dtype=np.float32)
+    mine = []
+    for x in _face_buf:
+        w = np.asarray(x[0], dtype=np.float32)
+        if w.shape == v.shape and float(np.dot(v, w)) >= FACE_SAME_TRACK:
+            mine.append(x)
+    mine = mine[-FACE_BUF_MAX:]
+    ps = [x[3] for x in mine if x[3]]
     spread = 0
     for i in range(len(ps)):
         for j in range(i + 1, len(ps)):
             spread = max(spread, abs(ps[i][0] - ps[j][0]), abs(ps[i][1] - ps[j][1]))
-    # 2026-09-12：平均した1本ではなく、コマをそのまま返す。
-    # 照合の側（face.match_frames）で「人ごとに一番似た覚え」を出してから
-    # コマ全体で平均する方が、実測で別人の取り違えが7.8%→1.2%になった。
-    return ([x[0] for x in _face_buf], len(_face_buf),
-            max(x[1] for x in _face_buf), spread)
+    # コマはそのまま返す。照合の側（face.match_frames）で「人ごとに一番似た覚え」を
+    # 出してからコマ全体で平均する。
+    return ([x[0] for x in mine], len(mine),
+            max(x[1] for x in mine), spread)
 
 
 def _identify(data: bytes):
@@ -478,13 +537,12 @@ def _identify(data: bytes):
     px = max(f["px"] for f in found)
     # 弾く前に1枚ずつ残す。IDは決まる前なので、このあと結果が出てから書き足す
     # （2026-09-12：798枚ぜんぶ unknown で、あとから誰の顔か追えなかった）。
-    # 1人だけ写っているときは、数枚ためて平均で決める。
-    # 2人以上のときは誰の顔かの取り違えが起きるので、1枚ずつ決める。
-    solo = len(found) == 1
+    # 人数では分けない。似ている顔だけを束ねるので、2人写っていても
+    # それぞれの顔が別々にまとまる（2026-09-12 夜）。
     people = []
     for f in found:
-        r = _identify_one(f["crop"], f["px"], f.get("edge"), solo, f.get("pos"),
-                          f.get("up"), f.get("ratio"), f.get("pts"))
+        r = _identify_one(f["crop"], f["px"], f.get("edge"), f.get("pos"),
+                          f.get("up"), f.get("ratio"), f.get("pts"), f.get("front"))
         _collect_face(f, (r or {}).get("person", ""))
         if r:
             people.append(r)
@@ -496,13 +554,13 @@ def _identify(data: bytes):
             "all": [x["person"] for x in people]}
 
 
-def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=None,
-                  up: bool = True, ratio=None, pts=None):
+def _identify_one(crop, px: int, edge: bool = False, pos=None,
+                  up: bool = True, ratio=None, pts=None, front: bool = True):
     """切り抜き1つを匿名IDに結びつける。
 
-    solo=True（1人だけ写っている）のときは、この1枚だけでは決めない。
-    直近25秒ぶんの顔をためて、その平均で照合する。記録には
-    「1枚だけで決めた場合の値(sim1)」も残すので、平均が効いたか後で測れる。"""
+    この1枚だけでは決めない。直近25秒ぶんの顔から「同じ顔」だけを束ね、
+    まとめて照合する。記録には「1枚だけで決めた場合の値(sim1)」も残すので、
+    束ねたことが効いたか後で測れる。"""
     from server import face
     if edge:
         # 画面の端で切れた顔。写っていない半分は読めないので、
@@ -515,7 +573,7 @@ def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=Non
         _log_small("too_small_to_match", px)
         return None
     if not up:
-        # うつむいた顔。誰かを決めるのにも、覚えるのにも使わない。
+        # 大きく傾いた顔（起き具合1.70超）。誰かを決めるのにも、覚えるのにも使わない。
         # 記憶に混ぜると、そのIDが誰でも吸い込む網になる（2026-09-05の実測）。
         # 「人が居る」の合図としては、このあとも変わらず使われる。
         _log_small("looking_down", px, ratio=round(ratio, 2) if ratio else None)
@@ -530,15 +588,23 @@ def _identify_one(crop, px: int, edge: bool = False, solo: bool = False, pos=Non
         return None
     known = _known_faces()
     _, sim1 = face.match(one, known)                 # 1枚だけで決めた場合の値（比べる用）
-    if solo:
-        frames, n, best_px, spread = _remember_face(one, px, pos)
-    else:
-        frames, n, best_px, spread = [one], 1, px, 0
+    junk = _looks_like_object(one)
+    if junk >= JUNK_SIM:
+        # 覚えている「人ではないもの」（鍋・五徳・棚）とよく似ている。
+        # 人が居る合図には使うが、誰かを決めるのにも覚えるのにも使わない。
+        _log_small("looks_like_object", px, sim=round(junk, 3))
+        return None
+    frames, n, best_px, spread = _remember_face(one, px, pos)
     pid, sim = face.match_frames(frames, known)
     vec = one                                        # 覚えに足すのは、いまの1枚
     note = {"sim": round(sim, 3), "sim1": round(sim1, 3), "n": n, "px": best_px}
     db = get_db()
     if pid is None:                                  # 初めて見る顔
+        if not front:
+            # 照合には使えるが、新しいIDを出すには傾きすぎ（1.30〜1.70）。
+            # 傾いた顔から卵を作ると、そのIDが誰でも吸い込む網になる。
+            _log_small("not_front", px, ratio=round(ratio, 2) if ratio else None)
+            return None
         if not face.big_enough_to_enroll(best_px):
             # 小さく写った顔からは卵を作らない。同じ人でも一致度が下がり、
             # 知っている人の隣に新しいIDが並んでしまう（2026-09-03に発生）。
@@ -1727,6 +1793,66 @@ async def drop_face(who: str = "", key: str = ""):
     _save(st)
     _log_event("face_drop", {"person": who})
     return {"ok": True, "dropped": who}
+
+
+@router.post("/notfaces/add")
+async def notfaces_add(request: Request, key: str = ""):
+    """写真を1枚もらって、そこに写っている「顔らしきもの」を人ではないものとして覚える。
+
+    鍋・五徳・棚を顔と見てしまう分を、ここに貯めて弾く（2026-09-12 夜）。
+    顔の覚え（faces）とは別の場所に置く。混ぜると照合が狂う。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    from server import face
+    data = await request.body()
+    found = face.detect_faces(data, rotate=0)      # すでに切り抜いてあるので回さない
+    if not found:
+        return {"ok": False, "error": "顔らしきものが見つかりません"}
+    f = found[0]
+    vec = face.embed(f["crop"], f.get("pts"))
+    if vec is None:
+        return {"ok": False, "error": "特徴量が作れません"}
+    db = get_db()
+    n = len(list(db.collection("notfaces").stream()))
+    db.collection("notfaces").document("o%02d" % (n + 1)).set(
+        {"vecs": [vec], "born": time.time(), "px": f["px"], "why": "手で登録"})
+    _junk_cache[0] = 0.0
+    return {"ok": True, "id": "o%02d" % (n + 1), "px": f["px"], "count": n + 1}
+
+
+@router.post("/notfaces/from_person")
+async def notfaces_from_person(who: str, key: str = ""):
+    """「このIDは人ではなかった」を、覚えに移す。
+
+    パネルから押せるようにしておくと、使うほど鍋に強くなる。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    db = get_db()
+    doc = db.collection("faces").document(who).get().to_dict()
+    if not doc:
+        return {"ok": False, "error": "そのIDが見つかりません"}
+    vecs = [v.get("v") for v in (doc.get("vecs") or []) if v.get("v")]
+    if not vecs:
+        return {"ok": False, "error": "覚えが空です"}
+    n = len(list(db.collection("notfaces").stream()))
+    db.collection("notfaces").document("o%02d" % (n + 1)).set(
+        {"vecs": vecs, "born": time.time(), "why": "元 " + who})
+    db.collection("faces").document(who).delete()
+    _junk_cache[0] = 0.0
+    _log_event("face_to_object", {"person": who, "shots": len(vecs)})
+    return {"ok": True, "moved": who, "shots": len(vecs), "count": n + 1}
+
+
+@router.get("/notfaces")
+async def notfaces_list():
+    """覚えている「人ではないもの」の数。中身（特徴量）は出さない。"""
+    try:
+        out = [{"id": d.id, "shots": len((d.to_dict() or {}).get("vecs") or []),
+                "why": (d.to_dict() or {}).get("why", "")}
+               for d in get_db().collection("notfaces").stream()]
+    except Exception as e:
+        return {"objects": [], "error": str(e)}
+    return {"objects": sorted(out, key=lambda x: x["id"]), "threshold": JUNK_SIM}
 
 
 @router.post("/faces/clear")

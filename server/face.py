@@ -58,6 +58,16 @@ _DET_CONF = 0.80
 # この帯で正面15/15を通し、うつむき11/13を弾けた。
 _RATIO_JUNK = 3.0            # これを超える「起き具合」は人の顔ではない（物の誤検出）
 _UP_MIN, _UP_MAX = 0.80, 1.30   # 2026-09-10: 天井から見るので前を向いた顔でも縮む。立って入ってくる正面の実測 0.97〜1.29
+# 2026-09-12 夜：照合（誰かを決める）と登録（新しいIDを作る）で帯を分けた。
+# 真上のカメラでは正面がめったに撮れず、この帯で1日のコマの48%を捨てていた
+# （実測：9/12 の123コマ中59コマが「うつむき」）。仕分け済み710枚で測り直すと、
+#   帯        使える人の顔   鍋が通る   本人に正しく結びつく
+#   〜1.30      498枚       13/24        71.8%
+#   〜1.70      545枚       13/24        74.3%   ← 鍋は増えず、精度は上がる
+#   〜2.00      569枚       13/24        69.4%
+#   〜2.50      610枚       23/24        68.7%   ← ここで鍋が流れ込む
+# 照合は1.70まで許す。登録は1.30のまま（鍋が覚えに入ると、そのIDが網になる）。
+_UP_MAX_MATCH = 1.70
 
 _session = None
 _detector = None
@@ -207,7 +217,9 @@ def detect_faces(image_bytes: bytes, rotate: int = 0) -> list:
         pts = (f[4:14].reshape(5, 2).astype(np.float32) - np.float32([x0, y0])).tolist()
         out.append({"crop": img[y0:y1, x0:x1], "px": w, "edge": edge, "pts": pts,
                     "pos": (x + w // 2, y + h // 2), "ratio": ratio,
-                    "up": ratio is not None and _UP_MIN <= ratio <= _UP_MAX})
+                    # up＝照合に使ってよい／front＝新しいIDを出してよい正面らしさ
+                    "up": ratio is not None and _UP_MIN <= ratio <= _UP_MAX_MATCH,
+                    "front": ratio is not None and _UP_MIN <= ratio <= _UP_MAX})
     return out
 
 
