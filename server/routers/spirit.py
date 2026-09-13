@@ -756,6 +756,30 @@ def _touch_visit(st: dict, now: float) -> None:
         st["visit_start"] = now
 
 
+def _touch_person(st: dict, pid: str, now: float) -> float:
+    """その人の滞在の始まりを覚えて、始まりの時刻を返す（2026-09-13）。
+
+    以前は「誰かの気配が30分とぎれたら滞在おわり」という、家に1つの滞在だった。
+    共用キッチンでは誰かしらが通るので30分の無人が来ず、朝8:14に始まった滞在が
+    7時間つづいたまま終わらなかった。挨拶もなつき度も、その1滞在に縛られていた。
+    本人の案：「**その人が**30分来なければ、その人の滞在は終わり」。
+    人ごとに区切れば、共用でも成り立つ。"""
+    seen = st.get("seen_at") or {}
+    vis = st.get("visit_of") or {}
+    if now - float(seen.get(pid) or 0) > VISIT_MERGE_GAP or not vis.get(pid):
+        vis[pid] = now
+    seen[pid] = now
+    st["seen_at"] = {k: v for k, v in sorted(seen.items(), key=lambda x: -x[1])[:8]}
+    st["visit_of"] = {k: v for k, v in vis.items() if k in st["seen_at"]}
+    return float(vis[pid])
+
+
+def _person_stay(st: dict, pid: str, now: float) -> float:
+    """その人が、いまの滞在にどれだけ居るか（秒）。"""
+    v = (st.get("visit_of") or {}).get(pid)
+    return (now - float(v)) if v else 0.0
+
+
 def _stay_seconds(st: dict) -> float:
     """いまの滞在の長さ（秒）。始まりが無ければ0。"""
     if not st.get("visit_start"):
@@ -939,6 +963,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 st["cur_state"] = res["state"]
                 st["last_seen"] = now
                 st["face_at"] = now              # 最後に顔で確かめた時刻
+                _touch_person(st, res["person"], now)   # その人だけの滞在を進める
                 # 挨拶は「その人を最後に迎えてから GREET_GAP たったら、また」。
                 # 2026-09-13：それまでは「同じ滞在で1回だけ」だったが、この家では
                 # 滞在が切れない。誰かしらが通るので30分の無人が訪れず、朝8:14に
@@ -2098,6 +2123,9 @@ SPEAK_MIN = 0.8            # これより早くは返さない
 SPEAK_MAX = 1.6            # ふつうの間
 SPEAK_SLOW = 3.0           # ためらうときの間
 SILENT_CHANCE = 0.1        # 10回に1回は黙る（ぎこちなさを残す・p.159）
+# 迎える言葉と場所の様子のあいだに挟む息つぎ（16kHz・16bit・モノラルの無音）。
+# 0.6秒。続けて鳴らすと一息に聞こえてしまい、2つ言ったことが伝わらない。
+BREATH = bytes(2 * int(16000 * 0.6))   # 0.6秒ぶんの無音
 GREET_GAP = 180.0          # 同じ人を迎え直すまでの間（2026-09-13・本人：3分）
 
 _line_cache = {"at": 0.0, "names": []}
@@ -2383,6 +2411,7 @@ async def voice_pcm():
     st = _load()
     now = time.time()
     name = st.get("speak_line")
+    greeting = bool(name)
     if name:
         if now < st.get("speak_at", 0):
             return _quiet()                        # まだ。これが間になる
@@ -2407,16 +2436,35 @@ async def voice_pcm():
             name = _pick_line("worse" if st.get("score", 0) >= M_HI else "alone")
     if not name:
         return _quiet()
-    try:
-        pcm = read_object(LINES_PREFIX + name + ".pcm")
-    except Exception as e:
-        logger.warning("line read failed (%s): %s", name, e)
-        pcm = None
-    if not pcm:
+    parts = [name]
+    if greeting:
+        # 迎える言葉のあとに、いまの場所の様子を続ける（2026-09-13・本人の希望）。
+        # 「あ、きた。」……「あのね、ちょっとね……そわそわするなあ。」のように、
+        # 一息おいて2つづけて鳴らす。C3は取りに来るたび1本しか鳴らせないので、
+        # 2本を1本につないで渡す。
+        if st.get("say_text") and st.get("say_text") == (st.get("comment") or ""):
+            parts.append(SAY_NAME)
+        else:
+            m = _pick_line("worse" if st.get("score", 0) >= M_HI else "alone")
+            if m:
+                parts.append(m)
+    pcms = []
+    for nm in parts:
+        try:
+            b = read_object(LINES_PREFIX + nm + ".pcm")
+        except Exception as e:
+            logger.warning("line read failed (%s): %s", nm, e)
+            b = None
+        if b:
+            pcms.append((nm, b))
+    if not pcms:
         return _quiet()
+    pcm = pcms[0][1]
+    for nm, b in pcms[1:]:
+        pcm = pcm + BREATH + b                     # 息つぎを挟んでつなぐ
     st["voiced_at"] = now                          # 次の声は VOICE_GAP 後
     _save(st)
-    _log_event("voice", {"line": name, "bytes": len(pcm)})
+    _log_event("voice", {"line": "＋".join(nm for nm, _ in pcms), "bytes": len(pcm)})
     return Response(content=_scale_pcm(pcm, VOICE_GAIN), media_type="application/octet-stream")
 
 
@@ -2994,20 +3042,24 @@ BOND_STAGES = (
 )
 
 
-def _bond_up(pid: str, why: str, now: float) -> bool:
-    """その人のなつき度を1上げる。一度の滞在で最大1回。0〜10で止める。"""
+def _bond_up(pid: str, why: str, now: float, visit: float = 0.0) -> bool:
+    """その人のなつき度を1上げる。その人の一度の滞在で最大1回。0〜10で止める。
+
+    2026-09-13：滞在は人ごとに数える。家に1つの滞在で見ていた頃は、
+    誰かしらが通りつづけると滞在が切れず、1日に数回しか上がらなかった。"""
     try:
+        key = visit or _cur_visit[0]
         ref = get_db().collection("faces").document(pid)
         doc = ref.get().to_dict() or {}
-        if _cur_visit[0] and float(doc.get("bond_visit") or 0) == _cur_visit[0]:
-            return False                       # この滞在ではもう上げた
+        if key and float(doc.get("bond_visit") or 0) == key:
+            return False                       # この人のこの滞在では、もう上げた
         day = _jst_day(now)
         n_today = int(doc.get("bond_day_n") or 0) if doc.get("bond_day") == day else 0
         if n_today >= BOND_DAILY_MAX:
             _log_event("bond_cap", {"person": pid, "day": day})
             return False                       # 今日はもう3回上がった
         level = max(0, min(BOND_MAX, _bond_now(doc) + BOND_CARE))
-        ref.update({"bond": level, "bond_at": now, "bond_visit": _cur_visit[0],
+        ref.update({"bond": level, "bond_at": now, "bond_visit": key,
                     "bond_day": day, "bond_day_n": n_today + 1, "last_at": now})
         _log_event("bond_up", {"person": pid, "why": why, "bond": level})
         _patrol_ups.append("%s→%d" % (pid, level))
@@ -3270,11 +3322,16 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         if quiet and now - float(ats.get(pose) or 0) < IDLE_CHECK_GAP:
             return                             # 静かな時は、そう何度も点検しない
         # 滞在の長さ。5分以下しか居なかった人には何も付けない（本人決定 2026-09-09）。
+        # 滞在の長さは人ごとに見る（2026-09-13）。家に1つの滞在で見ていた頃は、
+        # 誰かが通りつづけると誰の滞在も切れず、7時間が1滞在になっていた。
         stay = _stay_seconds(st)
-        _cur_visit[0] = float(st.get("visit_start") or now)   # この滞在の番号
-        if who and stay <= STAY_MIN:
-            _log_event("visit_short", {"who": who, "stay": round(stay)})
-            who = []
+        _cur_visit[0] = float(st.get("visit_start") or now)
+        stays = {pid: _person_stay(st, pid, now) or stay for pid in who}
+        short = [pid for pid in who if stays[pid] <= STAY_MIN]
+        if short:
+            _log_event("visit_short", {"who": short,
+                                       "stay": {k: round(stays[k]) for k in short}})
+        who = [pid for pid in who if stays[pid] > STAY_MIN]
         # 「今、シンクは空か」は毎回1回聞く（比較の軸にも、+1の判断にも使う）
         empty = await _sink_empty(data)
         await _zone_pass(st, base, data, who, quiet, st.get("seen_by") or [],
@@ -3283,12 +3340,14 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         # 居た人ぜんぶに +1。自分の分を片づけて帰った人も、他人の分を片づけた人もなつく。
         # 使って散らかしたままは 0（下げない）。一度の滞在で +1 は1回だけ（_bond_up）。
         if who:
-            _log_event("visit", {"who": who, "stay": round(stay), "sink_empty": empty})
+            _log_event("visit", {"who": who, "sink_empty": empty,
+                                 "stay": {k: round(stays[k]) for k in who}})
             if empty:
                 st["sink_level"] = 0                      # 空＝一番きれい（Aは戻す合図）
                 st["score"] = st["raw_score"] = 0.0
                 for pid in who:
-                    _bond_up(pid, "sink_empty", now)
+                    _bond_up(pid, "sink_empty", now,
+                             (st.get("visit_of") or {}).get(pid) or _cur_visit[0])
         # 誰も居ない今のうちに、次に来る人向けの一言を文にしておく（声係が音にする）
         await _prepare_greetings(st, now)
         # Notion「地霊の記録」に1行（本人決定 2026-09-10：別アカウントの専用DB）
