@@ -3554,7 +3554,13 @@ async def aim():
         return {"ok": False, "error": "いまの写真がありません"}
     dx, dy = _frame_shift(ref, now)
     off = max(abs(dx), abs(dy))
+    import hashlib
     return {"ok": True, "dx": dx, "dy": dy,
+            # 何を読んだのかを添える。2026-09-13：見本といまの写真が
+            # 同じ中身（md5一致）なのに54pxと答え、どちらを読み違えているのか
+            # 外から分からなかった。
+            "ref": {"bytes": len(ref), "md5": hashlib.md5(ref).hexdigest()[:10]},
+            "now": {"bytes": len(now), "md5": hashlib.md5(now).hexdigest()[:10]},
             "state": "合っている" if off <= AIM_WARN_PX else
                      ("ずれている" if off <= SHIFT_MAX_PX else "ずれすぎ（比較が止まります）"),
             "warn_px": AIM_WARN_PX, "stop_px": SHIFT_MAX_PX}
