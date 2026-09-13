@@ -345,7 +345,7 @@ def _shrink_for_judge(data: bytes, max_w: int = 1280) -> bytes:
         return data
 
 
-async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
+async def _judge_image(image_bytes: bytes, persona: str = "", sink_empty=None) -> dict:
     """写真をClaudeに直接見せて {score, comment} か {skip} を得る。失敗は {}。
     persona＝そのキャラの人格。ルール部（_SYSTEM）は人格に関わらず常に適用。"""
     if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -363,7 +363,18 @@ async def _judge_image(image_bytes: bytes, persona: str = "") -> dict:
             model=MODEL, max_tokens=1000, system=system,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
-                {"type": "text", "text": "いまのあなたの見た景色です。判断をJSONで。"},
+                {"type": "text", "text": "いまのあなたの見た景色です。判断をJSONで。" + (
+                    # シンクのくぼみの中は、別の確かめ（切り出して聞く）で答えが出ている。
+                    # 2026-09-13：シンクが空なのに一言が「あちこちに物があって、そわそわする」
+                    # と言い、聞いた人はシンクのことだと受け取った。写真全体を見るこちらは
+                    # 水切りかごの食器を「シンクにある」と数えてしまう（9/9に不採用にした
+                    # 数え方が、一言の側に残っていた）。答えを渡して食い違いを止める。
+                    "" if sink_empty is None else
+                    ("
+※シンクのくぼみの中は空です。シンクに物があるとは言わないでください。"
+                     if sink_empty else
+                     "
+※シンクのくぼみの中には物があります。"))},
             ]}],
         )
         text = "".join(b.text for b in msg.content if b.type == "text")
@@ -1113,7 +1124,11 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     except Exception as e:
         logger.warning("latest photo save failed: %s", e)
 
-    r = await _judge_image(data, st.get("persona", ""))
+    # シンクの答えを先に出して、一言のAIにも渡す（2026-09-13）。
+    # _zone_cycle でも使うので、ここで1回だけ聞いて持ち回る。
+    sink_now = await _sink_empty(data)
+    st["sink_now"], st["sink_now_at"] = sink_now, now
+    r = await _judge_image(data, st.get("persona", ""), sink_now)
     st["last_judge"] = now
     st["day_calls"] += 1
     npeople = r.get("person")
@@ -2277,7 +2292,8 @@ def _synth_ja(text: str) -> bytes | None:
 
 SAY_NAME = "say_0"          # その場で作った、いまの一言の声
 VOICE_GAP = 60.0            # 声と声のあいだは1分あける（本人決定 2026-09-10）
-VOICE_GAIN = 0.5            # 音量。1.0＝作り置きのまま。本人「下げてよい」→ まず半分（2026-09-10）
+VOICE_GAIN = 0.75            # 音量。1.0＝作り置きのまま。本人「下げてよい」→ まず半分（2026-09-10）
+# 2026-09-13：0.5では小さいという本人の指摘。9/10に半分にする前（1.0）との中間にした。
 # 「何も鳴らさない」の返し方（2026-09-10）。
 # C3のファーム（spirit_body.ino）は、クラウドから声が届かないと（204・1000バイト以下）
 # 従来のあつ森語で鳴く作りになっている。声を1分に1回に絞ったとたん、残りの
@@ -3548,8 +3564,11 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
             _log_event("visit_short", {"who": short,
                                        "stay": {k: round(stays[k]) for k in short}})
         who = [pid for pid in who if stays[pid] > STAY_MIN]
-        # 「今、シンクは空か」は毎回1回聞く（比較の軸にも、+1の判断にも使う）
-        empty = await _sink_empty(data)
+        # 「今、シンクは空か」。見回りの一言を作るときに聞いた答えを使い回す
+        # （同じ写真に二度聞かない）。古ければ聞き直す。
+        empty = st.get("sink_now")
+        if empty is None or now - float(st.get("sink_now_at") or 0) > 60:
+            empty = await _sink_empty(data)
         await _zone_pass(st, base, data, who, quiet, st.get("seen_by") or [],
                          sink=(st.get("sink_empty_prev"), empty))
         # 真ん中の案（本人決定 2026-09-09）：去った後にシンクが空なら、来る前がどうであれ
