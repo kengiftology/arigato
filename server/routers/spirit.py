@@ -3402,14 +3402,39 @@ _SINK_EMPTY_Q = (
 )
 
 
+SINK_ROTATE = 180        # 切り出したあと、正しい向きに直してから渡す
+SINK_HIDE = 0.70         # 正しい向きで見た右側のこの割合から先を塗りつぶす（蛇口と水切りかご）
+
+
 def _sink_crop(data: bytes) -> bytes:
-    """写真からシンクのくぼみだけを切り出す。切れなければ元のまま。"""
+    """写真からシンクのくぼみだけを切り出し、正しい向きに直し、蛇口を隠す。
+
+    2026-09-13：夜の空のシンクを15回中13回「物あり」と答えていた原因が、
+    ここにあった。AIに何が見えるか言わせたところ、名指しでこう返ってきた：
+      「蛇口（左側に見える白い蛇口）」「蛇口のハンドル部分」
+      「蛇口、ホース、テープ状の物体」「蛇口（備え付け）、排水口のふた」
+    質問文には「蛇口も備え付けです」と書いてあるのに効かない。
+    さらに写真を回さずに渡していたので、逆さまの蛇口が「スプーン」「スポンジ」
+    にも見えていた。
+
+    同じ写真での実測（9/11の空5枚・各3回＝15回）：
+      いまのまま              2/15 正解
+      回すだけ                7/15
+      回す＋水切りかごを塗る  10/15
+      **回す＋右の帯を塗る    15/15**
+    物がある写真も混ぜた18回でも18/18（コップとスプーン／スプーン1本を言い当てた）。
+    モデルを強くする必要はなかった（Haiku 4.5 のまま）。文で断るのではなく、
+    見せないのが効く。"""
     try:
         import io
-        from PIL import Image
+        from PIL import Image, ImageDraw
         im = Image.open(io.BytesIO(data))
         w, h = im.size
         c = im.crop((int(w * SINK_BOX[0]), int(h * SINK_BOX[1]), int(w * SINK_BOX[2]), int(h * SINK_BOX[3])))
+        if SINK_ROTATE:
+            c = c.rotate(SINK_ROTATE)
+        cw, ch = c.size
+        ImageDraw.Draw(c).rectangle([int(cw * SINK_HIDE), 0, cw, ch], fill=(120, 120, 120))
         buf = io.BytesIO()
         c.save(buf, "JPEG", quality=85)
         return buf.getvalue()
