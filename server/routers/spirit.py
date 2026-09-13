@@ -3079,7 +3079,8 @@ async def zones_reset_score(key: str = ""):
 
 
 @router.post("/sink_check")
-async def sink_check(request: Request, key: str = ""):
+async def sink_check(request: Request, key: str = "", model: str = "",
+                     rotate: int = 0, bright: float = 1.0):
     """送った写真1枚について「シンクは空か」だけ答える（2026-09-13）。
 
     記録には何も残さない。見方を直したあと、過去の写真で確かめるための口。"""
@@ -3095,11 +3096,24 @@ async def sink_check(request: Request, key: str = ""):
     try:
         from anthropic import AsyncAnthropic
         client = AsyncAnthropic()
+        crop = _sink_crop(data)
+        if rotate or bright != 1.0:
+            # 向きと明るさを変えて試せるようにする（2026-09-13）。
+            # 夜の写真で外すので、暗さが効いているのかどうかを分けたい。
+            import io as _io
+            from PIL import Image, ImageEnhance
+            im = Image.open(_io.BytesIO(crop))
+            if rotate:
+                im = im.rotate(rotate, expand=True)
+            if bright != 1.0:
+                im = ImageEnhance.Brightness(im).enhance(bright)
+            b = _io.BytesIO(); im.save(b, "JPEG", quality=90); crop = b.getvalue()
+        out["px"] = len(crop)
         msg = await client.messages.create(
-            model=MODEL, max_tokens=200,
+            model=model or MODEL, max_tokens=200,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
-                                             "data": base64.b64encode(_sink_crop(data)).decode()}},
+                                             "data": base64.b64encode(crop).decode()}},
                 {"type": "text", "text": _SINK_EMPTY_Q}]}])
         text = "".join(b.text for b in msg.content if b.type == "text")
         out["raw"] = text[:300]
