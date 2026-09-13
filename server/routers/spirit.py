@@ -2997,7 +2997,20 @@ ZONE_MAX_FALSE = 0.4        # 誤報がこの割合を超えたら見送り
 
 
 def _live_zones(st: dict) -> list:
-    return [z for z in st.get("zones", []) if z.get("state") != "見送り"]
+    # 2026-09-13：成績で区画を止めるのをやめた。成績は記録として残す。
+    #
+    # 止めていた理由は「誰も来ていないのに変化したと言ったら誤報」だったが、
+    # この数え方は人の検知が当てになる場合にしか成り立たない。実測では
+    # 9/13 に人が居たかたまり19回のうち、誰か分かったのは2回。ほとんどの
+    # 来訪を「誰も居ない」と思っているので、本物の変化まで誤報に数える。
+    # 逆に人が居さえすれば、判定が間違っていても当たりに数えられた
+    # （9/11 03:10：前後とも空なのに「片づいた」。p04が居たので当たり扱い）。
+    # 成績は正しさではなく「人が居たかどうか」を測っていた。
+    #
+    # そしてシンクは区画が1つしかない。1つを止めると全部止まる。実際に
+    # 9/11に見送りとなり、9/13は前後比較が1回も走らず、なつき度も上がらなかった。
+    # 止める仕組みは、人の検知が当てになるようになってから戻す。
+    return list(st.get("zones", []))
 
 
 async def _derive_zones(data: bytes) -> list:
@@ -3046,6 +3059,37 @@ def _score_zone(z: dict) -> None:
         return
     rate = z.get("false", 0) / max(1, z.get("trials", 0))
     z["state"] = "見送り" if rate > ZONE_MAX_FALSE else "採用"
+
+
+@router.post("/zones/reset_score")
+async def zones_reset_score(key: str = ""):
+    """区画の成績をまっさらにする（見方を作り直したときに使う）。
+
+    9/12 に「空か」の判定を作り直した（くぼみだけ切り出し）。
+    9/11 までの誤報は古い作りでのものなので、背負わせ続ける意味がない。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    st = _load()
+    for z in st.get("zones", []):
+        z["trials"] = z["hits"] = z["false"] = 0
+        z["state"] = "試用中"
+    _save(st)
+    _log_event("zones_reset", {"zones": [z.get("name") for z in st.get("zones", [])]})
+    return {"ok": True, "zones": st.get("zones", [])}
+
+
+@router.post("/sink_check")
+async def sink_check(request: Request, key: str = ""):
+    """送った写真1枚について「シンクは空か」だけ答える（2026-09-13）。
+
+    記録には何も残さない。見方を直したあと、過去の写真で確かめるための口。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="empty body")
+    v = await _sink_empty(data)
+    return {"empty": v, "answer": "空" if v is True else ("物あり" if v is False else "分からない")}
 
 
 async def _zone_pass(st: dict, before: bytes, after: bytes,
