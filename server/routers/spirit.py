@@ -942,6 +942,11 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 # 同じ滞在で同じ人には1回だけ（2026-09-10）。前は「予定が空なら」で、
                 # 鳴らし終えるたびに次のコマでまた挨拶を予定し、居るあいだ何度も鳴っていた。
                 gkey = "%s@%d" % (res["person"], int(st.get("visit_start") or 0))
+                if st.get("greeted_key") == gkey:
+                    # もう挨拶した滞在。なぜ黙っているのかが表から分からないと
+                    # 追えない（2026-09-13：丸一日 speak が0件で、理由が読めなかった）。
+                    _log_small("greeted_already", px=res.get("px") or 0,
+                               key=gkey, since=round(now - float(st.get("visit_start") or now)))
                 if st.get("greeted_key") != gkey:
                     st["greeted_key"] = gkey
                     try:
@@ -1457,6 +1462,27 @@ async def notes_data(limit: int = 50):
         return {"notes": [d.to_dict() for d in docs]}
     except Exception as e:
         return {"notes": [], "error": str(e)}
+
+
+@router.get("/state")
+async def state_dump(key: str = ""):
+    """いまの状態を、そのまま読む（2026-09-13）。
+
+    「なぜ黙っているのか」「いつの滞在として数えているのか」を外から見る術が
+    無く、丸一日 speak が0件の理由が推測しかできなかった。重い中身（特徴量・
+    写真）は外して返す。"""
+    if UPLOAD_KEY and key != UPLOAD_KEY:
+        raise HTTPException(status_code=401, detail="bad key")
+    st = _load()
+    heavy = ("fbuf", "zones", "zones_prev")
+    out = {k: v for k, v in st.items() if k not in heavy}
+    out["_fbuf"] = len(st.get("fbuf") or [])
+    now = time.time()
+    for k in ("visit_start", "last_seen", "last_motion", "speak_at", "face_at",
+              "baseline_at", "checked_at", "photo_at"):
+        if st.get(k):
+            out[k + "_ago"] = round(now - float(st[k]))
+    return out
 
 
 @router.get("/export")
@@ -2100,9 +2126,11 @@ def _plan_speech(st: dict, kind: str, slow: bool = False) -> None:
     import random
     if random.random() < SILENT_CHANCE:
         st["speak_line"] = None                    # たまに黙る
+        _log_event("speak_skip", {"kind": kind, "why": "たまに黙る"})
         return
     name = _pick_line(kind)
     if not name:
+        _log_event("speak_skip", {"kind": kind, "why": "その場面の持ち歌が無い"})
         return
     gap = random.uniform(SPEAK_MIN, SPEAK_SLOW if slow else SPEAK_MAX)
     st["speak_line"] = name
