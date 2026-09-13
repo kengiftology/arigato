@@ -613,6 +613,43 @@ def _refresh_memory(vecs: list, vec: list):
         return None
 
 
+def _add_candidate(vec: list, px: int, now: float) -> None:
+    """IDには早いが質は足りている顔を、心当たりとして取っておく。
+
+    状態の文書に入れるとコマごとに書き直すことになるので、別の置き場にする。"""
+    try:
+        get_db().collection("pending").document("c%d" % int(now * 1000)).set(
+            {"v": vec, "at": now, "px": px})
+    except Exception as e:
+        logger.warning("candidate add failed: %s", e)
+
+
+def _take_candidates(vec: list, now: float) -> list:
+    """この顔と同じ心当たりを集めて返し、置き場からは消す（使い切り）。
+
+    古いもの・上限を超えたものも、ここで片づける。"""
+    import numpy as np
+    out = []
+    try:
+        v = np.asarray(vec, dtype=np.float32)
+        docs = list(get_db().collection("pending").stream())
+        docs.sort(key=lambda d: (d.to_dict() or {}).get("at") or 0)
+        for d in docs[-CAND_MAX:] if len(docs) > CAND_MAX else docs:
+            x = d.to_dict() or {}
+            w = np.asarray(x.get("v") or [], dtype=np.float32)
+            old = now - float(x.get("at") or 0) > CAND_KEEP_SEC
+            if not old and w.shape == v.shape and float(np.dot(v, w)) >= FACE_SAME_TRACK:
+                out.append(x["v"])
+                d.reference.delete()
+            elif old:
+                d.reference.delete()
+        for d in docs[:-CAND_MAX] if len(docs) > CAND_MAX else []:
+            d.reference.delete()
+    except Exception as e:
+        logger.warning("candidate take failed: %s", e)
+    return out[-(FACE_MEMORY - 1):]
+
+
 def _identify(st: dict, data: bytes):
     """写真から顔を探して匿名IDに結びつける。顔が無ければ None。
     実名は扱わない。初めての顔には新しい匿名IDを発行して「卵」にする。
@@ -726,13 +763,18 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
             _log_small("not_enough", best_px, n=n)
             return None
         if _face_span[0] < MIN_PRESENCE:
-            # 通りすがり。数秒しか見かけていない顔からIDは出さない。
+            # 通りすがり。IDは出さないが、顔は心当たりとして取っておく。
+            # 同じ人が次に居座ったとき、この分もまとめて覚えの中身になる。
+            _add_candidate(vec, best_px, time.time())
             _log_small("passing_by", best_px, n=n, span=round(_face_span[0]))
             return None
         pid = _new_person_id()
+        now2 = time.time()
+        past = _take_candidates(vec, now2)        # 前に通りかかったときの顔
         db.collection("faces").document(pid).set(
-            {"vecs": [{"v": vec}], "born": time.time(), "persona": "", "state": "egg"})
-        _log_event("arrive", dict(note, person=pid, state="new_egg"))
+            {"vecs": [{"v": v} for v in past] + [{"v": vec}],
+             "born": now2, "persona": "", "state": "egg"})
+        _log_event("arrive", dict(note, person=pid, state="new_egg", from_past=len(past)))
         return {"person": pid, "state": "egg"}
     doc = db.collection("faces").document(pid).get().to_dict() or {}
     vecs = doc.get("vecs", [])
@@ -2146,6 +2188,12 @@ GREET_GAP = 180.0          # 同じ人を迎え直すまでの間（2026-09-13�
 # 2コマ揃ってしまう。その人の顔を見かけた幅が30秒に満たなければ、
 # 迎えもしないし、新しいIDも出さない。
 MIN_PRESENCE = 30.0
+# 通りすがりでも、IDを出せる質の顔なら捨てない（2026-09-13・本人）。
+# 「IDをつくるのに必要な情報なので、蓄積させといて良い」。
+# 心当たりとして別に貯めておき、その人が本当に居座ったときに、
+# まとめて覚えの中身にする。新しいIDが最初から何通りもの見え方を持って生まれる。
+CAND_KEEP_SEC = 6 * 3600.0   # 心当たりを取っておく時間
+CAND_MAX = 24                # 貯めておく上限
 
 _line_cache = {"at": 0.0, "names": []}
 
