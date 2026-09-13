@@ -2126,6 +2126,7 @@ SILENT_CHANCE = 0.1        # 10回に1回は黙る（ぎこちなさを残す・
 # 迎える言葉と場所の様子のあいだに挟む息つぎ（16kHz・16bit・モノラルの無音）。
 # 0.6秒。続けて鳴らすと一息に聞こえてしまい、2つ言ったことが伝わらない。
 BREATH = bytes(2 * int(16000 * 0.6))   # 0.6秒ぶんの無音
+PAUSE = bytes(2 * int(16000 * 1.2))    # くり返しの前の、少し長めの間
 GREET_GAP = 180.0          # 同じ人を迎え直すまでの間（2026-09-13・本人：3分）
 
 _line_cache = {"at": 0.0, "names": []}
@@ -2500,6 +2501,11 @@ async def voice_pcm():
     pcm = pcms[0][1]
     for nm, b in pcms[1:]:
         pcm = pcm + BREATH + b                     # 息つぎを挟んでつなぐ
+    if greeting:
+        # 同じことを2回言う（2026-09-13・本人の希望）。
+        # 「一回聞き逃しても、3分待たなくていいように」。
+        # 独り言をくり返すのは、子どもらしさとしても不自然ではない。
+        pcm = pcm + PAUSE + pcm
     st["voiced_at"] = now                          # 次の声は VOICE_GAP 後
     _save(st)
     _log_event("voice", {"line": "＋".join(nm for nm, _ in pcms), "bytes": len(pcm)})
