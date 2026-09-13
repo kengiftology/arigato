@@ -939,16 +939,21 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 st["cur_state"] = res["state"]
                 st["last_seen"] = now
                 st["face_at"] = now              # 最後に顔で確かめた時刻
-                # 同じ滞在で同じ人には1回だけ（2026-09-10）。前は「予定が空なら」で、
-                # 鳴らし終えるたびに次のコマでまた挨拶を予定し、居るあいだ何度も鳴っていた。
-                gkey = "%s@%d" % (res["person"], int(st.get("visit_start") or 0))
-                if st.get("greeted_key") == gkey:
-                    # もう挨拶した滞在。なぜ黙っているのかが表から分からないと
-                    # 追えない（2026-09-13：丸一日 speak が0件で、理由が読めなかった）。
-                    _log_small("greeted_already", px=res.get("px") or 0,
-                               key=gkey, since=round(now - float(st.get("visit_start") or now)))
-                if st.get("greeted_key") != gkey:
-                    st["greeted_key"] = gkey
+                # 挨拶は「その人を最後に迎えてから GREET_GAP たったら、また」。
+                # 2026-09-13：それまでは「同じ滞在で1回だけ」だったが、この家では
+                # 滞在が切れない。誰かしらが通るので30分の無人が訪れず、朝8:14に
+                # 立った札が7時間そのままで、p01 と10回分かっても一度も鳴らなかった。
+                # 滞在という単位はこの共用キッチンでは成立しない。
+                # 本人：「聞き逃すとむずむずするので、複数回挨拶してほしい」。
+                gm = st.get("greeted_at") or {}
+                since = now - float(gm.get(res["person"]) or 0)
+                if since < GREET_GAP:
+                    _log_small("greeted_recently", px=res.get("px") or 0,
+                               person=res["person"], since=round(since))
+                if since >= GREET_GAP:
+                    gm[res["person"]] = now
+                    st["greeted_at"] = {k: v for k, v in sorted(
+                        gm.items(), key=lambda x: -x[1])[:8]}      # 直近8人ぶんだけ持つ
                     try:
                         doc = get_db().collection("faces").document(
                             res["person"]).get().to_dict() or {}
@@ -2093,6 +2098,7 @@ SPEAK_MIN = 0.8            # これより早くは返さない
 SPEAK_MAX = 1.6            # ふつうの間
 SPEAK_SLOW = 3.0           # ためらうときの間
 SILENT_CHANCE = 0.1        # 10回に1回は黙る（ぎこちなさを残す・p.159）
+GREET_GAP = 180.0          # 同じ人を迎え直すまでの間（2026-09-13・本人：3分）
 
 _line_cache = {"at": 0.0, "names": []}
 
