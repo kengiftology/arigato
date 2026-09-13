@@ -3088,8 +3088,31 @@ async def sink_check(request: Request, key: str = ""):
     data = await request.body()
     if not data:
         raise HTTPException(status_code=400, detail="empty body")
-    v = await _sink_empty(data)
-    return {"empty": v, "answer": "空" if v is True else ("物あり" if v is False else "分からない")}
+    # 何を「物」と見たのかまで返す。2026-09-13：夜の写真で15回中13回「物あり」と
+    # 答えたが、切り出す範囲・向き・塗りつぶしのどれが効いているのか推測しかできず、
+    # 3回続けて外した。見えているものを言わせる。
+    out = {"empty": None, "answer": "分からない", "items": "", "raw": ""}
+    try:
+        from anthropic import AsyncAnthropic
+        client = AsyncAnthropic()
+        msg = await client.messages.create(
+            model=MODEL, max_tokens=200,
+            messages=[{"role": "user", "content": [
+                {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                             "data": base64.b64encode(_sink_crop(data)).decode()}},
+                {"type": "text", "text": _SINK_EMPTY_Q}]}])
+        text = "".join(b.text for b in msg.content if b.type == "text")
+        out["raw"] = text[:300]
+        m = re.search(r"\{.*\}", text, re.S)
+        if m:
+            j = json.loads(m.group(0))
+            v = j.get("empty")
+            out["empty"] = v if isinstance(v, bool) else None
+            out["items"] = str(j.get("items") or "")[:120]
+    except Exception as e:
+        out["error"] = "%s: %s" % (type(e).__name__, e)
+    out["answer"] = "空" if out["empty"] is True else ("物あり" if out["empty"] is False else "分からない")
+    return out
 
 
 async def _zone_pass(st: dict, before: bytes, after: bytes,
