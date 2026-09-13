@@ -420,6 +420,7 @@ def _is_furniture(pos, px: int) -> bool:
 # 実測（2026-09-05）で、1枚あたりの一致度は同じ人でも0.09〜0.52に散った。
 # 数枚の平均をとれば、1枚ごとの当たり外れは打ち消し合う。
 _face_buf = []            # [(特徴量, 顔の幅, 時刻, 位置), ...]
+_face_span = [0.0]        # いま束ねた顔を、何秒のあいだ見かけていたか
 MOVE_MIN = 0.5           # 顔の幅に対して、これだけ離れたら「動いた」
 # 2026-09-13：25秒→120秒。使える顔は、思っていたよりずっとまばらにしか来ない。
 # 今日の 11:48〜11:56 の滞在（8分）で、照合に使える顔は4枚だけで、間隔は25〜108秒。
@@ -570,6 +571,8 @@ def _remember_face(st: dict, vec: list, px: int, pos=None) -> tuple:
             spread = max(spread, abs(ps[i][0] - ps[j][0]), abs(ps[i][1] - ps[j][1]))
     # コマはそのまま返す。照合の側（face.match_frames）で「人ごとに一番似た覚え」を
     # 出してからコマ全体で平均する。
+    span = (max(x[2] for x in mine) - min(x[2] for x in mine)) if mine else 0.0
+    _face_span[0] = span
     return ([x[0] for x in mine], len(mine),
             max(x[1] for x in mine), spread)
 
@@ -721,6 +724,10 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
         # 登録にも要る。大きさは「小さい顔から作らない」の役だけに戻す。
         if n < FACE_BUF_MIN_NEW and not _confirm_new(vec, pos, px):
             _log_small("not_enough", best_px, n=n)
+            return None
+        if _face_span[0] < MIN_PRESENCE:
+            # 通りすがり。数秒しか見かけていない顔からIDは出さない。
+            _log_small("passing_by", best_px, n=n, span=round(_face_span[0]))
             return None
         pid = _new_person_id()
         db.collection("faces").document(pid).set(
@@ -972,10 +979,15 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 # 本人：「聞き逃すとむずむずするので、複数回挨拶してほしい」。
                 gm = st.get("greeted_at") or {}
                 since = now - float(gm.get(res["person"]) or 0)
-                if since < GREET_GAP:
+                here = _person_stay(st, res["person"], now)
+                if here < MIN_PRESENCE:
+                    # 通りすがりには声をかけない。居ることは記録に残す
+                    _log_small("passing_by", px=res.get("px") or 0,
+                               person=res["person"], here=round(here))
+                elif since < GREET_GAP:
                     _log_small("greeted_recently", px=res.get("px") or 0,
                                person=res["person"], since=round(since))
-                if since >= GREET_GAP:
+                if here >= MIN_PRESENCE and since >= GREET_GAP:
                     gm[res["person"]] = now
                     st["greeted_at"] = {k: v for k, v in sorted(
                         gm.items(), key=lambda x: -x[1])[:8]}      # 直近8人ぶんだけ持つ
@@ -2128,6 +2140,12 @@ SILENT_CHANCE = 0.1        # 10回に1回は黙る（ぎこちなさを残す・
 BREATH = bytes(2 * int(16000 * 0.6))   # 0.6秒ぶんの無音
 PAUSE = bytes(2 * int(16000 * 1.2))    # くり返しの前の、少し長めの間
 GREET_GAP = 180.0          # 同じ人を迎え直すまでの間（2026-09-13・本人：3分）
+# 通りすがりには声をかけない（2026-09-13・本人）。
+# 「数秒しか部屋にいない人は、記録も要らないし、声かけも要らない」。
+# 束ねる窓を120秒に広げたので、100秒あけて2回通っただけの人でも
+# 2コマ揃ってしまう。その人の顔を見かけた幅が30秒に満たなければ、
+# 迎えもしないし、新しいIDも出さない。
+MIN_PRESENCE = 30.0
 
 _line_cache = {"at": 0.0, "names": []}
 
