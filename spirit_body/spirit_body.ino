@@ -45,7 +45,10 @@ static const int PIN_BTN = 41;
 #endif
 
 // ---------------- 表示（device_player.py の移植） ----------------
-static const int GRID = 32, CELL = 7, OFF_X = 8, OFF_Y = 1;
+// 2026-09-13：字幕をやめたぶん下に15pxのすき間が残っていたので、中央へ寄せた。
+// 画面240x240・キャラ32マス×7px＝224px。左右も上下も (240-224)/2 = 8px。
+// これ以上大きくはできない（8pxにすると256pxで画面からはみ出す）。
+static const int GRID = 32, CELL = 7, OFF_X = 8, OFF_Y = 8;
 #ifdef FSPI
 SPIClass lcdSPI(FSPI);
 #else
