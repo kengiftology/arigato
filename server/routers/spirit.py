@@ -2301,8 +2301,39 @@ async def put_line(name: str, request: Request, x_upload_key: str = Header(None)
 # 人が去った直後は誰も居ないので、その時間に「知っている人ごとの次の一言」を文にして
 # おき、宅内の声係（ラズパイの VOICEVOX・1本30秒）が音にして置いておく。
 # 次に来た瞬間、その人の分（for_<ID>_0）を鳴らす。初めての人向けは for_new_0。
-def _todo_name(pid: str) -> str:
-    return "for_" + pid + "_0"
+# その人向けの一言を、何本まで持つか（2026-09-13・本人の希望）。
+# 作り置き（「あ、きた。」など）をなるべく使わず、その人ごとの声を増やしたい。
+# AIの呼び出しは増やさない：見回りのたびに1本だけ作り、空いている枠に入れる。
+# 枠が埋まったら一番古い1本と入れ替える。数回の見回りで4種類たまる。
+LINES_PER_PERSON = 4
+
+
+def _todo_name(pid: str, i: int = 0) -> str:
+    return "for_%s_%d" % (pid, i)
+
+
+def _slots(doc: dict) -> list:
+    """その人の一言の枠。[{"t": 文, "m": 声にした文, "at": 時刻}, ...]"""
+    ls = doc.get("lines")
+    if isinstance(ls, list):
+        return [x for x in ls if isinstance(x, dict)][:LINES_PER_PERSON]
+    # 前の作り（1本だけ）からの引き継ぎ
+    if doc.get("next_text"):
+        return [{"t": doc["next_text"], "m": doc.get("made_text", ""), "at": doc.get("next_at", 0)}]
+    return []
+
+
+def _put_line(ls: list, text: str, now: float) -> list | None:
+    """新しい一言を枠に入れる。同じ文を既に持っていれば何もしない。"""
+    if any((x.get("t") or "") == text for x in ls):
+        return None
+    ls = list(ls)
+    if len(ls) < LINES_PER_PERSON:
+        ls.append({"t": text, "m": "", "at": now})
+    else:
+        ls.sort(key=lambda x: x.get("at") or 0)
+        ls[0] = {"t": text, "m": "", "at": now}        # 一番古いものと入れ替え
+    return ls
 
 
 async def _prepare_greetings(st: dict, now: float) -> int:
@@ -2317,9 +2348,11 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             manner = _bond_stage(_bond_now(doc))[1]
             thanks = _own_care(d.id)
             text = await _greet_line(persona, manner, thanks, news and not thanks)
-            if text and text != doc.get("next_text"):
-                d.reference.update({"next_text": text, "next_at": now})
-                n += 1
+            if text:
+                ls = _put_line(_slots(doc), text, now)
+                if ls is not None:
+                    d.reference.update({"lines": ls})
+                    n += 1
         text = await _greet_line(persona, BOND_STAGES[0][2], False, news)
         if text and text != st.get("next_new_text"):
             st["next_new_text"], st["next_new_at"] = text, now
@@ -2338,9 +2371,9 @@ async def todo():
     try:
         for d in get_db().collection("faces").stream():
             doc = d.to_dict() or {}
-            t = doc.get("next_text")
-            if t and t != doc.get("made_text"):
-                out.append({"name": _todo_name(d.id), "text": t})
+            for i, x in enumerate(_slots(doc)):
+                if x.get("t") and x.get("t") != x.get("m"):
+                    out.append({"name": _todo_name(d.id, i), "text": x["t"]})
     except Exception as e:
         logger.warning("todo list failed: %s", e)
     st = _load()
@@ -2356,21 +2389,25 @@ async def todo_done(name: str, request: Request, text: str = "",
     """声係が作った音を置き、何を読んだかを覚える（同じ文を二度作らせない）。"""
     if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
-    if not re.fullmatch(r"for_[a-z0-9]+_0", name):
+    if not re.fullmatch(r"for_[a-z0-9]+_[0-9]", name):
         raise HTTPException(status_code=400, detail="bad name")
     data = await request.body()
     if not data:
         raise HTTPException(status_code=400, detail="empty body")
     upload_to(LINES_PREFIX + name + ".pcm", data, "application/octet-stream")
     _line_cache["at"] = 0.0
-    pid = name[len("for_"):-2]
+    pid, i = name[len("for_"):-2], int(name[-1])
     if pid == "new":
         st = _load()
         st["made_new_text"] = text
         _save(st)
     else:
         try:
-            get_db().collection("faces").document(pid).update({"made_text": text})
+            ref = get_db().collection("faces").document(pid)
+            ls = _slots(ref.get().to_dict() or {})
+            if i < len(ls):
+                ls[i]["m"] = text
+                ref.update({"lines": ls})
         except Exception as e:
             logger.warning("todo done update failed: %s", e)
     _log_event("voice_made", {"name": name, "bytes": len(data)})
@@ -2382,7 +2419,8 @@ def _ready_line(pid: str, doc: dict, st: dict) -> str | None:
     if pid == "new":
         ok = st.get("next_new_text") and st.get("next_new_text") == st.get("made_new_text")
     else:
-        ok = doc.get("next_text") and doc.get("next_text") == doc.get("made_text")
+        # 1本でも声になっていれば使う。何本かあれば _pick_line が毎回選び直す。
+        ok = any(x.get("m") and x.get("m") == x.get("t") for x in _slots(doc))
     kind = "for_" + pid
     return kind if ok and _pick_line(kind) else None
 
