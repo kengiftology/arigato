@@ -370,11 +370,9 @@ async def _judge_image(image_bytes: bytes, persona: str = "", sink_empty=None) -
                     # 水切りかごの食器を「シンクにある」と数えてしまう（9/9に不採用にした
                     # 数え方が、一言の側に残っていた）。答えを渡して食い違いを止める。
                     "" if sink_empty is None else
-                    ("
-※シンクのくぼみの中は空です。シンクに物があるとは言わないでください。"
+                    ("\n※シンクのくぼみの中は空です。シンクに物があるとは言わないでください。"
                      if sink_empty else
-                     "
-※シンクのくぼみの中には物があります。"))},
+                     "\n※シンクのくぼみの中には物があります。"))},
             ]}],
         )
         text = "".join(b.text for b in msg.content if b.type == "text")
