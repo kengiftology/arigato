@@ -279,6 +279,9 @@ def _load() -> dict:
     global _state_cache
     if _state_cache is not None:
         return _state_cache
+    # ここに来る＝このサーバーが起動して初めて読む。記憶は保存済みの時点まで戻るので、
+    # 「状態が巻き戻った」ように見えたとき、再起動だったのかを記録から確かめられるようにする。
+    _log_event("boot", {})
     try:
         snap = _doc().get()
         _state_cache = snap.to_dict() if snap.exists else {}
@@ -1195,11 +1198,22 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     check = st.get("check_pose") or ""
     right_place = (not check) or (pose == check)   # 見に行く先で撮った1枚か
     if right_place and npeople == 0 and now - st.get("last_seen", 0) > VISIT_END_GAP:
-        # 区画の数だけAIに問い合わせるので、返事を待たせると橋渡しが
-        # 待ちきれずに切れる。返事は先に返し、突き合わせは裏で走らせる。
+        # 2026-09-14：突き合わせと「前」の差し替えは、返事を返す前に済ませる。
+        # それまでは返事を先に返して裏で走らせていたが、Cloud Run は返事のあとの
+        # 処理にCPUをほとんど回さず、途中で捨てることもある。9/14 は 10:05・10:12・
+        # 10:28 の見回りがどれも一言の準備の手前で止まり、「前」が朝8:28のまま残った。
+        # そのため空のシンクを毎回「物あり→空」と読み、同じ片づけを3回数え、
+        # 誰も居ないのに「よかった」の一言を積んで、あとで人感が鳴ったときに鳴らした。
+        # 区画はシンク1つで、判定はほぼ規則で決まるので、待たせても橋渡し（40秒）に収まる。
+        # 遅い仕事（一言の準備・Notion）だけを裏に回す。止まっても比較は狂わない。
         if not _zone_busy[0]:
             _zone_busy[0] = True
-            asyncio.create_task(_zone_cycle_bg(st, data, now, pose))
+            try:
+                tail = await _zone_cycle(st, data, now, pose)
+            finally:
+                _zone_busy[0] = False
+            if tail:
+                asyncio.create_task(_zone_tail(st, now, **tail))
     logger.info("spirit judge: raw=%s smoothed=%.2f comment=%s", sc, st["score"], st.get("comment"))
     return {"ok": True, "judged": sc is not None, "score": st["score"],
             "hires": now < st.get("want_hires", 0)}
@@ -1836,7 +1850,8 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
                 "このときだけ25字まで使ってよい。")
     try:
         from anthropic import AsyncAnthropic
-        client = AsyncAnthropic()
+        # 裏で走るので、待ちすぎないよう区切る（既定は10分×再試行2回）
+        client = AsyncAnthropic(timeout=30.0, max_retries=1)
         msg = await client.messages.create(
             model=MODEL, max_tokens=120,
             system=(persona or _DEFAULT_PERSONA) + "\n" + _GREET_SYSTEM,
@@ -2190,6 +2205,8 @@ SPEAK_MIN = 0.8            # これより早くは返さない
 SPEAK_MAX = 1.6            # ふつうの間
 SPEAK_SLOW = 3.0           # ためらうときの間
 SILENT_CHANCE = 0.1        # 10回に1回は黙る（ぎこちなさを残す・p.159）
+SPEAK_TTL = 120.0          # 予約した一言は、この秒数を過ぎたら鳴らさずに捨てる（2026-09-14）
+                           # C3は居続ける人にだけ1分おきに取りに来るので、2分あれば届く
 # 迎える言葉と場所の様子のあいだに挟む息つぎ（16kHz・16bit・モノラルの無音）。
 # 0.6秒。続けて鳴らすと一息に聞こえてしまい、2つ言ったことが伝わらない。
 BREATH = bytes(2 * int(16000 * 0.6))   # 0.6秒ぶんの無音
@@ -2530,12 +2547,21 @@ async def voice_pcm():
     st = _load()
     now = time.time()
     name = st.get("speak_line")
-    greeting = bool(name)
+    # 迎える言葉（hello_*・その人向けの for_*）だけを「あいさつ」として扱う。
+    # 2026-09-14：以前は予約された一言をすべてあいさつ扱いにしていたため、
+    # 見回りの「よかった」まで、いまの一言を足して2回くり返していた。
+    greeting = bool(name) and name.startswith(("hello_", "for_"))
     if name:
         if now < st.get("speak_at", 0):
             return _quiet()                        # まだ。これが間になる
         st["speak_line"] = None                    # 一度鳴らしたら下ろす
         _save(st)
+        age = now - float(st.get("speak_at") or 0)
+        if age > SPEAK_TTL:
+            # 2026-09-14：予約に期限が無く、10:28 に誰も居ない見回りで積んだ一言が
+            # 40分後の 11:07、人感が鳴った瞬間に鳴った。その場に向けた言葉ではない。
+            _log_event("speak_expired", {"line": name, "age": round(age)})
+            return _quiet()
     else:
         # 場所の一言。C3は人が居るあいだ12秒おきに取りに来るので、毎回返すと
         # 1回の来訪で3回鳴ってしつこい（2026-09-10 実測）。1回だけだと聞き逃す。
@@ -3394,12 +3420,31 @@ def _tally(zone: str, who: list, better, changes: list, seen_by=None) -> None:
 _zone_busy = [False]       # 突き合わせが二重に走らないようにする札
 
 
-async def _zone_cycle_bg(st: dict, data: bytes, now: float, pose: str = "") -> None:
-    """裏で突き合わせを回し、終わったら札を下ろす。"""
+async def _zone_tail(st: dict, now: float, who: list, empty, pz: str, ups: list) -> None:
+    """突き合わせのあとの遅い仕事（裏で走らせる）。
+
+    「前」の差し替えは _zone_cycle の中で済んでいるので、ここが途中で止まっても
+    次の比較は狂わない。止まったことが外から見えるよう、失敗は記録に残す。"""
     try:
-        await _zone_cycle(st, data, now, pose)
-    finally:
-        _zone_busy[0] = False
+        # 誰も居ない今のうちに、次に来る人向けの一言を文にしておく（声係が音にする）
+        if await _prepare_greetings(st, now):
+            _save(st)
+    except Exception as e:
+        _log_event("tail_error", {"step": "greetings", "err": ("%s: %s" % (type(e).__name__, e))[:160]})
+    # Notion「地霊の記録」に1行（本人決定 2026-09-10：別アカウントの専用DB）
+    try:
+        result = ("片づいた" if "片づいた" in pz else "散らかった" if "散らかった" in pz
+                  else "比べず" if ("比べず" in pz or not pz) else "同じ")
+        what = pz[pz.find("（") + 1:pz.rfind("）")] if "（" in pz else ""
+        sink = "空" if empty is True else ("物あり" if empty is False else "未確認")
+        title = "%s 見回り｜%s｜シンク%s" % (time.strftime("%m-%d %H:%M", time.gmtime(now + JST)), result, sink)
+        await asyncio.to_thread(_notion_patrol, now, title,
+                                st.get("patrol_url") or st.get("photo_url") or "",
+                                int(st.get("patrol_bytes") or 0),
+                                result, sink, who, ups, what)
+    except Exception as e:
+        logger.warning("notion patrol failed: %s", e)
+        _log_event("notion_error", {"text": ("%s: %s" % (type(e).__name__, e))[:120]})
 
 
 # シンクのくぼみだけを切り出す枠（見る向き -0.70_-1.00 の写真での割合：左, 上, 右, 下）。
@@ -3504,11 +3549,12 @@ async def _sink_empty(data: bytes):
         return None
 
 
-async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None:
+async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict | None:
     """人が去った直後、または長く静かなときに、前後を突き合わせる。
 
     「前」は最後に無人と確かめた1枚。「後」はいま届いた1枚。
-    突き合わせが済んだら、いまの1枚が次の「前」になる。"""
+    突き合わせが済んだら、いまの1枚が次の「前」になる。
+    比べたときは、裏で続ける仕事（_zone_tail）に渡す材料を返す。"""
     try:
         # 区画は ZONE_NAMES に決め打ち。古い状態（AIが起こした調理台・棚など）が残っていたら立て直す
         if [z.get("name") for z in (st.get("zones") or [])] != list(ZONE_NAMES):
@@ -3537,11 +3583,14 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
             ats[pose] = now
             st["baseline_ats"] = ats
             st["baseline_at"], st["baseline_pose"] = now, pose   # 表示用
-            st["sink_empty_prev"] = await _sink_empty(data)      # 次の比較の「前」の答え
+            # 次の比較の「前」の答え。この1枚でもう聞いてあればそれを使う（同じ写真に二度聞かない）
+            prev = st.get("sink_now") if now - float(st.get("sink_now_at") or 0) <= 60 else None
+            st["sink_empty_prev"] = prev if prev is not None else await _sink_empty(data)
             st["visit_people"] = []            # 比べられなかった来訪は数えない
             st["visit_seen"], st["seen_by"] = False, []
             _save(st)
-            return
+            _log_event("baseline", {"pose": pose, "sink_empty": st["sink_empty_prev"]})
+            return None
         who = st.get("visit_people") or []
         _patrol_ups.clear()
         st["patrol_zone"] = ""
@@ -3550,7 +3599,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
         # 数えられ、区画の評判が下がりつづけていた。
         quiet = not st.get("visit_seen")
         if quiet and now - float(ats.get(pose) or 0) < IDLE_CHECK_GAP:
-            return                             # 静かな時は、そう何度も点検しない
+            return None                        # 静かな時は、そう何度も点検しない
         # 滞在の長さ。5分以下しか居なかった人には何も付けない（本人決定 2026-09-09）。
         # 滞在の長さは人ごとに見る（2026-09-13）。家に1つの滞在で見ていた頃は、
         # 誰かが通りつづけると誰の滞在も切れず、7時間が1滞在になっていた。
@@ -3581,36 +3630,29 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> None
                 for pid in who:
                     _bond_up(pid, "sink_empty", now,
                              (st.get("visit_of") or {}).get(pid) or _cur_visit[0])
-        # 誰も居ない今のうちに、次に来る人向けの一言を文にしておく（声係が音にする）
-        await _prepare_greetings(st, now)
-        # Notion「地霊の記録」に1行（本人決定 2026-09-10：別アカウントの専用DB）
-        try:
-            pz = st.get("patrol_zone") or ""
-            result = ("片づいた" if "片づいた" in pz else "散らかった" if "散らかった" in pz
-                      else "比べず" if ("比べず" in pz or not pz) else "同じ")
-            what = pz[pz.find("（") + 1:pz.rfind("）")] if "（" in pz else ""
-            sink = "空" if empty is True else ("物あり" if empty is False else "未確認")
-            title = "%s 見回り｜%s｜シンク%s" % (time.strftime("%m-%d %H:%M", time.gmtime(now + JST)), result, sink)
-            await asyncio.to_thread(_notion_patrol, now, title,
-                                    st.get("patrol_url") or st.get("photo_url") or "",
-                                    int(st.get("patrol_bytes") or 0),
-                                    result, sink, list(who), list(_patrol_ups), what)
-        except Exception as e:
-            logger.warning("notion patrol failed: %s", e)
-            _log_event("notion_error", {"text": ("%s: %s" % (type(e).__name__, e))[:120]})
+        # 比べ終えたら、遅い仕事より先に「前」を差し替えて保存する（2026-09-14）。
+        # 以前はこれが一言の準備と Notion のあとにあり、そこで止まると
+        # 「前」が古いまま残って、同じ変化を何度も数えていた。
+        tail = {"who": list(who), "empty": empty,
+                "pz": st.get("patrol_zone") or "", "ups": list(_patrol_ups)}
         upload_to(key, data, "image/jpeg")
         ats[pose] = now
         st["baseline_ats"] = ats
         st["baseline_at"], st["baseline_pose"] = now, pose       # 表示用
-        st["sink_empty_prev"] = empty                            # 次の比較の「前」の答え
+        # 答えが出なかった（None）ときは、前の答えを持ち越す。Noneで上書きすると
+        # 次の比較が「どちらか不明」になり、塗りつぶし比較（AI）に回ってしまう。
+        if empty is not None:
+            st["sink_empty_prev"] = empty                        # 次の比較の「前」の答え
         st["visit_people"] = []
         st["visit_seen"], st["seen_by"] = False, []
         _save(st)
+        return tail
     except Exception as e:
         logger.warning("zone cycle failed: %s", e)
         # 失敗が表から見えないと、基準の写真が入れ替わらない理由を追えない
         # （2026-09-10 朝、09:19の基準がそのまま残っていた）。記録に残す。
         _log_event("zone_error", {"err": ("%s: %s" % (type(e).__name__, e))[:160]})
+        return None
 
 
 @router.get("/aim")
