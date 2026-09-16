@@ -35,7 +35,7 @@ from server.storage import upload_to, list_prefix, delete_prefix, read_object
 router = APIRouter(prefix="/spirit", tags=["spirit"])
 logger = logging.getLogger("spirit")
 
-UPLOAD_KEY = os.environ.get("TIMELAPSE_KEY", "")   # 目の認証はタイムラプスと同じ鍵
+from server.keys import key_ok   # 目の認証はタイムラプスと同じ鍵（入れ替え中は新旧どちらも通す）
 MODEL = "claude-haiku-4-5-20251001"                # 頻繁に呼ぶので軽く速く安く
 
 M_HI = 0.30            # このスコア以上が続くと放置度Nが育つ
@@ -895,7 +895,7 @@ async def verify_mode(minutes: int = 0, key: str = ""):
 
     期限式にしてあるのは、切り忘れを防ぐため。承諾を得た確かめのために
     開けた窓が、そのまま開きっぱなしになるのが一番まずい。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     st = _load()
     # 上限は7日。もとは4時間だったが、実験の期間ぶん開けたいと言われて延ばした
@@ -934,7 +934,7 @@ async def clear_shots(key: str = ""):
 
     置き場が2つある（全画面の写真と、顔の切り抜き）。
     片方だけ消す道を残すと、消したつもりで残る。必ず両方消す。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     try:
         n = delete_prefix(VERIFY_PREFIX) + delete_prefix(FACES_PREFIX)
@@ -965,7 +965,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     big=1 は「これはもう大きく撮り直した1枚」の印。これ以上大きくは
     撮れないので、同じ写真でまた撮り直しを頼まない。
     """
-    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+    if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
     _t_body = time.perf_counter()              # 写真を受け取り終えるまでも測る（2026-09-15）
     data = await request.body()
@@ -1294,7 +1294,7 @@ async def home_set(key: str = "", pause: int = -1, pose: str = ""):
     移動した本人が、その場で向きを決めて押せるようにする。
     pause=1 で首振りを止める（設置作業の間、勝手に動かれると困る）。
     pose を渡せばその向きをそのまま覚える（目がまだ動いていない時用）。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     st = _load()
     if pause >= 0:
@@ -1359,7 +1359,7 @@ async def checkpose_set(pose: str = "", key: str = ""):
     """見に行く先を決める。いまカメラが向いている先を渡すのが早い。
 
     pose を空にすると見回りをやめる（1つの向きに留まる）。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     st = _load()
     st["check_pose"] = pose or ""
@@ -1585,7 +1585,7 @@ async def state_dump(key: str = ""):
     「なぜ黙っているのか」「いつの滞在として数えているのか」を外から見る術が
     無く、丸一日 speak が0件の理由が推測しかできなかった。重い中身（特徴量・
     写真）は外して返す。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     st = _load()
     heavy = ("fbuf", "zones", "zones_prev")
@@ -1745,7 +1745,7 @@ async def arrive(request: Request, raw: str = "", x_upload_key: str = Header(Non
     ・初めての顔   → 新しいIDを発行し「卵」を返す（人格は裏で創作）
     ・顔が読めない → unknown（代表キャラがとぼける）
     写真そのものは保存しない（較正期間中だけ latest_arrival として1枚上書き）。"""
-    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+    if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
     if not FACE_ENABLED:
         return {"person": "unknown", "state": "disabled"}
@@ -1929,7 +1929,7 @@ async def greet():
 @router.post("/facetest")
 async def facetest(request: Request, x_upload_key: str = Header(None)):
     """診断用：送った写真で顔が見つかるかだけを返す（記録も保存もしない）。"""
-    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+    if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
     data = await request.body()
     out = {"bytes": len(data), "enabled": FACE_ENABLED}
@@ -1996,7 +1996,7 @@ async def merge_people(keep: str, drop: str, key: str = ""):
 
     dropの見え方をkeepへ移し、dropを消す。世話・利用の数も足し合わせる。
     /spirit/similar で「同じ人と判定」と出た組に対して使う。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     db = get_db()
     a = db.collection("faces").document(keep)
@@ -2028,7 +2028,7 @@ async def bond_set(who: str = "", value: int = 0, key: str = ""):
 
     2026-09-09: 段階を変えたときに地霊の言い方が変わるかを確かめるための口。
     数そのものは地霊が口に出さない（台帳#12）。研究者だけが触る。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     if not who:
         raise HTTPException(status_code=400, detail="who is required")
@@ -2051,7 +2051,7 @@ async def people_reset(key: str = "", who: str = ""):
     比べてはいけない2枚から作られた記録が10件残った。中身は光と
     カメラの向きの変化で、誰の手でもない。論文の記録として置いておくと
     そのまま嘘になるので、消せる手を用意する。顔まで忘れる必要はない。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     n = 0
     try:
@@ -2073,7 +2073,7 @@ async def drop_face(who: str = "", key: str = ""):
 
     まっさらにすると、正しく覚えている人まで巻き添えになる。
     誤ってできた1つ（2026-09-05のp02＝テーブルの土鍋）を抜くための口。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     if not who:
         raise HTTPException(status_code=400, detail="who is required")
@@ -2097,7 +2097,7 @@ async def notfaces_add(request: Request, key: str = ""):
 
     鍋・五徳・棚を顔と見てしまう分を、ここに貯めて弾く（2026-09-12 夜）。
     顔の覚え（faces）とは別の場所に置く。混ぜると照合が狂う。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     # 送られてくるのは、すでに切り抜かれた1枚。もう一度顔を探させると、
     # 自信度0.80では見つからず何も登録できない（2026-09-12 実測：8枚中0枚）。
@@ -2126,7 +2126,7 @@ async def notfaces_from_person(who: str, key: str = ""):
     """「このIDは人ではなかった」を、覚えに移す。
 
     パネルから押せるようにしておくと、使うほど鍋に強くなる。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     db = get_db()
     doc = db.collection("faces").document(who).get().to_dict()
@@ -2166,7 +2166,7 @@ async def clear_faces(key: str = "", restart: int = 0):
     restart=1 は「最初からやり直す」（2026-09-16・本人の希望：番号も p01 から）。
     番号を戻すなら、前の人に結びついていたものを全部消す。残すと、新しい p01 に
     前の p01 向けの一言（for_p01_*）が鳴る。restart なしのときは番号を戻さない。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     n = 0
     try:
@@ -2400,7 +2400,7 @@ async def put_say(text: str = "", request: Request = None,
     text には、何を読み上げたのかを添える。地霊の一言は判断のたびに
     変わるので、これが今の一言と食い違っていたら、その音は古い。
     古い音を鳴らすくらいなら、場面に合った作り置きを鳴らすほうがよい。"""
-    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+    if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
     data = await request.body()
     if not data:
@@ -2432,7 +2432,7 @@ async def put_line(name: str, request: Request, x_upload_key: str = Header(None)
 
     クラウドにGPUは無いので声は作れない。作るのは手元、置くのはここ。
     声を作り直したくなったら、同じ名前で上書きすればよい。"""
-    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+    if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
     if not re.fullmatch(r"[a-z0-9_]+_\d+", name):
         raise HTTPException(status_code=400, detail="bad name")
@@ -2534,7 +2534,7 @@ async def todo():
 async def todo_done(name: str, request: Request, text: str = "",
                     x_upload_key: str = Header(None)):
     """声係が作った音を置き、何を読んだかを覚える（同じ文を二度作らせない）。"""
-    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+    if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
     if not re.fullmatch(r"for_[a-z0-9]+_[0-9]", name):
         raise HTTPException(status_code=400, detail="bad name")
@@ -2972,7 +2972,7 @@ async def compare(before: UploadFile = File(...), after: UploadFile = File(...),
                   focus: str = "", x_upload_key: str = Header(None)):
     """前後2枚を見比べる（試験用の窓口）。記録も保存もしない。
     focusに場所の名前を渡すと、そこだけを見比べる。"""
-    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+    if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
     a, b = await before.read(), await after.read()
     return await _compare_zone(a, b, focus or "シンク")     # 本番と同じ見方C（2026-09-09）
@@ -2998,7 +2998,7 @@ async def map_zones(request: Request, x_upload_key: str = Header(None)):
 
     区画を人が手で決めると、カメラの向きを変えるたびに測り直しになる。
     写真から起こせるなら、置き直しにも付いていける。"""
-    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+    if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
     data = await request.body()
     if not data:
@@ -3156,7 +3156,7 @@ async def zones_reset_score(key: str = ""):
 
     9/12 に「空か」の判定を作り直した（くぼみだけ切り出し）。
     9/11 までの誤報は古い作りでのものなので、背負わせ続ける意味がない。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     st = _load()
     for z in st.get("zones", []):
@@ -3173,7 +3173,7 @@ async def sink_check(request: Request, key: str = "", model: str = "",
     """送った写真1枚について「シンクは空か」だけ答える（2026-09-13）。
 
     記録には何も残さない。見方を直したあと、過去の写真で確かめるための口。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     data = await request.body()
     if not data:
@@ -3739,7 +3739,7 @@ async def aim():
 @router.post("/aim/ref")
 async def aim_ref(key: str = ""):
     """いまの画角を「見本」として覚える。据え付けが決まったときに一度押す。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     data = read_object("spirit/latest.jpg")
     if data is None:
@@ -3778,7 +3778,7 @@ async def zones_status():
 @router.post("/zones/refresh")
 async def zones_refresh(key: str = ""):
     """画角を変えたときに、区画を立て直す。成績もやり直す。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     data = read_object("spirit/latest.jpg")
     if data is None:
@@ -3889,7 +3889,7 @@ async def notion_test(key: str = ""):
     """Notion「地霊の記録」に試しの1行を書けるかを、その場で確かめる（週1点検にも使う）。
 
     2026-09-10 夜：見回りは走ったのに行が出ず、原因が推測しかできなかったので足した。"""
-    if UPLOAD_KEY and key != UPLOAD_KEY:
+    if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
     token = os.environ.get("SPIRIT_NOTION_TOKEN", "")
     dbid = os.environ.get("SPIRIT_NOTION_DB", "")

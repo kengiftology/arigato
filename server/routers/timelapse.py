@@ -14,7 +14,7 @@ logger = logging.getLogger("timelapse")
 
 # Cloud Run の環境変数 TIMELAPSE_KEY と一致したときだけ受け付ける。
 # 未設定なら認証なし（ローカル検証用）。
-UPLOAD_KEY = os.environ.get("TIMELAPSE_KEY", "")
+from server.keys import key_ok
 
 # Notion 連携（両方設定されているときだけ動く）
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN", "")
@@ -70,7 +70,7 @@ async def upload_frame(
     """ESP32-CAMから生のJPEGを受け取り、GCSの timelapse/ 配下に保存する。
     body = JPEGバイト列そのまま（multipartではない）。
     保存後、バックグラウンドでNotionデータベースにも1行追加する。"""
-    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+    if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
 
     data = await request.body()

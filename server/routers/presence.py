@@ -12,7 +12,7 @@ JST = timezone(timedelta(hours=9))
 logger = logging.getLogger("presence")
 
 # タイムラプスと同じキーで認証する（未設定ならローカル検証用に認証なし）
-UPLOAD_KEY = os.environ.get("TIMELAPSE_KEY", "")
+from server.keys import key_ok
 
 
 @router.post("")
@@ -21,7 +21,7 @@ async def report_presence(
     x_upload_key: str = Header(None),
 ):
     """AtomS3（PIR）から「人の気配を検知した」イベントを受け取り、Firestoreに記録する。"""
-    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+    if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
 
     zone = re.sub(r"[^A-Za-z0-9_-]", "", zone) or "default"
@@ -45,7 +45,7 @@ async def recent_presence(
     x_upload_key: str = Header(None),
 ):
     """直近の気配イベントを返す（確認・分析用）。"""
-    if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
+    if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
 
     db = get_db()

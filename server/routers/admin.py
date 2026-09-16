@@ -10,7 +10,7 @@ from google.cloud import firestore
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 # TIMELAPSE_KEY を管理操作の共通キーとして流用（未設定なら認証なし＝ローカル用）
-ADMIN_KEY = os.environ.get("TIMELAPSE_KEY", "")
+from server.keys import key_ok
 
 
 @router.get("/stats")
@@ -57,7 +57,7 @@ async def fix_photos(x_key: str = Header("")):
 
     upload_photo が変換を内蔵する前に投稿されたレコードの修復用（何度実行しても安全）。
     """
-    if ADMIN_KEY and x_key != ADMIN_KEY:
+    if not key_ok(x_key):
         raise HTTPException(status_code=401, detail="invalid key")
 
     db = get_db()
