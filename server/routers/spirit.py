@@ -488,6 +488,15 @@ FACE_MIN_FRAMES_SMALL = 3 # 小さい顔は3コマ揃うまで決めない
 #   似すぎなら入れず、違えば一番かぶった1本と交換  中央0.439 ／ 結べない 13%
 # 「時間帯をばらす」だけでは効かない（43%のまま）。効くのは見え方の違い。
 FACE_SAME_LOOK = 0.70     # これ以上似た覚えを既に持っていたら、入れない
+# 覚えに足してよいのは、はっきり本人と言えるときだけ（2026-09-16）。
+# 0.30で結びついた顔をそのまま覚えに足していたので、まれな取り違え（他人の顔）が
+# 覚えに残り、次はその他人がもっと合う……と雪だるま式に乗っ取られた
+# （p01：9/12 に本人8/8 → 9/14 に本人2・別の人4）。しかも入れ替えは「違う見え方」を
+# 優先して入れ、「一番かぶった1本」＝本人らしい顔から捨てる。
+# 本人が手で分けた2,675枚を時刻順に再生（2人だけ登録・他の人は未登録＝本番の形）：
+#   B・C登録  足す線0.30 別人39.3% → 0.40 で 5.7%
+#   C・D登録  足す線0.30 別人15.0% → 0.40 で 0.7%（0.35は5.5%・0.45は0.8%）
+FACE_LEARN_SIM = 0.40
 # 「人ではないもの」の覚え（2026-09-12 夜）。鍋・五徳・棚を顔と見てしまうのは
 # 顔認識では解けない——重いモデルほどひどく、glint360k_r100 は24枚中23枚を
 # 人に結びつけた。代わりに「これは人ではない」を覚えておいて弾く。
@@ -783,7 +792,7 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
         pid = _new_person_id()
         now2 = time.time()
         past = _take_candidates(vec, now2)        # 前に通りかかったときの顔
-        db.collection("faces").document(pid).set(
+        db.collection("faces").document(pid).create(     # 既にあれば失敗する（上書きしない）
             {"vecs": [{"v": v} for v in past] + [{"v": vec}],
              "born": now2, "persona": "", "state": "egg"})
         _log_event("arrive", dict(note, person=pid, state="new_egg", from_past=len(past)))
@@ -792,7 +801,9 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
     vecs = doc.get("vecs", [])
     # 2026-09-12：5枚→8枚。同じ4人・同じ境目での実測で、新しいIDが
     # 生まれる率が 8.2% → 3.8% と半分以下になった。計算は増えない。
-    if len(vecs) < FACE_MEMORY:                      # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
+    if sim < FACE_LEARN_SIM:
+        pass                                         # 結びつけはするが、覚えには足さない
+    elif len(vecs) < FACE_MEMORY:                    # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
         vecs.append({"v": vec})
         db.collection("faces").document(pid).update({"vecs": vecs})
     else:
@@ -967,7 +978,9 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     """
     if UPLOAD_KEY and x_upload_key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
+    _t_body = time.perf_counter()              # 写真を受け取り終えるまでも測る（2026-09-15）
     data = await request.body()
+    _body_ms = round(1000 * (time.perf_counter() - _t_body))
     if not data:
         raise HTTPException(status_code=400, detail="empty body")
     if raw:                                    # 生の白黒（例 raw=640x480）はJPEGへ直す
@@ -983,7 +996,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     # （18:41〜18:43、人が立ちっぱなしの2分間で20枚）。送るのはラズパイだが、
     # 待たせているのがクラウドなのか回線なのか、推測しかできなかった。
     _t0 = time.perf_counter()
-    _ms = {}
+    _ms = {"body": _body_ms}
     def _lap(name):
         nonlocal _t0
         _ms[name] = round(1000 * (time.perf_counter() - _t0))
@@ -1102,8 +1115,9 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     # 1枚だけ。見回りは hint() が「人が去って静かになった」ときにだけ出す。
     if not check:
         _save(st)
+        _lap("save")
         return {"ok": True, "judged": False, "why": "wait_for_check",
-                "hires": now < st.get("want_hires", 0)}
+                "hires": now < st.get("want_hires", 0), "ms": _ms}
     if now - st["day_start"] > 86400:
         st["day_start"], st["day_calls"] = now, 0
     if st["day_calls"] >= JUDGE_DAILY_CAP:
@@ -1685,12 +1699,43 @@ def _known_faces() -> dict:
 
 
 def _new_person_id() -> str:
-    """匿名IDを発行（連番のみ・誰なのかは記録しない）。"""
+    """匿名IDを発行（連番のみ・誰なのかは記録しない）。
+
+    2026-09-16：番号を使い回さない。以前は「今いる人数＋1」で、p02 を消して
+    p01・p03 の2人になると、次の新しい人も p03 になり、元の p03 を
+    .set() で上書きしていた（9/15 01:00〜01:06、C と D が交互に p03 を上書き）。
+    発行した一番大きい番号を覚えておき、その次を出す。消した番号は二度と使わない。"""
+    db = get_db()
+    ref = db.collection("spirit_meta").document("ids")
     try:
-        n = len(list(get_db().collection("faces").stream())) + 1
+        last = int((ref.get().to_dict() or {}).get("last_person") or 0)
     except Exception:
-        n = 1
+        last = 0
+    try:
+        for d in db.collection("faces").stream():
+            m = re.match(r"p(\d+)$", d.id)
+            if m:
+                last = max(last, int(m.group(1)))
+    except Exception:
+        pass
+    n = last + 1
+    try:
+        ref.set({"last_person": n}, merge=True)
+    except Exception as e:
+        logger.warning("person id counter save failed: %s", e)
     return "p%02d" % n
+
+
+def _new_person_id_floor() -> None:
+    """いまある顔の一番大きい番号を、発行済みとして残す（消す前に呼ぶ）。"""
+    db = get_db()
+    ref = db.collection("spirit_meta").document("ids")
+    last = int((ref.get().to_dict() or {}).get("last_person") or 0)
+    for d in db.collection("faces").stream():
+        m = re.match(r"p(\d+)$", d.id)
+        if m:
+            last = max(last, int(m.group(1)))
+    ref.set({"last_person": last}, merge=True)
 
 
 def _raw_gray_to_jpeg(data: bytes, w: int, h: int) -> bytes:
@@ -1734,13 +1779,13 @@ async def arrive(request: Request, raw: str = "", x_upload_key: str = Header(Non
             if not _confirm_new(vec):                    # 一度きりの見え方は信用しない
                 return {"person": "unknown", "state": "not_sure"}
             pid = _new_person_id()
-            db.collection("faces").document(pid).set(
+            db.collection("faces").document(pid).create(   # 既にあれば失敗する（上書きしない）
                 {"vecs": [{"v": vec}], "born": time.time(), "persona": "", "state": "egg"})
             _log_event("arrive", {"person": pid, "state": "new_egg", "sim": round(sim, 3)})
             return {"person": pid, "state": "egg"}
         doc = db.collection("faces").document(pid).get().to_dict() or {}
         vecs = doc.get("vecs", [])
-        if len(vecs) < FACE_MEMORY:                  # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
+        if sim >= FACE_LEARN_SIM and len(vecs) < FACE_MEMORY:   # はっきり本人のときだけ覚え直す
             vecs.append({"v": vec})
             db.collection("faces").document(pid).update({"vecs": vecs})
         state = "ready" if doc.get("persona") else "egg"
@@ -2132,6 +2177,9 @@ async def clear_faces(key: str = ""):
         raise HTTPException(status_code=401, detail="bad key")
     n = 0
     try:
+        # 消す前に、発行済みの一番大きい番号を残す（2026-09-16）。残さないと次の人が
+        # また p01 になり、前の p01 向けに作った一言（for_p01_*）がその人に鳴る。
+        _new_person_id_floor()
         for d in get_db().collection("faces").stream():
             d.reference.delete()
             n += 1
