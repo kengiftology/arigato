@@ -16,6 +16,7 @@ VOICEVOX ENGINE が 127.0.0.1:50021 で動いている必要がある（~/vv_sta
 import argparse
 import io
 import json
+import os
 import sys
 import time
 import urllib.parse
@@ -25,7 +26,7 @@ import wave
 API = "http://127.0.0.1:50021"
 SPEAKER = 3                     # ずんだもん（ノーマル）
 CLOUD = "https://arigato-3ipecjbnha-an.a.run.app"
-KEY = "06dc964a3cdd2c4f4c5c1d8592dff543"
+KEY = os.environ.get("SPIRIT_KEY", "")   # 鍵はリポジトリに置かない（9/16入れ替え）。ラズパイは ~/spirit_brain/spirit.env
 GAP = 30.0                      # クラウドを覗きにいく間隔（秒）
 RATE = 16000                    # C3のI2Sは 16kHz・16bit・モノラル
 

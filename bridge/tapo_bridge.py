@@ -33,11 +33,13 @@ Tapoは家のネットワークの中にいるので、クラウドから直接�
   普段の1枚では3件中2件が届かない。主ストリームを基準コマだけ開いて
   流しつづけ、人が動いている間はそちらを送る。
 """
+import http.client
 import json
 import os
 import subprocess
 import threading
 import time
+import urllib.parse
 import urllib.request
 
 try:                                   # 手元では bridge/ の下、ラズパイでは同じ場所
@@ -49,7 +51,7 @@ except ImportError:
 
 CAM_URL = os.environ.get("TAPO_URL", "rtsp://thankU:39Kitchen@192.168.0.230:554/stream1")
 SERVER = os.environ.get("SPIRIT_SERVER", "https://arigato-3ipecjbnha-an.a.run.app")
-KEY = os.environ.get("SPIRIT_KEY", "06dc964a3cdd2c4f4c5c1d8592dff543")
+KEY = os.environ.get("SPIRIT_KEY", "")   # 鍵はリポジトリに置かない（9/16入れ替え）。ラズパイは ~/spirit_brain/spirit.env
 SHOT = "/tmp/tapo.jpg"          # 常に最新の1枚が置かれる（ffmpegが書き替えつづける）
 
 # 見張りと定時報告は副ストリーム（1280x720）から取る。
@@ -77,7 +79,7 @@ HIRES_GAP = 8.0                              # 撮り直しを頼まれたとき
 # 動いているように見える（実際に5時間気づけなかった）。
 SHOT_STALE_LIMIT = 90.0
 
-GAP_BUSY = 3.0        # 動きがある間、クラウドへ送る最短間隔
+GAP_BUSY = 1.5        # 動きがある間、クラウドへ送る最短間隔（9/16に3.0→1.5。実測の間隔は中央3.8秒・平均4.7秒だった）
 GAP_ARRIVE = 1.5      # 動き始めの最初のうちは、もっと細かく送る（2026-09-10）
 ARRIVE_SEC = 30.0     # その「最初のうち」の長さ。入ってくる人の正面は1回の入室で3〜4コマしか無く、
                       # 3秒に1枚だと半分がクラウドに届かなかった（実測）。登録は25秒に2回要る
@@ -323,10 +325,12 @@ class Watcher(threading.Thread):
 def _read_fresh(path: str, max_age: float) -> bytes | None:
     """できあがっている1枚を読む。古ければNone。書きかけも捨てる。"""
     try:
-        if time.time() - os.path.getmtime(path) > max_age:
+        age = time.time() - os.path.getmtime(path)
+        if age > max_age:
             return None                       # 映像が止まっている
         with open(path, "rb") as f:
             data = f.read()
+        _read_age[0] = age                    # 送る1枚が何秒前のものか（計測用）
         return data if data[-2:] == b"\xff\xd9" else None
     except Exception as e:
         print("grab failed:", path, e, flush=True)
@@ -346,6 +350,11 @@ def grab_big(max_age: float = HIRES_MAX_AGE) -> bytes | None:
     こちらを送る。誰も居ない定時報告では副ストリームで足りる。"""
     return _read_fresh(HIRES_SHOT, max_age)
 
+
+TIMING = os.environ.get("BRIDGE_TIMING", "1") == "1"   # 送信の内訳を1枚ごとに記録に出す（9/15計測）
+_read_age = [0.0]      # 最後に読んだ1枚が何秒前のものか
+_last_end = [0.0]      # 前の送信が終わった時刻
+_conn = [None]         # 使い回すクラウドへの接続
 
 _pose = [""]           # いまカメラが向いている先。写真に添えて送る
 _home = ["%.2f_%.2f" % sweep.HOME]      # 待機位置。クラウドから読み直せる
@@ -409,11 +418,55 @@ def send(jpg: bytes, big: bool = False, check: bool = False) -> dict:
     撮れないので、クラウドに同じ頼みを繰り返させない。"""
     url = (SERVER + "/spirit/frame?pose=" + _pose[0]
            + ("&big=1" if big else "") + ("&check=1" if check else ""))
-    req = urllib.request.Request(
-        url, data=jpg,
-        headers={"Content-Type": "image/jpeg", "X-Upload-Key": KEY})
-    with urllib.request.urlopen(req, timeout=40) as r:
-        return json.loads(r.read().decode())
+    if not TIMING:
+        req = urllib.request.Request(
+            url, data=jpg,
+            headers={"Content-Type": "image/jpeg", "X-Upload-Key": KEY})
+        with urllib.request.urlopen(req, timeout=40) as r:
+            return json.loads(r.read().decode())
+
+    # 1枚にかかる時間の内訳（2026-09-15）。設定3秒に対し実測6.45秒（9/15の465回）。
+    # クラウドの ms は写真を受け取り終わってから数えるので、送る時間が入っていない。
+    # 繋ぐ／送り終える／返事の頭が来る／読み終える、に分けてラズパイ側で測る。
+    #
+    # 繋ぐのに毎回 0.19秒（中央）〜0.75秒（9割）かかっていた（9/15の2716回）。
+    # 同じ接続を使い回し、切れていたら1回だけ繋ぎ直す（2026-09-16）。
+    # 送るのはすべて main の流れからなので、接続は1本で足りる。
+    u = urllib.parse.urlsplit(url)
+    t0 = time.time()
+    for attempt in (1, 2):
+        conn = _conn[0]
+        try:
+            if conn is None:
+                conn = _conn[0] = http.client.HTTPSConnection(u.hostname, timeout=40)
+                conn.connect()
+            t1 = time.time()
+            conn.request("POST", u.path + "?" + u.query, body=jpg,
+                         headers={"Content-Type": "image/jpeg", "X-Upload-Key": KEY})
+            t2 = time.time()
+            r = conn.getresponse()
+            t3 = time.time()
+            body = r.read()
+            t4 = time.time()
+            break
+        except (http.client.HTTPException, OSError):
+            try:
+                conn.close()
+            except Exception:
+                pass
+            _conn[0] = None
+            if attempt == 2:
+                raise
+    res = json.loads(body.decode())
+    srv = sum((res.get("ms") or {}).values())
+    idle = t0 - _last_end[0] if _last_end[0] else -1.0
+    _last_end[0] = t4
+    print(time.strftime("%H:%M:%S"),
+          "計測 前の送信から=%.2f 写真の古さ=%.2f %dKB 繋ぐ=%.2f 送る=%.2f 返事待ち=%.2f"
+          " 読む=%.2f 計=%.2f クラウド内=%.2f %s"
+          % (idle, _read_age[0], len(jpg) // 1024, t1 - t0, t2 - t1, t3 - t2,
+             t4 - t3, t4 - t0, srv / 1000, res.get("why")), flush=True)
+    return res
 
 
 def hint() -> str:

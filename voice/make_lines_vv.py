@@ -10,6 +10,7 @@
 クレジット: VOICEVOX:ずんだもん
 """
 import argparse
+import os
 import io
 import json
 import subprocess
@@ -27,7 +28,7 @@ OUT = HERE / "work" / "lines_vv"
 API = "http://127.0.0.1:50021"
 SPEAKER = 3                                          # ずんだもん（ノーマル）
 CLOUD = "https://arigato-3ipecjbnha-an.a.run.app/spirit/lines/"
-KEY = "06dc964a3cdd2c4f4c5c1d8592dff543"             # 橋渡し機と同じ鍵
+KEY = os.environ.get("SPIRIT_KEY", "")   # 鍵はリポジトリに置かない（9/16入れ替え）。ラズパイは ~/spirit_brain/spirit.env
 
 
 def synth(text: str, path: Path):
