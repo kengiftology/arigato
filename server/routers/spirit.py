@@ -488,15 +488,6 @@ FACE_MIN_FRAMES_SMALL = 3 # 小さい顔は3コマ揃うまで決めない
 #   似すぎなら入れず、違えば一番かぶった1本と交換  中央0.439 ／ 結べない 13%
 # 「時間帯をばらす」だけでは効かない（43%のまま）。効くのは見え方の違い。
 FACE_SAME_LOOK = 0.70     # これ以上似た覚えを既に持っていたら、入れない
-# 覚えに足してよいのは、はっきり本人と言えるときだけ（2026-09-16）。
-# 0.30で結びついた顔をそのまま覚えに足していたので、まれな取り違え（他人の顔）が
-# 覚えに残り、次はその他人がもっと合う……と雪だるま式に乗っ取られた
-# （p01：9/12 に本人8/8 → 9/14 に本人2・別の人4）。しかも入れ替えは「違う見え方」を
-# 優先して入れ、「一番かぶった1本」＝本人らしい顔から捨てる。
-# 本人が手で分けた2,675枚を時刻順に再生（2人だけ登録・他の人は未登録＝本番の形）：
-#   B・C登録  足す線0.30 別人39.3% → 0.40 で 5.7%
-#   C・D登録  足す線0.30 別人15.0% → 0.40 で 0.7%（0.35は5.5%・0.45は0.8%）
-FACE_LEARN_SIM = 0.40
 # 「人ではないもの」の覚え（2026-09-12 夜）。鍋・五徳・棚を顔と見てしまうのは
 # 顔認識では解けない——重いモデルほどひどく、glint360k_r100 は24枚中23枚を
 # 人に結びつけた。代わりに「これは人ではない」を覚えておいて弾く。
@@ -801,9 +792,7 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
     vecs = doc.get("vecs", [])
     # 2026-09-12：5枚→8枚。同じ4人・同じ境目での実測で、新しいIDが
     # 生まれる率が 8.2% → 3.8% と半分以下になった。計算は増えない。
-    if sim < FACE_LEARN_SIM:
-        pass                                         # 結びつけはするが、覚えには足さない
-    elif len(vecs) < FACE_MEMORY:                    # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
+    if len(vecs) < FACE_MEMORY:                    # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
         vecs.append({"v": vec})
         db.collection("faces").document(pid).update({"vecs": vecs})
     else:
@@ -1785,7 +1774,7 @@ async def arrive(request: Request, raw: str = "", x_upload_key: str = Header(Non
             return {"person": pid, "state": "egg"}
         doc = db.collection("faces").document(pid).get().to_dict() or {}
         vecs = doc.get("vecs", [])
-        if sim >= FACE_LEARN_SIM and len(vecs) < FACE_MEMORY:   # はっきり本人のときだけ覚え直す
+        if len(vecs) < FACE_MEMORY:                  # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
             vecs.append({"v": vec})
             db.collection("faces").document(pid).update({"vecs": vecs})
         state = "ready" if doc.get("persona") else "egg"
@@ -2168,24 +2157,35 @@ async def notfaces_list():
 
 
 @router.post("/faces/clear")
-async def clear_faces(key: str = ""):
+async def clear_faces(key: str = "", restart: int = 0):
     """覚えた顔をすべて忘れる。
 
     誤検出でできたIDが混ざると、以後の照合がその分だけ狂う。
-    数が少ないうちは、選んで消すより一度まっさらにするほうが確実。"""
+    数が少ないうちは、選んで消すより一度まっさらにするほうが確実。
+
+    restart=1 は「最初からやり直す」（2026-09-16・本人の希望：番号も p01 から）。
+    番号を戻すなら、前の人に結びついていたものを全部消す。残すと、新しい p01 に
+    前の p01 向けの一言（for_p01_*）が鳴る。restart なしのときは番号を戻さない。"""
     if UPLOAD_KEY and key != UPLOAD_KEY:
         raise HTTPException(status_code=401, detail="bad key")
     n = 0
     try:
         # 消す前に、発行済みの一番大きい番号を残す（2026-09-16）。残さないと次の人が
         # また p01 になり、前の p01 向けに作った一言（for_p01_*）がその人に鳴る。
-        _new_person_id_floor()
+        if not restart:
+            _new_person_id_floor()
         for d in get_db().collection("faces").stream():
             d.reference.delete()
             n += 1
+        if restart:
+            get_db().collection("spirit_meta").document("ids").set({"last_person": 0}, merge=True)
+            lines = delete_prefix(LINES_PREFIX + "for_p")    # 人ごとの声（for_new は残す）
+            _line_cache["at"] = 0.0
     except Exception as e:
         return {"ok": False, "error": str(e)}
     st = _load()
+    if restart:
+        st["seen_at"], st["visit_of"] = {}, {}
     # 顔を消しても「いま居る人」の覚えに古いIDが残り、次の見回りの滞在に
     # 消したはずの p02 が付いていた（2026-09-10 13:44）。一緒に忘れる。
     st["cur_person"] = st["cur_state"] = None
@@ -2197,8 +2197,9 @@ async def clear_faces(key: str = ""):
     st["cur_person"] = None
     st["cur_state"] = None
     _save(st)
-    _log_event("faces_clear", {"deleted": n})
-    return {"ok": True, "deleted": n}
+    _log_event("faces_clear", {"deleted": n, "restart": bool(restart)})
+    return {"ok": True, "deleted": n, "restart": bool(restart),
+            "lines_deleted": lines if restart else 0}
 
 
 @router.get("/similar")
