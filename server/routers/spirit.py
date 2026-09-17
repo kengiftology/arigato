@@ -500,6 +500,25 @@ FACE_MIN_FRAMES_SMALL = 3 # 小さい顔は3コマ揃うまで決めない
 #   似すぎなら入れず、違えば一番かぶった1本と交換  中央0.439 ／ 結べない 13%
 # 「時間帯をばらす」だけでは効かない（43%のまま）。効くのは見え方の違い。
 FACE_SAME_LOOK = 0.70     # これ以上似た覚えを既に持っていたら、入れない
+# 判定を3つに分ける（2026-09-17・研究トークA）。
+# 9/16 21:41:59、本人の傾いた顔（起き具合1.42）が p01 0.24 / p02 0.302 で、
+# 境目0.30をわずかに超えて p02 に決まり、そのまま p02 の覚えに入った。翌日には
+# 本人が p02 に 0.806 で付いた（p02 の27枚中9枚が別人）。
+# 根は「境目が低い」「決まるたび無条件に覚え直す」「外れた顔ほど覚えに残る入れ替え」。
+#   確定：重心との点数が 正面 0.35 以上／傾き 0.40 以上 → IDを付ける
+#   保留：0.25 以上で確定に届かない → IDを付けない・新しい人も作らない・覚えも変えない
+#   新規：全員と 0.25 未満 → これまでどおり新しい人の条件を見る
+# 本人の分類で再生（9/16 18:06〜9/17 の325枚・何も覚えていない状態から）：
+#   別人に付いた顔 今の規則 4枚 → この規則 0枚（実際の本番は9枚）
+# 同じく 9/12〜9/15 の2,306枚：別人 3枚 → 0枚（IDが付く顔は 1,008 → 885 に減る）
+FACE_CONFIRM_FRONT = 0.35
+FACE_CONFIRM_TILT = 0.40
+FACE_HOLD = 0.25
+# 覚えに足すのは、正面で・点数 0.45 以上で・最初に覚えた顔（核）と 0.40 以上似ているときだけ。
+# 満杯なら、核は残し、重心から一番遠い1本を捨てる（以前は「一番ありふれた1本」を捨てて
+# 外れ値＝他人の顔を残していた）。
+FACE_LEARN_SIM = 0.45
+FACE_CORE_SIM = 0.40
 # 「人ではないもの」の覚え（2026-09-12 夜）。鍋・五徳・棚を顔と見てしまうのは
 # 顔認識では解けない——重いモデルほどひどく、glint360k_r100 は24枚中23枚を
 # 人に結びつけた。代わりに「これは人ではない」を覚えておいて弾く。
@@ -614,6 +633,31 @@ def _log_ms(kind: str, ms: dict, nbytes: int) -> None:
                                     total=sum(ms.values())))
 
 
+def _learn_memory(vecs: list, vec: list, sim: float, front: bool):
+    """確定した顔を覚えに足すか決める（2026-09-17）。足すなら新しい並びを、足さないなら None。
+
+    足すのは、正面で・点数が FACE_LEARN_SIM 以上で・最初に覚えた1本（核）と
+    FACE_CORE_SIM 以上似ているときだけ。境目ぎりぎりで決まった顔は、判定には使うが覚えない。
+    満杯なら、核（先頭）は残し、残りのうち重心から一番遠い1本を捨てる。"""
+    import numpy as np
+    try:
+        if not front or sim < FACE_LEARN_SIM or not vecs:
+            return None
+        M = np.asarray([v["v"] for v in vecs], dtype=np.float32)
+        v = np.asarray(vec, dtype=np.float32)
+        if M.shape[1] != v.shape[0] or float(M[0] @ v) < FACE_CORE_SIM:
+            return None
+        if len(vecs) < FACE_MEMORY:
+            return list(vecs) + [{"v": vec}]
+        c = M.mean(axis=0)
+        c = c / (np.linalg.norm(c) + 1e-9)
+        far = 1 + int(np.argmin(M[1:] @ c))
+        return [x for i, x in enumerate(vecs) if i != far] + [{"v": vec}]
+    except Exception as e:
+        logger.warning("memory learn failed: %s", e)
+        return None
+
+
 def _refresh_memory(vecs: list, vec: list):
     """覚えが満杯のとき、新しい見え方を入れるべきか決める。
 
@@ -693,12 +737,15 @@ def _identify(st: dict, data: bytes):
     # 人数では分けない。似ている顔だけを束ねるので、2人写っていても
     # それぞれの顔が別々にまとまる（2026-09-12 夜）。
     people = []
+    taken = set()        # 同じ写真に写っている2人は別人（2026-09-17）。先に決まったIDは他の顔に付けない
     for f in found:
         r = _identify_one(st, f["crop"], f["px"], f.get("edge"), f.get("pos"),
-                          f.get("up"), f.get("ratio"), f.get("pts"), f.get("front"))
+                          f.get("up"), f.get("ratio"), f.get("pts"), f.get("front"),
+                          taken=taken)
         _collect_face(f, (r or {}).get("person", ""))
         if r:
             people.append(r)
+            taken.add(r["person"])
     if not people:
         return {"person": None, "px": px}
     # 先頭＝一番大きく写っている人。いま目の前に居る相手として扱う。
@@ -708,7 +755,7 @@ def _identify(st: dict, data: bytes):
 
 
 def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
-                  up: bool = True, ratio=None, pts=None, front: bool = True):
+                  up: bool = True, ratio=None, pts=None, front: bool = True, taken=None):
     """切り抜き1つを匿名IDに結びつける。
 
     この1枚だけでは決めない。直近25秒ぶんの顔から「同じ顔」だけを束ね、
@@ -754,7 +801,16 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
         # 誰かは決めない（次のコマが届けば2枚揃って決まる・数秒後）。
         _log_small("one_frame", px, sim=round(sim1, 3), n=n, need=need)
         return None
-    pid, sim = face.match_frames(frames, known)
+    scores = {k: v for k, v in face.score_frames(frames, known).items() if k not in (taken or ())}
+    pid = max(scores, key=scores.get) if scores else None
+    sim = scores[pid] if pid else 0.0
+    if pid is not None and sim < (FACE_CONFIRM_FRONT if front else FACE_CONFIRM_TILT):
+        if sim >= FACE_HOLD:
+            # 保留：誰かに似ているが、言い切れない。名前を付けず、新しい人も作らず、覚えも変えない。
+            _log_small("hold", best_px, sim=round(sim, 3), who=pid, n=n,
+                       ratio=round(ratio, 2) if ratio else None)
+            return None
+        pid = None                                   # 全員と遠い → 新しい人の候補
     vec = one                                        # 覚えに足すのは、いまの1枚
     note = {"sim": round(sim, 3), "sim1": round(sim1, 3), "n": n, "px": best_px}
     db = get_db()
@@ -804,15 +860,10 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
     vecs = doc.get("vecs", [])
     # 2026-09-12：5枚→8枚。同じ4人・同じ境目での実測で、新しいIDが
     # 生まれる率が 8.2% → 3.8% と半分以下になった。計算は増えない。
-    if len(vecs) < FACE_MEMORY:                    # 見るたび少しずつ覚え直す（眼鏡・照明差に強くする）
-        vecs.append({"v": vec})
-        db.collection("faces").document(pid).update({"vecs": vecs})
-    else:
-        # 満杯。ここで打ち止めにすると、最初の数十分で埋まった見え方のまま
-        # 一生変わらない。違う見え方が来たら、一番かぶっている1本と入れ替える。
-        kept = _refresh_memory(vecs, vec)
-        if kept is not None:
-            db.collection("faces").document(pid).update({"vecs": kept})
+    kept = _learn_memory(vecs, vec, sim, front)
+    if kept is not None:
+        db.collection("faces").document(pid).update({"vecs": kept})
+        if len(kept) == len(vecs):
             _log_event("memory_swap", {"person": pid, "shots": len(kept)})
     state = "ready" if doc.get("persona") else "egg"
     _log_event("arrive", dict(note, person=pid, state=state))
@@ -2247,6 +2298,29 @@ async def clear_faces(key: str = "", restart: int = 0):
     _log_event("faces_clear", {"deleted": n, "restart": bool(restart)})
     return {"ok": True, "deleted": n, "restart": bool(restart),
             "lines_deleted": lines if restart else 0}
+
+
+@router.post("/faces/{pid}/vecs")
+async def set_face_vecs(pid: str, request: Request, key: str = ""):
+    """ある人の覚えを、手で選んだ顔に差し替える（2026-09-17・本人の希望）。
+
+    覚えに別の人が混ざったとき、その人のなつき度・一言・生まれた時刻は残したまま、
+    覚えだけを本人が分類した正しい顔に入れ替える。先頭の1本が核になる。
+    本文は {"vecs": [[512個の数値], ...]}。人がいなければ作らない（404）。"""
+    if not key_ok(key):
+        raise HTTPException(status_code=401, detail="bad key")
+    if not re.fullmatch(r"p\d+", pid):
+        raise HTTPException(status_code=400, detail="bad id")
+    body = await request.json()
+    vecs = body.get("vecs") or []
+    if not vecs or len(vecs) > FACE_MEMORY or any(len(v) != 512 for v in vecs):
+        raise HTTPException(status_code=400, detail="vecs must be 1-%d lists of 512" % FACE_MEMORY)
+    ref = get_db().collection("faces").document(pid)
+    if not ref.get().exists:
+        raise HTTPException(status_code=404, detail="no such person")
+    ref.update({"vecs": [{"v": [float(x) for x in v]} for v in vecs]})
+    _log_event("face_vecs_set", {"person": pid, "shots": len(vecs), "why": body.get("why", "")[:120]})
+    return {"ok": True, "person": pid, "shots": len(vecs)}
 
 
 @router.get("/similar")

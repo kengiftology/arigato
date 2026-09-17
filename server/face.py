@@ -277,6 +277,29 @@ def match(vec: list, known: dict) -> tuple:
     return match_frames([vec], known)
 
 
+def score_frames(vecs: list, known: dict) -> dict:
+    """IDごとの点数 {ID: 点数}。束ねたコマそれぞれと、そのIDの覚えの「重心」との類似度の平均（2026-09-17）。
+
+    以前は「覚え8本のうち一番似た1本」で比べていた。本数が増えるほど他人の点も
+    上振れし、しかも覚えに他人が1本混ざると、その1本が他人を呼び込む。
+    本人が分類した2,237枚（5人）で、覚え8本・2コマ平均の条件で比べると：
+      正面  一番似た1本：線0.35で 本人89.9%・他人0.12%／重心：本人92.2%・他人0.02%
+      傾き  一番似た1本：線0.40で 本人61.1%・他人0.01%／重心：本人70.5%・他人0.00%"""
+    vs = [np.asarray(v, dtype=np.float32) for v in (vecs or []) if v]
+    out = {}
+    if not vs:
+        return out
+    for pid, kvs in (known or {}).items():
+        ks = [np.asarray(kv, dtype=np.float32) for kv in kvs]
+        ks = [k for k in ks if k.shape == vs[0].shape]
+        if not ks:
+            continue
+        c = np.mean(ks, axis=0)
+        c = c / (np.linalg.norm(c) + 1e-9)
+        out[pid] = float(np.mean([float(np.dot(v, c)) for v in vs]))
+    return out
+
+
 def match_frames(vecs: list, known: dict) -> tuple:
     """1回の入室ぶん（数コマ）をまとめて、誰かを1つ決める（2026-09-12）。
 
@@ -288,20 +311,11 @@ def match_frames(vecs: list, known: dict) -> tuple:
       2コマまとめる  本人95.6% ／ 別人と間違える1.2%   ← 6分の1になる
       3コマまとめる  本人96.2% ／ 別人と間違える1.2%
     3コマ以上はほとんど変わらないので、2コマ揃えば決めてよい。"""
-    vs = [np.asarray(v, dtype=np.float32) for v in (vecs or []) if v]
-    if not vs or not known:
+    sc = score_frames(vecs, known)
+    if not sc:
         return None, 0.0
-    best_id, best = None, 0.0
-    for pid, kvs in known.items():
-        ks = [np.asarray(kv, dtype=np.float32) for kv in kvs]
-        # 覚えの長さが違うものは、モデルを差し替える前の古い覚え。混ぜると壊れる。
-        ks = [k for k in ks if k.shape == vs[0].shape]
-        if not ks:
-            continue
-        per = [max(float(np.dot(v, k)) for k in ks) for v in vs]     # 内積＝似ている度
-        s = sum(per) / len(per)
-        if s > best:
-            best, best_id = s, pid
+    best_id = max(sc, key=sc.get)
+    best = sc[best_id]
     return (best_id, best) if best >= _SIM_THRESHOLD else (None, best)
 
 
