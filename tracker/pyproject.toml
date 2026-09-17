@@ -1,0 +1,12 @@
+[project]
+name = "arigato-tracker"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "coremltools>=9.0",
+    "insightface>=2.0",
+    "lap>=0.5.13",
+    "numpy>=2.4.6",
+    "onnxruntime>=1.30.0",
+    "ultralytics>=8.4.154",
+]
