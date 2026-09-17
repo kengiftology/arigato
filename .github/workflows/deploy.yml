@@ -53,6 +53,25 @@ jobs:
             --project ${{ secrets.GCP_PROJECT_ID }} \
             --set-env-vars "GCS_BUCKET=arigato-photos,VAPID_EMAIL=${{ secrets.VAPID_EMAIL }},VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }},VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }},ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }},TIMELAPSE_KEY=${{ secrets.TIMELAPSE_KEY }},TIMELAPSE_KEY_PREV=${{ secrets.TIMELAPSE_KEY_PREV }},NOTION_TOKEN=${{ secrets.NOTION_TOKEN }},NOTION_DATABASE_ID=${{ secrets.NOTION_DATABASE_ID }},SPIRIT_NOTION_TOKEN=${{ secrets.SPIRIT_NOTION_TOKEN }},SPIRIT_NOTION_DB=${{ secrets.SPIRIT_NOTION_DB }},FACE_ENABLED=1"
 
+      # 入れ替えたあと、主な口が生きているか確かめる（2026-09-17）。
+      # 9/13夜は入れ替え直後に /spirit の口が全部404になり、12時間だれも気づけなかった。
+      # 失敗すればこの実行が赤くなり、GitHub から本人にメールが届く。
+      - name: Check the main endpoints answer after deploy
+        run: |
+          BASE=https://arigato-3ipecjbnha-an.a.run.app
+          sleep 20
+          fail=0
+          for path in /spirit/health /spirit/m /spirit/panel /spirit/presence /spirit/log; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 5 "$BASE$path")
+            echo "GET $path -> $code"
+            [ "$code" = "200" ] || fail=1
+          done
+          # 写真の受け口は、合言葉なしなら 401 が正しい（404 や 5xx なら壊れている）
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '' "$BASE/spirit/frame")
+          echo "POST /spirit/frame (no key) -> $code"
+          [ "$code" = "401" ] || fail=1
+          exit $fail
+
       - name: Show container logs on failure
         if: failure()
         run: |

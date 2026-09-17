@@ -1,0 +1,27 @@
+name: Watch the kitchen devices
+
+# 止まったら気づけるようにする見張り（2026-09-17）。
+# 10分おきに本番の /spirit/health?strict=1 を叩き、カメラ・C3・声の係のどれかが
+# 来なくなっていたら（または本番そのものに届かなければ）この実行を失敗させる。
+# 失敗した実行は、GitHub から本人にメールで届く。
+# ※GitHub の予定実行は混んでいると数分〜十数分遅れる。気づくまでの目安は10〜30分。
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check every device has reported recently
+        run: |
+          body=$(curl -s --retry 3 --retry-delay 10 -w '\n%{http_code}' \
+            https://arigato-3ipecjbnha-an.a.run.app/spirit/health?strict=1)
+          code=$(echo "$body" | tail -1)
+          echo "$body" | head -n -1
+          if [ "$code" != "200" ]; then
+            echo "::error::止まっているかもしれません（HTTP $code）。/spirit/panel を見てください"
+            exit 1
+          fi

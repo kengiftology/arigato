@@ -27,7 +27,7 @@ import base64
 import logging
 
 from fastapi import APIRouter, Request, Header, HTTPException, UploadFile, File
-from fastapi.responses import PlainTextResponse, HTMLResponse, Response
+from fastapi.responses import PlainTextResponse, HTMLResponse, Response, JSONResponse
 
 from server.database import get_db
 from server.storage import upload_to, list_prefix, delete_prefix, read_object
@@ -110,6 +110,18 @@ FACE_ROTATE = 180        # カメラの取り付け向きの補正。待つ向�
 FACE_ENABLED = os.environ.get("FACE_ENABLED", "") == "1"   # 掲示が済むまでは既定でオフ
 
 _identify_err = [""]   # 顔検出の失敗理由（/spirit/facesで確認する）
+
+# 止まったら気づけるように、機械ごとに「最後にクラウドへ来た時刻」を持つ（2026-09-17）。
+# 9/13夜は本番の入れ替えで12時間、9/16朝はラズパイの電圧不足で14時間止まり、
+# どちらも誰も気づけなかった。3つとも決まった間隔で必ず来るので、来なくなったら止まっている。
+#   カメラ＝人がいなくても5分おきに1枚／C3＝10秒おきに /m／声の係＝30秒おきに /todo
+# メモリにだけ持つ（C3は10秒おきに来るので、毎回保存すると書き込みが増えすぎる）。
+# 起動し直すと0に戻るが、そのぶん「起動から◯秒はまだ分からない」として扱う。
+_BOOT_AT = time.time()
+_ALIVE = {"camera": 0.0, "c3": 0.0, "voice": 0.0}
+ALIVE_LIMIT = {"camera": 900, "c3": 120, "voice": 180}   # 来る間隔の3〜12倍。これを超えたら止まっている
+ALIVE_NAME = {"camera": "カメラ（ラズパイの橋渡し役）", "c3": "キャラ（C3）",
+              "voice": "声の係（ラズパイ）"}
 # 人が写る写真を一時的に残す置き場（2026-09-02・研究室の承諾のもと）。
 # 通常は残さない決まりだが、顔の分裂などは写真がないと詰められない。
 # ・専用の置き場にまとめる（他の写真と混ざらないので、まとめて消せる）
@@ -967,6 +979,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     """
     if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
+    _ALIVE["camera"] = time.time()
     _t_body = time.perf_counter()              # 写真を受け取り終えるまでも測る（2026-09-15）
     data = await request.body()
     _body_ms = round(1000 * (time.perf_counter() - _t_body))
@@ -1225,6 +1238,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
 @router.get("/m", response_class=PlainTextResponse)
 async def get_m():
     """C3互換: 'score N flag'（flag 1=無人）。"""
+    _ALIVE["c3"] = time.time()
     st = _load()
     n = _calc_n(st, time.time())
     return "%.3f %.3f %d\n" % (st["score"], n, 1 if st["empty"] else 0)
@@ -1576,6 +1590,39 @@ async def notes_data(limit: int = 50):
         return {"notes": [d.to_dict() for d in docs]}
     except Exception as e:
         return {"notes": [], "error": str(e)}
+
+
+def _health() -> dict:
+    """機械ごとに、最後に来てから何秒たったか・止まっていそうか。"""
+    now = time.time()
+    up = now - _BOOT_AT
+    items, bad = [], []
+    for k, limit in ALIVE_LIMIT.items():
+        t = _ALIVE[k]
+        ago = round(now - t) if t else None
+        if t:
+            ok = ago <= limit
+        else:
+            ok = up <= limit          # 起動したばかりで、まだ来ていないだけかもしれない
+        items.append({"id": k, "name": ALIVE_NAME[k], "ago": ago, "limit": limit,
+                      "ok": ok, "unknown": not t})
+        if not ok:
+            bad.append(ALIVE_NAME[k])
+    return {"ok": not bad, "stopped": bad, "items": items,
+            "boot_ago": round(up), "now": now}
+
+
+@router.get("/health")
+async def health(strict: int = 0):
+    """止まっていないかを外から確かめる口（2026-09-17）。合言葉なしで読める（時刻だけ）。
+
+    strict=1 のときは、止まっている機械があれば 503 を返す。
+    GitHub Actions の見張り（.github/workflows/watch.yml）がこれを叩き、
+    失敗すると GitHub から本人にメールが届く。"""
+    h = _health()
+    if strict and not h["ok"]:
+        return JSONResponse(h, status_code=503)
+    return h
 
 
 @router.get("/state")
@@ -2514,6 +2561,7 @@ async def _prepare_greetings(st: dict, now: float) -> int:
 @router.get("/todo")
 async def todo():
     """声係が覗きにくる：まだ音になっていない一言の一覧。"""
+    _ALIVE["voice"] = time.time()
     out = []
     try:
         for d in get_db().collection("faces").stream():
@@ -2692,6 +2740,11 @@ _PANEL = """<!doctype html><html lang=ja><meta charset=utf-8>
 </style>
 <h1>確かめ用パネル</h1>
 
+<div class=card id=alive>
+  <h2 style="margin-top:0">止まっていないか</h2>
+  <div class=st id=alivest>…</div>
+</div>
+
 <div class=card>
   <input id=key placeholder="合言葉（1度入れれば覚えます）">
   <div class=st id=state>…</div>
@@ -2778,7 +2831,28 @@ function load(){
     document.getElementById('sim').innerHTML = h || '<tr><td>まだIDがありません</td></tr>';
   });
 }
+function alive(){
+  fetch('/spirit/health').then(function(r){return r.json()}).then(function(j){
+    function ago(s){ if(s===null) return 'まだ来ていない';
+      if(s<120) return s+'秒前'; if(s<7200) return Math.round(s/60)+'分前';
+      return Math.round(s/3600)+'時間前'; }
+    var h='';
+    j.items.forEach(function(it){
+      h+=(it.ok?'🟢 ':'🔴 ')+it.name+'：最後に来たのは '+ago(it.ago)
+        +(it.ok?'':'　<span class=rec>止まっているかも</span>')+'<br>';
+    });
+    h+='<span style="color:#999;font-size:12px">クラウドが起動してから '+ago(j.boot_ago).replace('前','')+'</span>';
+    document.getElementById('alivest').innerHTML=h;
+    var c=document.getElementById('alive');
+    c.style.background = j.ok ? '#fff' : '#fde2df';
+    document.title = (j.ok?'':'🔴 ')+'確かめ用パネル';
+  }).catch(function(){
+    document.getElementById('alivest').innerHTML='<span class=rec>クラウドに届かない（本番が止まっているかも）</span>';
+    document.getElementById('alive').style.background='#fde2df';
+  });
+}
 load(); setInterval(load, 20000);
+alive(); setInterval(alive, 20000);
 </script></html>"""
 
 
