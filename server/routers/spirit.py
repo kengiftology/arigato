@@ -293,7 +293,8 @@ def _load() -> dict:
         return _state_cache
     # ここに来る＝このサーバーが起動して初めて読む。記憶は保存済みの時点まで戻るので、
     # 「状態が巻き戻った」ように見えたとき、再起動だったのかを記録から確かめられるようにする。
-    _log_event("boot", {})
+    # pid と起動からの秒数も残す（9/17：6秒おきの boot が本当の起動し直しかを見分けるため）
+    _log_event("boot", {"pid": os.getpid(), "up": round(time.time() - _BOOT_AT)})
     try:
         snap = _doc().get()
         _state_cache = snap.to_dict() if snap.exists else {}
@@ -1129,7 +1130,10 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                         ready = _ready_line(res["person"], doc, st)
                     if ready:                          # その人向けに先に作ってあった一言
                         kind = ready
-                    _plan_speech(st, kind, slow)
+                    # 呼び名がまだ無い人には、迎えの代わりに呼び名を聞く（2026-09-17）
+                    from server.routers import spirit_name
+                    if not spirit_name.maybe_ask(st, res["person"], doc, now):
+                        _plan_speech(st, kind, slow)
                 # 前回の判断からこちら、誰が居たかを溜めておく。
                 # 判断の時点で cur_person を見ると、とうに帰った人の名が残り、
                 # 無人の記録にまで同じIDが付いていた（2026-09-02に実際に起きた）。
@@ -1146,9 +1150,12 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 _save(st)
                 _lap("save")
                 _log_ms("face", _ms, len(data))
+                from server.routers import spirit_name
                 return {"ok": True, "person": res["person"], "state": res["state"],
                         "people": res.get("all") or [res["person"]],
-                        "judged": False, "why": "person_seen", "ms": _ms}
+                        "judged": False, "why": "person_seen", "ms": _ms,
+                        # 呼び名を聞いている相手。ラズパイはこれを見て C3 に鳴らさせ、答えを取りに行く
+                        "ask_name": spirit_name.asking(st, now)}
         except Exception as e:
             logger.warning("identify failed: %s", e)
             _identify_err[0] = "%s: %s" % (type(e).__name__, str(e)[:200])
@@ -1643,6 +1650,41 @@ async def notes_data(limit: int = 50):
         return {"notes": [], "error": str(e)}
 
 
+def _read_first(paths) -> str:
+    for p in paths:
+        try:
+            with open(p) as f:
+                return f.read().strip()
+        except Exception:
+            pass
+    return ""
+
+
+def _memory() -> dict:
+    """このサーバーのメモリ（MB）と、プロセスの素性（2026-09-17）。
+
+    9/17 に「boot」の記録が6秒おきに570回出た。メモリ不足で落ちているのか、
+    落ちていないのに記録だけ出ているのかを、pid と起動からの秒数で切り分ける。"""
+    out = {"pid": os.getpid(), "up": round(time.time() - _BOOT_AT)}
+    status = _read_first(["/proc/self/status"])
+    for line in status.splitlines():
+        k, _, v = line.partition(":")
+        if k in ("VmRSS", "VmHWM"):                      # いま／起動してからの最大
+            out[{"VmRSS": "rss_mb", "VmHWM": "peak_mb"}[k]] = round(int(v.split()[0]) / 1024)
+    lim = _read_first(["/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"])
+    if lim.isdigit() and int(lim) < 1 << 50:
+        out["limit_mb"] = round(int(lim) / 1048576)
+    cur = _read_first(["/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory/memory.usage_in_bytes"])
+    if cur.isdigit():
+        out["cgroup_mb"] = round(int(cur) / 1048576)
+    ev = _read_first(["/sys/fs/cgroup/memory.events"])
+    for line in ev.splitlines():
+        k, _, v = line.partition(" ")
+        if k in ("oom", "oom_kill"):
+            out[k] = int(v)
+    return out
+
+
 def _health() -> dict:
     """機械ごとに、最後に来てから何秒たったか・止まっていそうか。"""
     now = time.time()
@@ -1660,7 +1702,7 @@ def _health() -> dict:
         if not ok:
             bad.append(ALIVE_NAME[k])
     return {"ok": not bad, "stopped": bad, "items": items,
-            "boot_ago": round(up), "now": now}
+            "boot_ago": round(up), "now": now, "mem": _memory()}
 
 
 @router.get("/health")
