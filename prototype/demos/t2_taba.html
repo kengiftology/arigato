@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>デモ2 束で返る — ありがとう</title>
+<link rel="stylesheet" href="./proto.css">
+<style>
+  .proto-nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px; font-size: 0.7rem; color: var(--text-muted);
+    background: var(--surface);
+  }
+  .proto-nav a { color: var(--text-muted); text-decoration: none; }
+  .demo-bar {
+    position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 390px; background: var(--bg);
+    border-top: 1px dashed var(--border);
+    display: flex; gap: 8px; align-items: center; padding: 7px 14px;
+    z-index: 10;
+  }
+  .demo-bar-label { font-size: 0.62rem; color: var(--text-muted); letter-spacing: 0.06em; flex-shrink: 0; }
+  .demo-pill {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border-radius: 14px; padding: 5px 12px; font-size: 0.72rem;
+    font-family: inherit; cursor: pointer;
+  }
+  .demo-pill:active { transform: scale(0.96); }
+  .demo-pill:disabled { opacity: 0.45; cursor: default; }
+  .chat { padding-bottom: 160px; }
+
+  /* 束バー：この場所を保っている手（匿名） */
+  .taba-bar {
+    position: sticky; top: 64px; z-index: 19;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 9px 16px; background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .taba-text { font-size: 0.76rem; font-weight: 700; color: var(--text); }
+  .taba-text b { color: var(--accent-deep); font-weight: 900; }
+  .taba-bar .c-avatar { font-size: 0.9rem; background: var(--accent-soft); }
+  .c-avatar.mine { box-shadow: 0 0 0 2px var(--accent); }
+  @keyframes avatarIn {
+    from { opacity: 0; transform: scale(0.3); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  .c-avatar.new { animation: avatarIn 0.5s ease; }
+  @keyframes avatarGlow {
+    0%   { box-shadow: 0 0 0 0 rgba(91,158,122,0);    transform: scale(1); }
+    45%  { box-shadow: 0 0 0 6px rgba(91,158,122,0.35); transform: scale(1.18); }
+    100% { box-shadow: 0 0 0 0 rgba(91,158,122,0);    transform: scale(1); }
+  }
+  .c-avatar.glow { animation: avatarGlow 0.9s ease both; position: relative; z-index: 1; }
+</style>
+</head>
+<body>
+
+<div class="proto-nav"><a href="./index.html">← デモ一覧</a><span>デモ2：束で返る</span></div>
+
+<div class="chat-header">
+  <div class="chat-header-icon">🌿</div>
+  <div>
+    <div class="chat-header-name" id="zoneName">リビング</div>
+    <div class="chat-header-sub">きょうも、ここにいるよ</div>
+  </div>
+</div>
+
+<div class="taba-bar">
+  <div class="taba-text" id="tabaText"></div>
+  <div class="contributor-avatars" id="tabaAvatars"></div>
+</div>
+
+<div class="chat" id="chat"></div>
+
+<div class="demo-bar">
+  <span class="demo-bar-label">デモ操作</span>
+  <button class="demo-pill" id="joinBtn" onclick="demoJoin()">わたしも一手（手伝ったことにする）</button>
+</div>
+
+<div class="chat-compose">
+  <button class="chat-cam" onclick="camHint()">📷</button>
+  <input class="chat-input" id="chatInput" placeholder="メッセージを入力" onkeydown="if(event.key==='Enter')sendMsg()">
+  <button class="chat-send" onclick="sendMsg()">送る</button>
+</div>
+
+<div class="toast" id="toast">
+  <div class="toast-icon">🌱</div>
+  <div>
+    <div class="toast-app">ありがとう</div>
+    <div class="toast-msg" id="toastMsg"></div>
+    <div class="toast-sub" id="toastSub"></div>
+  </div>
+</div>
+
+<script src="./data.js"></script>
+<script>
+var handCount = ZONE_DATA.summary.contributor_count; /* 4 */
+var joined = false;
+var toastTimer = null;
+
+function fmtDay(iso) {
+  var d = new Date(iso);
+  return (d.getMonth() + 1) + "月" + d.getDate() + "日";
+}
+function fmtTime(iso) {
+  var d = new Date(iso);
+  var h = d.getHours(), m = d.getMinutes();
+  return h + ":" + (m < 10 ? "0" + m : m);
+}
+
+function showToast(msg, sub) {
+  var t = document.getElementById("toast");
+  document.getElementById("toastMsg").textContent = msg;
+  document.getElementById("toastSub").textContent = sub || "";
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.classList.remove("show"); }, 2600);
+}
+
+/* ── 束バー ── */
+function buildAvatars(markNew) {
+  var wrap = document.getElementById("tabaAvatars");
+  var html = "";
+  for (var i = 0; i < handCount; i++) {
+    var cls = "c-avatar";
+    if (markNew && i === handCount - 1) cls += " new mine";
+    html += '<div class="' + cls + '">🖐</div>';
+  }
+  wrap.innerHTML = html;
+  document.getElementById("tabaText").innerHTML =
+    "この場所は、<b>" + handCount + "人</b>の手で保たれてる";
+}
+function flashAvatars() {
+  var avs = document.querySelectorAll("#tabaAvatars .c-avatar");
+  avs.forEach(function (a, i) {
+    a.classList.remove("glow");
+    void a.offsetWidth; /* アニメを最初から再生し直す */
+    a.style.animationDelay = (i * 90) + "ms";
+    a.classList.add("glow");
+  });
+  setTimeout(function () {
+    avs.forEach(function (a) { a.classList.remove("glow"); a.style.animationDelay = ""; });
+  }, 1700);
+}
+
+/* ── チャット描画（t1と同じ実データ履歴） ── */
+function bubblePlace(inner, extra) {
+  return '<div class="msg-place ' + (extra || "") + '">' +
+    '<div class="msg-place-icon">' + (extra === "down" ? "🍂" : "🌿") + "</div>" +
+    '<div class="msg-place-bubbles">' + inner + "</div></div>";
+}
+
+function render() {
+  var cares = ZONE_DATA.cares.slice(-2);
+  var html = "";
+  html += '<div class="msg-place"><div class="msg-place-icon">🌿</div><div class="msg-place-bubbles">' +
+    '<div class="bubble-place">やあ、来てくれてありがとう。<br>ここはね、いろんな手で保たれてるんだ。</div></div></div>';
+  html += '<div class="chat-legend"><span>🍂 <b>散らかっていた姿</b></span><span>🌿 <b>整えてもらった姿</b></span></div>';
+
+  cares.forEach(function (c, i) {
+    html += '<div class="chat-day">' + fmtDay(c.when) + "</div>";
+    if (c.before_photo) {
+      html += bubblePlace(
+        '<div class="bubble-place photo down"><div class="photo-wrap"><img class="card-photo" src="' + c.before_photo + '" alt=""></div></div>' +
+        '<div class="bubble-place down">' + (c.before_line || "ここ、ちょっと気になっているんだ。") + "</div>" +
+        '<div class="chat-time">' + fmtTime(c.when) + "</div>", "down");
+    }
+    if (c.after_photo) {
+      var quote = c.before_photo
+        ? '<div class="quote-before"><img src="' + c.before_photo + '" alt=""><span>' + (c.before_line || "さっきの、散らかっていた姿") + "</span></div>"
+        : "";
+      var chips = c.thanks_count > 0
+        ? '<div class="care-thanks-cluster"><span class="thanks-chip">' + c.thanks_count + " のありがとう</span></div>"
+        : "";
+      html += bubblePlace(
+        '<div class="bubble-place photo"><div class="photo-wrap"><img class="card-photo" src="' + c.after_photo + '" alt=""></div></div>' +
+        quote +
+        '<div class="bubble-place" id="line-' + i + '">' + (c.after_line || "ここ、すっきり整った。") + "</div>" +
+        chips +
+        '<div id="thx-' + i + '"><button class="chat-thank-btn" onclick="thank(' + i + ')">みんなにありがとう</button></div>' +
+        '<div class="chat-time">' + fmtTime(c.completed || c.when) + "</div>");
+    }
+  });
+
+  html += '<div class="chat-day">きょう</div>';
+  var last = ZONE_DATA.cares[ZONE_DATA.cares.length - 1];
+  html += bubblePlace(
+    '<div class="bubble-place photo"><div class="photo-wrap"><img class="card-photo" src="' + last.after_photo + '" alt=""></div></div>' +
+    '<div class="bubble-place">きょうも、この姿。いろんな手の積み重ねなんだ。</div>');
+  document.getElementById("chat").innerHTML = html;
+}
+
+function appendPlace(text, extra) {
+  var chat = document.getElementById("chat");
+  var div = document.createElement("div");
+  div.innerHTML = bubblePlace('<div class="bubble-place ' + (extra === "down" ? "down" : "") + '">' + text + "</div>", extra);
+  chat.appendChild(div.firstChild);
+  chat.lastChild.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+/* ── ありがとう＝束で全員に届く ── */
+function thank(i) {
+  var box = document.getElementById("thx-" + i);
+  if (!box) return;
+  box.innerHTML = '<div class="care-thanks-cluster"><span class="thanks-chip mine">みんなへ +1</span></div>';
+  showToast("あなたのありがとうは、手をかけた" + handCount + "人みんなに届きました");
+  flashAvatars();
+  setTimeout(function () {
+    appendPlace("みんなに、ちゃんと分けて届けたよ。");
+  }, 700);
+}
+
+/* ── デモ操作：自分も一手になる ── */
+function demoJoin() {
+  if (joined) return;
+  joined = true;
+  handCount += 1;
+  buildAvatars(true);
+  setTimeout(function () {
+    var lastAv = document.querySelector("#tabaAvatars .c-avatar:last-child");
+    if (lastAv) lastAv.classList.remove("new");
+  }, 700);
+  appendPlace(handCount + "人めの手。うれしいな。");
+  var btn = document.getElementById("joinBtn");
+  btn.disabled = true;
+  btn.textContent = "一手、加わりました";
+}
+
+function sendMsg() {
+  var input = document.getElementById("chatInput");
+  var msg = input.value.trim();
+  input.value = "";
+  var chat = document.getElementById("chat");
+  var you = document.createElement("div");
+  you.className = "msg-you";
+  you.innerHTML = '<div class="bubble-you">' + (msg || "ありがとう") + "</div>";
+  chat.appendChild(you);
+  setTimeout(function () {
+    appendPlace("受け取ったよ。みんなにも分けておくね。");
+    flashAvatars();
+  }, 600);
+  you.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+function camHint() {
+  showToast("これはデモ版です", "撮影・投稿は本物のアプリでどうぞ");
+}
+
+document.getElementById("zoneName").textContent = ZONE_DATA.zone.name;
+buildAvatars(false);
+render();
+</script>
+</body>
+</html>
