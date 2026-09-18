@@ -37,9 +37,16 @@ def rtsp_url(sub: bool) -> str:
 class LatestReader(threading.Thread):
     """映像を読み続け、最新の1コマだけを持つ。処理が遅れても古いコマが溜まらない。"""
 
-    def __init__(self, url: str):
+    # 電波が弱いと TCP は届かなかった分を送り直し、そのあいだ映像が止まる。
+    # まとめて届いた数コマは同じ瞬間なので、コマ数のわりに見える場面が増えない。
+    # UDP は送り直さない代わりに、途切れずに新しい瞬間が来る（9/18 実測：
+    # 同じ20秒で「別々の瞬間」が 4.2/秒 → 8.0/秒）。
+    UDP = "rtsp_transport;udp|fflags;nobuffer|flags;low_delay|reorder_queue_size;0|max_delay;100000"
+    TCP = "rtsp_transport;tcp"
+
+    def __init__(self, url: str, transport: str = "udp"):
         super().__init__(daemon=True)
-        os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = self.UDP if transport == "udp" else self.TCP
         self.cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
         self.frame, self.seq, self.got = None, 0, 0
         self.lock = threading.Lock()
@@ -83,6 +90,7 @@ def main():
     ap.add_argument("--imgsz", type=int, default=640)
     ap.add_argument("--face", default="coreml", choices=["off", "cpu", "coreml"])
     ap.add_argument("--resize", default="", help="画像入力の大きさ 例 2304x1296")
+    ap.add_argument("--transport", default="udp", choices=["udp", "tcp"])
     a = ap.parse_args()
 
     from ultralytics import YOLO
@@ -95,7 +103,7 @@ def main():
 
     reader, still = None, None
     if a.src == "rtsp":
-        reader = LatestReader(rtsp_url(a.sub))
+        reader = LatestReader(rtsp_url(a.sub), a.transport)
         if not reader.alive:
             raise SystemExit("カメラに繋がらない")
         reader.start()
@@ -155,9 +163,9 @@ def main():
     el = time.time() - t_start
     p = lambda xs, q: 1000 * float(np.percentile(xs, q)) if xs else float("nan")
     tot = [x + y for x, y in zip(t_track, t_face)]
-    print("入力=%s 大きさ=%s モデル=%s(%s) imgsz=%d 顔=%s 目標=%.0ffps"
+    print("入力=%s 大きさ=%s モデル=%s(%s) imgsz=%d 顔=%s 目標=%.0ffps %s"
           % (a.src + (" 副" if a.sub else ""), None if frame is None else frame.shape[1::-1],
-             a.model, a.device, a.imgsz, a.face, a.fps))
+             a.model, a.device, a.imgsz, a.face, a.fps, a.transport))
     if reader is not None:
         print("  カメラから届いた=%.1ffps" % (reader.got / el))
     print("  処理できた=%.1ffps（%dコマ/%.0f秒）" % (n / el, n, el))
