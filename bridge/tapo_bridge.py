@@ -73,6 +73,9 @@ HIRES_MAX_AGE = 10.0                         # 見回りなど、急がない場
 # 更新される）の新しい1枚を送る。
 HIRES_FRESH = 3.5
 HIRES_GAP = 8.0                              # 撮り直しを頼まれたときの最短間隔
+HIRES_STALE = 30.0                           # 大きい1枚がこれだけ古ければ、流れが止まっているとみなす
+HIRES_REVIVE_GAP = 20.0                      # 起こし直しの最短間隔（起動に数秒かかるので）
+_hires = [None, 0.0]                         # いまの大きい流れと、最後に起こし直した時刻
 # 写真が古いままこれだけ続いたら、映像ごと繋ぎ直す。
 # 見張りの映像だけが流れつづけ、写真の書き出しだけが止まることがある。
 # その状態は「映像が切れた」と判定されないので、放っておくと目が閉じたまま
@@ -628,11 +631,41 @@ def report(jpg: bytes, why: str, big: bool = False, check: bool = False) -> dict
     return res
 
 
+def _revive_hires() -> None:
+    """大きい1枚の流れが死んでいたら、起こし直す（2026-09-19）。
+
+    死んだか（poll）と、写真が更新されているか（mtime）の両方を見る。
+    ffmpeg は生きたまま止まることがあるので、生死だけでは足りない。"""
+    p = _hires[0]
+    if p is None:
+        return
+    now = time.time()
+    if now - _hires[1] < HIRES_REVIVE_GAP:
+        return
+    dead = p.poll() is not None
+    try:
+        stale = now - os.path.getmtime(HIRES_SHOT) > HIRES_STALE
+    except OSError:
+        stale = True
+    if not (dead or stale):
+        return
+    _hires[1] = now
+    print(time.strftime("%H:%M:%S"),
+          "大きい映像が%s → 起こし直す" % ("死んでいた" if dead else "止まっていた"),
+          flush=True)
+    try:
+        p.kill()
+    except Exception:
+        pass
+    _hires[0] = hires_stream()
+
+
 def main():
     print("tapo bridge start ->", SERVER, flush=True)
     while True:
         proc = watch_stream()
         big_proc = hires_stream()        # 大きい1枚を作り替えつづける別の流れ
+        _hires[0], _hires[1] = big_proc, time.time()
         w = Watcher(proc)
         w.start()
         last_sent = last_hint = last_sweep = last_pose = last_hires = 0.0
@@ -704,6 +737,11 @@ def main():
                     # 新しい人を覚えられる線（120px）を越えられる。
                     # 誰も居ない定時報告は小さいほうで足りる（費用も軽い）。
                     # 動いている間は、古い大きい1枚より新しい小さい1枚を選ぶ。
+                    # 大きいほうの流れが死んでいたら起こし直す（2026-09-19）。
+                    # これまで big_proc を起こすのは外側の周回だけで、副（小さい）流れが
+                    # 生きているかぎり誰も面倒を見なかった。9/17夜〜9/18は実際にこれで
+                    # 1280x720 の小さい1枚だけが送られ続け、顔が小さすぎて誰も見分けられなかった。
+                    _revive_hires()
                     jpg, is_big = (grab_big(HIRES_FRESH), True) if busy else (None, False)
                     if jpg is None:
                         jpg, is_big = grab(), False
@@ -729,6 +767,8 @@ def main():
         except Exception as e:
             print("watch failed:", e, flush=True)
         finally:
+            big_proc = _hires[0] or big_proc      # 途中で起こし直した分も止める
+            _hires[0] = None
             for pr in (proc, big_proc):
                 try:
                     pr.kill()
