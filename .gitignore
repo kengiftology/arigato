@@ -3,6 +3,7 @@ __pycache__/
 .env
 # 実機用設定（WiFiパスワードを含むためコミットしない）
 esp32cam/config.json
+atoms3_voice/config.h
 data.db
 uploads/
 .venv/
