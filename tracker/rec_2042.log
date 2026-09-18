@@ -1,0 +1,429 @@
+[h264 @ 0x782eab9f80] left block unavailable for requested intra mode
+[h264 @ 0x782eab9f80] error while decoding MB 0 15, bytestream 38042
+20:42:13 記録を始める → rec/20260918_2042
+20:42:17 滞在の始まり id=1
+[h264 @ 0x782eabbb80] cabac decode of qscale diff failed at 33 35
+[h264 @ 0x782eabbb80] error while decoding MB 33 35, bytestream 5446
+20:42:31 滞在の終わり id=1 3.4秒 コマ=9 顔=0 正面=0 最大の顔幅=0px
+[h264 @ 0x782eabb800] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabb800] error while decoding MB 18 0, bytestream 50435
+[h264 @ 0x782eabb800] error while decoding MB 37 0, bytestream -5
+[h264 @ 0x782eabb800] cabac decode of qscale diff failed at 37 19
+[h264 @ 0x782eabb800] error while decoding MB 37 19, bytestream 27305
+[h264 @ 0x782eabb800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb800] error while decoding MB 0 22, bytestream 27659
+[h264 @ 0x782eabaa00] left block unavailable for requested intra mode
+[h264 @ 0x782eabaa00] error while decoding MB 0 33, bytestream 14607
+20:45:22 経過 3分 コマ=300 顔=0 いま追跡中=0
+[h264 @ 0x782eabbb80] error while decoding MB 37 0, bytestream -10
+[h264 @ 0x782eabb800] cabac decode of qscale diff failed at 59 4
+[h264 @ 0x782eabb800] error while decoding MB 59 4, bytestream 7755
+[h264 @ 0x782eabbb80] error while decoding MB 16 0, bytestream -5
+[h264 @ 0x782eabb480] error while decoding MB 50 1, bytestream -21
+[h264 @ 0x782eab9880] top block unavailable for requested intra mode
+[h264 @ 0x782eab9880] error while decoding MB 22 0, bytestream 26787
+[h264 @ 0x782eabbb80] cabac decode of qscale diff failed at 26 3
+[h264 @ 0x782eabbb80] error while decoding MB 26 3, bytestream -3
+[h264 @ 0x782eabb480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb480] error while decoding MB 0 9, bytestream 2247
+[h264 @ 0x782eabaa00] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabaa00] error while decoding MB 21 0, bytestream 3307
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 3e7d expected=3f28
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 3fd8 expected=4240
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 4131 expected=4457
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 43f1 expected=4681
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 4512 expected=4681
+[h264 @ 0x782eabad80] cabac decode of qscale diff failed at 49 25
+[h264 @ 0x782eabad80] error while decoding MB 49 25, bytestream -1
+[h264 @ 0x782eab9880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eab9880] error while decoding MB 0 2, bytestream 21823
+[h264 @ 0x782eabb480] left block unavailable for requested intra mode
+[h264 @ 0x782eabb480] error while decoding MB 0 14, bytestream 12652
+[h264 @ 0x782eaba680] left block unavailable for requested intra mode
+[h264 @ 0x782eaba680] error while decoding MB 0 5, bytestream 50141
+[h264 @ 0x782eabaa00] error while decoding MB 16 7, bytestream -5
+[h264 @ 0x782eab9880] top block unavailable for requested intra mode -1
+[h264 @ 0x782eab9880] error while decoding MB 38 0, bytestream 15651
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 4e55 expected=4f5b
+[h264 @ 0x782eabb480] error while decoding MB 11 7, bytestream -5
+[h264 @ 0x782eab9880] cabac decode of qscale diff failed at 14 10
+[h264 @ 0x782eab9880] error while decoding MB 14 10, bytestream 1117
+[h264 @ 0x782eabbb80] error while decoding MB 5 2, bytestream -8
+[h264 @ 0x782eaba680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eaba680] error while decoding MB 0 22, bytestream 2317
+[h264 @ 0x782eab9880] cabac decode of qscale diff failed at 31 6
+[h264 @ 0x782eab9880] error while decoding MB 31 6, bytestream -3
+20:48:24 経過 6分 コマ=600 顔=0 いま追跡中=0
+[h264 @ 0x782eabbb80] cabac decode of qscale diff failed at 68 8
+[h264 @ 0x782eabbb80] error while decoding MB 68 8, bytestream 4627
+[h264 @ 0x782eabaa00] error while decoding MB 16 34, bytestream -9
+[h264 @ 0x782eab9880] left block unavailable for requested intra mode
+[h264 @ 0x782eab9880] error while decoding MB 0 7, bytestream 25301
+[h264 @ 0x782eabaa00] error while decoding MB 4 21, bytestream -13
+[h264 @ 0x782eab9880] error while decoding MB 17 0, bytestream -23
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 5a59 expected=5b5f
+[h264 @ 0x782eabb480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb480] error while decoding MB 0 22, bytestream 27926
+[h264 @ 0x782eabaa00] left block unavailable for requested intra mode
+[h264 @ 0x782eabaa00] error while decoding MB 0 40, bytestream 6511
+[h264 @ 0x782eabb480] left block unavailable for requested intra mode
+[h264 @ 0x782eabb480] error while decoding MB 0 3, bytestream 44749
+[h264 @ 0x782eabb100] error while decoding MB 33 6, bytestream -17
+[h264 @ 0x782eabb800] error while decoding MB 38 0, bytestream -17
+[h264 @ 0x782eabad80] left block unavailable for requested intra mode
+[h264 @ 0x782eabad80] error while decoding MB 0 27, bytestream 23394
+[h264 @ 0x782eabb800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb800] error while decoding MB 0 15, bytestream 37781
+[h264 @ 0x782eabaa00] error while decoding MB 17 0, bytestream -13
+[h264 @ 0x782eaba680] error while decoding MB 2 4, bytestream -13
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 624c expected=62f8
+[h264 @ 0x782eaba680] left block unavailable for requested intra mode
+[h264 @ 0x782eaba680] error while decoding MB 0 19, bytestream 32767
+[h264 @ 0x782eabb480] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabb480] error while decoding MB 38 0, bytestream -1
+[h264 @ 0x782eab9880] error while decoding MB 17 0, bytestream -23
+[h264 @ 0x782eabb800] error while decoding MB 3 2, bytestream -9
+[h264 @ 0x782eabbb80] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabbb80] error while decoding MB 38 0, bytestream 5491
+[h264 @ 0x782eabb800] error while decoding MB 21 41, bytestream -9
+[h264 @ 0x782eabb800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb800] error while decoding MB 0 11, bytestream 29646
+[h264 @ 0x782eaba680] left block unavailable for requested intra mode
+[h264 @ 0x782eaba680] error while decoding MB 0 13, bytestream 40083
+[h264 @ 0x782eabbb80] left block unavailable for requested intra mode
+[h264 @ 0x782eabbb80] error while decoding MB 0 13, bytestream 17065
+[h264 @ 0x782eabaa00] cabac decode of qscale diff failed at 26 18
+[h264 @ 0x782eabaa00] error while decoding MB 26 18, bytestream 32434
+[h264 @ 0x782eaba680] top block unavailable for requested intra mode -1
+[h264 @ 0x782eaba680] error while decoding MB 18 0, bytestream 60506
+[h264 @ 0x782eaba680] top block unavailable for requested intra mode -1
+[h264 @ 0x782eaba680] error while decoding MB 18 0, bytestream 21410
+[h264 @ 0x782eabad80] error while decoding MB 31 6, bytestream -13
+[h264 @ 0x782eabb100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb100] error while decoding MB 0 8, bytestream 21313
+20:50:58 経過 9分 コマ=900 顔=0 いま追跡中=0
+[h264 @ 0x782eabb480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb480] error while decoding MB 0 18, bytestream 20637
+[h264 @ 0x782eabad80] error while decoding MB 57 4, bytestream -5
+[h264 @ 0x782eabb800] error while decoding MB 65 15, bytestream -13
+[h264 @ 0x782eabad80] left block unavailable for requested intra mode
+[h264 @ 0x782eabad80] error while decoding MB 0 3, bytestream 1543
+[h264 @ 0x782eabbb80] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabbb80] error while decoding MB 40 0, bytestream 19051
+[h264 @ 0x782eaba680] error while decoding MB 39 0, bytestream -13
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 6fc1 expected=702b
+[h264 @ 0x782eabaa00] error while decoding MB 28 13, bytestream -15
+[h264 @ 0x782eabaa00] cabac decode of qscale diff failed at 10 8
+[h264 @ 0x782eabaa00] error while decoding MB 10 8, bytestream 16727
+[h264 @ 0x782eabb480] error while decoding MB 40 0, bytestream -11
+[h264 @ 0x782eabaa00] error while decoding MB 27 1, bytestream -11
+[h264 @ 0x782eabb100] cabac decode of qscale diff failed at 76 8
+[h264 @ 0x782eabb100] error while decoding MB 76 8, bytestream 6653
+[h264 @ 0x782eabb480] cabac decode of qscale diff failed at 49 2
+[h264 @ 0x782eabb480] error while decoding MB 49 2, bytestream -3
+[h264 @ 0x782eabaa00] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabaa00] error while decoding MB 38 0, bytestream -2
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 7241 expected=75ad
+[h264 @ 0x782eabb100] error while decoding MB 65 11, bytestream -5
+[h264 @ 0x782eabb480] cabac decode of qscale diff failed at 30 11
+[h264 @ 0x782eabb480] error while decoding MB 30 11, bytestream 21269
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 739d expected=7655
+[h264 @ 0x782eabb480] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabb480] error while decoding MB 18 0, bytestream 10035
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 74f7 expected=7866
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 7654 expected=78bc
+[h264 @ 0x782eabb800] cabac decode of qscale diff failed at 73 1
+[h264 @ 0x782eabb800] error while decoding MB 73 1, bytestream 24631
+[h264 @ 0x782eabaa00] error while decoding MB 7 1, bytestream -33
+[h264 @ 0x782eabb100] error while decoding MB 17 0, bytestream -51
+[h264 @ 0x782eabb800] error while decoding MB 6 9, bytestream -21
+[h264 @ 0x782eabaa00] error while decoding MB 28 1, bytestream -9
+[h264 @ 0x782eabbb80] cabac decode of qscale diff failed at 29 14
+[h264 @ 0x782eabbb80] error while decoding MB 29 14, bytestream -1
+[h264 @ 0x782eabbb80] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabbb80] error while decoding MB 17 0, bytestream -1
+[h264 @ 0x782eabad80] error while decoding MB 39 0, bytestream -7
+[h264 @ 0x782eabaa00] error while decoding MB 17 0, bytestream -17
+[h264 @ 0x782eaba680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eaba680] error while decoding MB 0 2, bytestream 11941
+[h264 @ 0x782eabb480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb480] error while decoding MB 0 17, bytestream 34968
+[h264 @ 0x782eabad80] error while decoding MB 60 14, bytestream -5
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 7cdb expected=8111
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 7e36 expected=8263
+[h264 @ 0x782eabb480] top block unavailable for requested intra mode
+[h264 @ 0x782eabb480] error while decoding MB 42 0, bytestream 13371
+[h264 @ 0x782eaba680] top block unavailable for requested intra mode -1
+[h264 @ 0x782eaba680] error while decoding MB 19 0, bytestream 3283
+[h264 @ 0x782eabb800] left block unavailable for requested intra mode
+[h264 @ 0x782eabb800] error while decoding MB 0 7, bytestream 521
+[h264 @ 0x782eabb480] error while decoding MB 6 2, bytestream -11
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 8370 expected=8474
+[h264 @ 0x782eabb800] top block unavailable for requested intra mode
+[h264 @ 0x782eabb800] error while decoding MB 20 0, bytestream 62715
+[h264 @ 0x782eabad80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabad80] error while decoding MB 0 17, bytestream 9353
+[h264 @ 0x782eabad80] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabad80] error while decoding MB 21 0, bytestream 51067
+[h264 @ 0x782eabaa00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabaa00] error while decoding MB 0 31, bytestream 18242
+[h264 @ 0x782eabb480] top block unavailable for requested intra mode
+[h264 @ 0x782eabb480] error while decoding MB 22 0, bytestream 62806
+[h264 @ 0x782eabb800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb800] error while decoding MB 0 15, bytestream 37813
+[ WARN:0@666.518] global cap_ffmpeg_impl.hpp:453 _opencv_ffmpeg_interrupt_callback Stream timeout triggered after 30093.017379 ms
+[h264 @ 0x782eabbb80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabbb80] error while decoding MB 0 7, bytestream 50770
+[h264 @ 0x782eabbb80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabbb80] error while decoding MB 0 2, bytestream 55857
+[h264 @ 0x782eabb800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb800] error while decoding MB 0 12, bytestream 25259
+20:53:11 経過 11分 コマ=1200 顔=0 いま追跡中=0
+[h264 @ 0x782eabaa00] error while decoding MB 40 21, bytestream -9
+[h264 @ 0x782eaba680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eaba680] error while decoding MB 0 6, bytestream 9274
+[h264 @ 0x782eabad80] left block unavailable for requested intra mode
+[h264 @ 0x782eabad80] error while decoding MB 0 14, bytestream 18321
+[h264 @ 0x782eab9880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eab9880] error while decoding MB 0 3, bytestream 55808
+[h264 @ 0x782eabad80] left block unavailable for requested intra mode
+[h264 @ 0x782eabad80] error while decoding MB 0 7, bytestream 41823
+[h264 @ 0x782eabb800] error while decoding MB 18 26, bytestream -5
+[h264 @ 0x782eabaa00] left block unavailable for requested intra mode
+[h264 @ 0x782eabaa00] error while decoding MB 0 12, bytestream 40497
+[h264 @ 0x782eaba680] cabac decode of qscale diff failed at 31 21
+[h264 @ 0x782eaba680] error while decoding MB 31 21, bytestream -3
+[h264 @ 0x782eabb100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb100] error while decoding MB 0 16, bytestream 24218
+[h264 @ 0x782eabb480] error while decoding MB 14 16, bytestream -7
+[h264 @ 0x782eabb800] error while decoding MB 5 2, bytestream -5
+[h264 @ 0x782eabb800] top block unavailable for requested intra mode
+[h264 @ 0x782eabb800] error while decoding MB 29 0, bytestream 6015
+[h264 @ 0x782eabb800] left block unavailable for requested intra mode
+[h264 @ 0x782eabb800] error while decoding MB 0 11, bytestream 1171
+[h264 @ 0x782eaba680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eaba680] error while decoding MB 0 2, bytestream 3263
+[h264 @ 0x782eabb480] error while decoding MB 10 10, bytestream -11
+[h264 @ 0x782eaba680] top block unavailable for requested intra mode
+[h264 @ 0x782eaba680] error while decoding MB 39 0, bytestream 32461
+[h264 @ 0x782eabaa00] error while decoding MB 41 1, bytestream -5
+[h264 @ 0x782eabb800] error while decoding MB 6 1, bytestream -23
+[h264 @ 0x782eabb800] cabac decode of qscale diff failed at 70 1
+[h264 @ 0x782eabb800] error while decoding MB 70 1, bytestream -3
+[h264 @ 0x782eabb480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb480] error while decoding MB 0 10, bytestream 22821
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 9099 expected=9519
+[h264 @ 0x782eabb800] error while decoding MB 38 17, bytestream -5
+[h264 @ 0x782eabb800] cabac decode of qscale diff failed at 47 3
+[h264 @ 0x782eabb800] error while decoding MB 47 3, bytestream 8691
+[h264 @ 0x782eabbb80] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabbb80] error while decoding MB 40 0, bytestream 15661
+[h264 @ 0x782eabb800] error while decoding MB 36 42, bytestream -5
+[h264 @ 0x782eabaa00] left block unavailable for requested intra mode
+[h264 @ 0x782eabaa00] error while decoding MB 0 3, bytestream 41579
+[h264 @ 0x782eabb100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb100] error while decoding MB 0 3, bytestream 13949
+20:56:02 経過 14分 コマ=1500 顔=0 いま追跡中=0
+[h264 @ 0x782eabb100] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabb100] error while decoding MB 18 0, bytestream 6701
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq ab62 expected=af85
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq ae1a expected=b3af
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq af79 expected=b3af
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq b234 expected=b3af
+[h264 @ 0x782eabb800] error while decoding MB 17 0, bytestream -24
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq b5f9 expected=bae0
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq b6bb expected=bb2f
+20:59:41 経過 17分 コマ=1800 顔=0 いま追跡中=0
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq ba23 expected=bd3b
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq bcdb expected=c0a7
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq be3b expected=c2c0
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq bf59 expected=c4a6
+[rtsp @ 0x7827c5bc00] RTP: PT=08: bad cseq d61e expected=d7d4
+[rtsp @ 0x7827c5bc00] RTP: PT=08: bad cseq d620 expected=d7d4
+[rtsp @ 0x7827c5bc00] RTP: PT=08: bad cseq d636 expected=d808
+[rtsp @ 0x7827c5bc00] RTP: PT=08: bad cseq d63a expected=d808
+[h264 @ 0x782eabbb80] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabbb80] error while decoding MB 18 0, bytestream 3317
+[rtsp @ 0x7827c5bc00] RTP: PT=08: bad cseq d65c expected=d83a
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq c20a expected=c73a
+[rtsp @ 0x7827c5bc00] RTP: PT=08: bad cseq d6bd expected=d887
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq c366 expected=c7fe
+[rtsp @ 0x7827c5bc00] RTP: PT=08: bad cseq d796 expected=d905
+[h264 @ 0x782eabbb80] error while decoding MB 38 0, bytestream -7
+[h264 @ 0x782eabbb80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabbb80] error while decoding MB 0 29, bytestream 2435
+[h264 @ 0x782eabaa00] cabac decode of qscale diff failed at 40 12
+[h264 @ 0x782eabaa00] error while decoding MB 40 12, bytestream 293
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq d70a expected=d92a
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq d868 expected=d92a
+[h264 @ 0x782eabb100] left block unavailable for requested intra mode
+[h264 @ 0x782eabb100] error while decoding MB 0 11, bytestream 22823
+[h264 @ 0x782eabad80] cabac decode of qscale diff failed at 42 24
+[h264 @ 0x782eabad80] error while decoding MB 42 24, bytestream 24217
+[h264 @ 0x782eabb800] error while decoding MB 27 1, bytestream -7
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq e1ae expected=e252
+[h264 @ 0x782eabb100] cabac decode of qscale diff failed at 76 4
+[h264 @ 0x782eabb100] error while decoding MB 76 4, bytestream 41605
+[h264 @ 0x782eaba680] error while decoding MB 16 0, bytestream -9
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq e46b expected=e514
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq e51e expected=e635
+[h264 @ 0x782eabbb80] top block unavailable for requested intra mode
+[h264 @ 0x782eabbb80] error while decoding MB 40 0, bytestream -3
+[h264 @ 0x782eabbb80] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabbb80] error while decoding MB 38 0, bytestream 29156
+[h264 @ 0x782eabb800] left block unavailable for requested intra mode
+[h264 @ 0x782eabb800] error while decoding MB 0 15, bytestream 19331
+[h264 @ 0x782eabb100] error while decoding MB 35 22, bytestream -11
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq e728 expected=e8d6
+[h264 @ 0x782eabad80] error while decoding MB 39 0, bytestream -9
+[h264 @ 0x782eabb100] cabac decode of qscale diff failed at 60 4
+[h264 @ 0x782eabb100] error while decoding MB 60 4, bytestream -1
+21:03:53 経過 22分 コマ=2100 顔=0 いま追跡中=0
+[h264 @ 0x782eaba680] error while decoding MB 22 3, bytestream -11
+[h264 @ 0x782eabbb80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabbb80] error while decoding MB 0 4, bytestream 6153
+[h264 @ 0x782eaba680] cabac decode of qscale diff failed at 51 14
+[h264 @ 0x782eaba680] error while decoding MB 51 14, bytestream 38104
+[h264 @ 0x782eabad80] left block unavailable for requested intra mode
+[h264 @ 0x782eabad80] error while decoding MB 0 23, bytestream 3587
+[h264 @ 0x782eab9880] error while decoding MB 25 1, bytestream -5
+[h264 @ 0x782eabb480] error while decoding MB 17 0, bytestream -13
+[h264 @ 0x782eab9880] cabac decode of qscale diff failed at 54 33
+[h264 @ 0x782eab9880] error while decoding MB 54 33, bytestream 9396
+[h264 @ 0x782eabad80] error while decoding MB 16 10, bytestream -9
+[h264 @ 0x782eabbb80] cabac decode of qscale diff failed at 7 1
+[h264 @ 0x782eabbb80] error while decoding MB 7 1, bytestream -1
+[h264 @ 0x782eabbb80] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabbb80] error while decoding MB 18 0, bytestream 10015
+[h264 @ 0x782eaba680] cabac decode of qscale diff failed at 42 5
+[h264 @ 0x782eaba680] error while decoding MB 42 5, bytestream -3
+[h264 @ 0x782eabad80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabad80] error while decoding MB 0 14, bytestream 17591
+[h264 @ 0x782eabb100] error while decoding MB 7 1, bytestream -31
+[h264 @ 0x782eab9880] error while decoding MB 23 7, bytestream -7
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq f713 expected=fa11
+[h264 @ 0x782eab9880] error while decoding MB 51 1, bytestream -7
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq f9c5 expected=fae4
+[h264 @ 0x782eab9880] error while decoding MB 28 7, bytestream -5
+[h264 @ 0x782eabad80] error while decoding MB 8 4, bytestream -23
+[h264 @ 0x782eabb480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb480] error while decoding MB 0 3, bytestream 2549
+[h264 @ 0x782eab9880] left block unavailable for requested intra mode
+[h264 @ 0x782eab9880] error while decoding MB 0 18, bytestream 33936
+[h264 @ 0x782eabad80] left block unavailable for requested intra mode
+[h264 @ 0x782eabad80] error while decoding MB 0 42, bytestream 857
+[h264 @ 0x782eabb800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb800] error while decoding MB 0 2, bytestream 42526
+[h264 @ 0x782eabad80] left block unavailable for requested intra mode
+[h264 @ 0x782eabad80] error while decoding MB 0 4, bytestream 56235
+[h264 @ 0x782eabb480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb480] error while decoding MB 0 39, bytestream 2471
+[h264 @ 0x782eabb100] left block unavailable for requested intra mode
+[h264 @ 0x782eabb100] error while decoding MB 0 4, bytestream 55115
+[h264 @ 0x782eabb100] left block unavailable for requested intra mode
+[h264 @ 0x782eabb100] error while decoding MB 0 19, bytestream 16763
+[h264 @ 0x782eab9880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eab9880] error while decoding MB 0 9, bytestream 45649
+[ WARN:0@1413.601] global cap_ffmpeg_impl.hpp:453 _opencv_ffmpeg_interrupt_callback Stream timeout triggered after 30003.101018 ms
+[h264 @ 0x782eab9880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eab9880] error while decoding MB 0 3, bytestream 26545
+[h264 @ 0x782eaba680] left block unavailable for requested intra mode
+[h264 @ 0x782eaba680] error while decoding MB 0 11, bytestream 44369
+[h264 @ 0x782eabaa00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabaa00] error while decoding MB 0 3, bytestream 49826
+[h264 @ 0x782eabb800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb800] error while decoding MB 0 8, bytestream 49368
+[h264 @ 0x782eabbb80] error while decoding MB 10 4, bytestream -9
+[h264 @ 0x782eabad80] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabad80] error while decoding MB 40 0, bytestream 55866
+[h264 @ 0x782eabaa00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabaa00] error while decoding MB 0 15, bytestream 18429
+[h264 @ 0x782eabaa00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabaa00] error while decoding MB 0 9, bytestream 42303
+21:06:20 経過 24分 コマ=2400 顔=0 いま追跡中=0
+[h264 @ 0x782eabaa00] left block unavailable for requested intra mode
+[h264 @ 0x782eabaa00] error while decoding MB 0 13, bytestream 36921
+[h264 @ 0x782eabbb80] top block unavailable for requested intra mode
+[h264 @ 0x782eabbb80] error while decoding MB 39 0, bytestream 56795
+[h264 @ 0x782eaba680] error while decoding MB 62 30, bytestream -5
+[h264 @ 0x782eabad80] error while decoding MB 51 32, bytestream -8
+[h264 @ 0x782eab9880] top block unavailable for requested intra mode -1
+[h264 @ 0x782eab9880] error while decoding MB 42 0, bytestream 57062
+[h264 @ 0x782eaba680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eaba680] error while decoding MB 0 16, bytestream 8397
+[h264 @ 0x782eabbb80] left block unavailable for requested intra mode
+[h264 @ 0x782eabbb80] error while decoding MB 0 13, bytestream 39873
+[h264 @ 0x782eabaa00] cabac decode of qscale diff failed at 25 14
+[h264 @ 0x782eabaa00] error while decoding MB 25 14, bytestream 19035
+[h264 @ 0x782eab9880] top block unavailable for requested intra mode -1
+[h264 @ 0x782eab9880] error while decoding MB 40 0, bytestream 38131
+[h264 @ 0x782eabb480] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabb480] error while decoding MB 39 0, bytestream 60098
+[h264 @ 0x782eaba680] top block unavailable for requested intra mode -1
+[h264 @ 0x782eaba680] error while decoding MB 18 0, bytestream 16785
+[h264 @ 0x782eaba680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eaba680] error while decoding MB 0 14, bytestream 7439
+[h264 @ 0x782eabb100] error while decoding MB 7 1, bytestream -27
+[h264 @ 0x782eaba680] error while decoding MB 4 11, bytestream -5
+[h264 @ 0x782eabad80] error while decoding MB 34 3, bytestream -5
+[h264 @ 0x782eabb480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb480] error while decoding MB 0 17, bytestream 6039
+[h264 @ 0x782eabb800] left block unavailable for requested intra mode
+[h264 @ 0x782eabb800] error while decoding MB 0 13, bytestream 8851
+[h264 @ 0x782eaba680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eaba680] error while decoding MB 0 16, bytestream 927
+[h264 @ 0x782eaba680] error while decoding MB 13 7, bytestream -7
+[h264 @ 0x782eabb800] left block unavailable for requested intra mode
+[h264 @ 0x782eabb800] error while decoding MB 0 13, bytestream 34769
+[h264 @ 0x782eabb100] cabac decode of qscale diff failed at 57 4
+[h264 @ 0x782eabb100] error while decoding MB 57 4, bytestream -3
+[h264 @ 0x782eaba680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eaba680] error while decoding MB 0 32, bytestream 14792
+[ WARN:0@1597.527] global cap_ffmpeg_impl.hpp:453 _opencv_ffmpeg_interrupt_callback Stream timeout triggered after 30010.027940 ms
+[h264 @ 0x782eabaa00] error while decoding MB 17 0, bytestream -15
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 1964 expected=1a07
+[h264 @ 0x782eabb100] cabac decode of qscale diff failed at 8 4
+[h264 @ 0x782eabb100] error while decoding MB 8 4, bytestream 2185
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 1abc expected=1c18
+[h264 @ 0x782eabb100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb100] error while decoding MB 0 12, bytestream 651
+[rtsp @ 0x7827c5bc00] RTP: PT=08: bad cseq f4fa expected=f587
+21:09:14 経過 27分 コマ=2700 顔=0 いま追跡中=0
+[rtsp @ 0x7827c5bc00] RTP: PT=08: bad cseq f8a2 expected=f9c3
+21:11:29 経過 29分 コマ=3000 顔=0 いま追跡中=0
+[h264 @ 0x782eabb100] cabac decode of qscale diff failed at 35 24
+[h264 @ 0x782eabb100] error while decoding MB 35 24, bytestream 4245
+[h264 @ 0x782eabb800] error while decoding MB 23 7, bytestream -6
+[h264 @ 0x782eabb800] cabac decode of qscale diff failed at 61 2
+[h264 @ 0x782eabb800] error while decoding MB 61 2, bytestream 28275
+[h264 @ 0x782eabbb80] error while decoding MB 7 1, bytestream -15
+[h264 @ 0x782eabaa00] cabac decode of qscale diff failed at 33 6
+[h264 @ 0x782eabaa00] error while decoding MB 33 6, bytestream -3
+[h264 @ 0x782eabb800] error while decoding MB 65 12, bytestream -21
+[h264 @ 0x782eabb480] error while decoding MB 6 1, bytestream -23
+[h264 @ 0x782eabbb80] error while decoding MB 28 1, bytestream -11
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 3a56 expected=3d13
+[rtsp @ 0x7827c5bc00] RTP: PT=60: bad cseq 3bb1 expected=3d13
+[h264 @ 0x782eabb100] cabac decode of qscale diff failed at 59 1
+[h264 @ 0x782eabb100] error while decoding MB 59 1, bytestream 54823
+[h264 @ 0x782eabaa00] error while decoding MB 36 3, bytestream -5
+[h264 @ 0x782eabb480] left block unavailable for requested intra mode
+[h264 @ 0x782eabb480] error while decoding MB 0 30, bytestream 7110
+21:13:04 滞在の始まり id=44
+/Users/ken/work/arigato/tracker/.venv/lib/python3.11/site-packages/insightface/utils/face_align.py:23: FutureWarning: `estimate` is deprecated since version 0.26 and will be removed in version 2.2. Please use `SimilarityTransform.from_estimate` class constructor instead.
+  tform.estimate(lmk, dst)
+[h264 @ 0x782eabad80] top block unavailable for requested intra mode -1
+[h264 @ 0x782eabad80] error while decoding MB 41 0, bytestream 33655
+[h264 @ 0x782eaba680] error while decoding MB 8 1, bytestream -13
+[h264 @ 0x782eabad80] error while decoding MB 40 0, bytestream -5
+[h264 @ 0x782eabb800] error while decoding MB 10 2, bytestream -7
+[h264 @ 0x782eabb100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x782eabb100] error while decoding MB 0 7, bytestream 33083
+[h264 @ 0x782eaba680] left block unavailable for requested intra mode
+[h264 @ 0x782eaba680] error while decoding MB 0 20, bytestream 7895
+[h264 @ 0x782eabad80] error while decoding MB 27 1, bytestream -17
+[h264 @ 0x782eabad80] cabac decode of qscale diff failed at 32 15
+[h264 @ 0x782eabad80] error while decoding MB 32 15, bytestream 34393
+映像が切れた
+21:13:29 滞在の終わり id=44 24.5秒 コマ=63 顔=63 正面=0 最大の顔幅=13px
+21:13:29 記録の終わり 31分 処理したコマ=3195（1.7fps） 顔=63 → rec/20260918_2042

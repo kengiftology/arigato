@@ -44,23 +44,88 @@ class LatestReader(threading.Thread):
     UDP = "rtsp_transport;udp|fflags;nobuffer|flags;low_delay|reorder_queue_size;0|max_delay;100000"
     TCP = "rtsp_transport;tcp"
 
-    def __init__(self, url: str, transport: str = "udp"):
+    # 映像はいつか必ず切れる（9/18は31分で切れた）。24時間動かす前提なので、
+    # 切れたら黙って繋ぎ直す。すぐ繋がらないときは間隔を少しずつ延ばし、
+    # カメラを叩き続けない（上限 RETRY_MAX 秒）。
+    RETRY_FIRST = 2.0
+    RETRY_MAX = 30.0
+    GOOD_RUN = 30.0         # これだけ続いた接続は「ちゃんと動いていた」とみなす
+    STALE = 10.0            # これだけ新しいコマが来なければ、切れたとみなす
+
+    def __init__(self, url: str, transport: str = "udp", reconnect: bool = True):
         super().__init__(daemon=True)
         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = self.UDP if transport == "udp" else self.TCP
-        self.cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+        self.url, self.reconnect = url, reconnect
         self.frame, self.seq, self.got = None, 0, 0
+        self.reconnects, self.last_frame_at = 0, time.time()
+        self.opened_at, self.wait = time.time(), self.RETRY_FIRST
         self.lock = threading.Lock()
-        self.alive = self.cap.isOpened()
+        self.stop = False
+        self.cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+        self.alive = self.cap.isOpened() or reconnect
+
+    def _open(self) -> bool:
+        """繋ぎ直す。すぐまた切れるときは、待ち時間を倍にしていく。
+
+        待たずに繋ぎ直すと、カメラが受け付けるのに映像を出さない状態のとき、
+        1秒間に何十回も繋ぎ直してカメラを叩き続ける（9/19 の試験で実際に起きた）。
+        長く続いた接続のあとは、待ち時間を最初に戻す。"""
+        while not self.stop:
+            try:
+                self.cap.release()
+            except Exception:
+                pass
+            if time.time() - self.opened_at < self.GOOD_RUN:
+                self.wait = min(self.wait * 2, self.RETRY_MAX)   # 短命だった＝様子がおかしい
+            else:
+                self.wait = self.RETRY_FIRST                     # 十分もった＝ただ切れただけ
+            time.sleep(self.wait)
+            if self.stop:
+                return False
+            self.reconnects += 1
+            print(time.strftime("%H:%M:%S"),
+                  "映像を繋ぎ直す（%d回目・%.0f秒待った）" % (self.reconnects, self.wait), flush=True)
+            self.cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
+            if self.cap.isOpened():
+                self.opened_at = self.last_frame_at = time.time()
+                return True
+        return False
 
     def run(self):
-        while self.alive:
+        while not self.stop:
             ok, f = self.cap.read()
             if not ok:
-                self.alive = False
-                break
+                if not self.reconnect or not self._open():
+                    self.alive = False
+                    return
+                continue
+            now = time.time()
             with self.lock:
                 self.frame, self.seq = f, self.seq + 1
                 self.got += 1
+                self.last_frame_at = now
+
+    def stalled(self) -> float:
+        """最後に新しいコマが来てからの秒数。"""
+        return time.time() - self.last_frame_at
+
+    def kick(self) -> None:
+        """コマが来なくなったときに、外から映像を切って繋ぎ直させる。
+
+        UDP では、届かなくなっても read() は失敗と言わずに待ち続けることがある。
+        そのまま放っておくと、静かに目が閉じたままになる（ラズパイで実際に5時間
+        気づけなかった）。新しいコマが STALE 秒来なければ、こちらから切る。"""
+        try:
+            self.cap.release()
+        except Exception:
+            pass
+
+    def close(self) -> None:
+        self.stop = True
+        try:
+            self.cap.release()
+        except Exception:
+            pass
 
     def latest(self, after: int):
         with self.lock:
