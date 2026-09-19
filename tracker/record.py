@@ -68,6 +68,8 @@ def main():
     ap.add_argument("--out", default="rec")
     ap.add_argument("--imgsz", type=int, default=640)
     ap.add_argument("--min-person", type=int, default=60, help="この幅より小さい人は顔を探さない")
+    ap.add_argument("--test-break", type=float, default=0.0,
+                    help="この秒数のところで、わざと1回映像を切る（繋ぎ直しの試験）")
     a = ap.parse_args()
 
     out = Path(a.out) / datetime.now().strftime("%Y%m%d_%H%M")
@@ -120,8 +122,10 @@ def main():
                 # 切るのは1回だけ。毎周よぶと、繋ぎ直している最中に何度も切って
                 # しまう（9/19 の試験で毎秒よんでいた）。次に切ってよいのは、
                 # 繋ぎ直しの待ち時間が過ぎてから。
-                if (reader.stalled() > reader.STALE
-                        and time.time() - last_kick > reader.STALE):
+                # 作り直す間隔も、うまくいかない間は延ばす（10秒→最大60秒）。
+                # 短い間隔のまま繰り返すと、弱っている回線をこちらから叩き続ける。
+                gap = min(reader.STALE * (1 + reader.reconnects // 3), 60.0)
+                if reader.stalled() > reader.STALE and time.time() - last_kick > gap:
                     last_kick = time.time()
                     print(datetime.now().strftime("%H:%M:%S"),
                           "コマが %.0f 秒来ない → 読み手を作り直す" % reader.stalled(),
@@ -194,6 +198,12 @@ def main():
                 print(datetime.now().strftime("%H:%M:%S"),
                       "経過 %.0f分 コマ=%d 顔=%d いま追跡中=%d"
                       % ((now - t_start) / 60, frame_i, n_emb, len(tracks)), flush=True)
+            if a.test_break and now - t_start > a.test_break:
+                a.test_break = 0.0             # 1回だけ
+                print(datetime.now().strftime("%H:%M:%S"),
+                      "【試験】わざと映像を切る（受けたコマ=%d）" % reader.got, flush=True)
+                reader.kick()
+                reader = reader.new_reader()
             if now - last_net > 60:        # つながっている先を1分ごとに残す
                 last_net = now
                 print(datetime.now().strftime("%H:%M:%S"), "回線", net_now(), flush=True)

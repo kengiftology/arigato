@@ -1,0 +1,951 @@
+20:38:16 記録を始める → rec/20260919_2038 / IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 4, bytestream 50868
+[h264 @ 0x7a69fb0e00] error while decoding MB 37 23, bytestream -10
+[h264 @ 0x7a69fb1500] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1500] error while decoding MB 0 41, bytestream 4299
+[h264 @ 0x7a69fb0e00] cabac decode of qscale diff failed at 26 14
+[h264 @ 0x7a69fb0e00] error while decoding MB 26 14, bytestream 35479
+[h264 @ 0x7a69fb1880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1880] error while decoding MB 0 3, bytestream 33924
+[h264 @ 0x7a69fb0e00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb0e00] error while decoding MB 0 12, bytestream 16693
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 17, bytestream 3929
+[h264 @ 0x7a69fb1880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1880] error while decoding MB 0 3, bytestream 51116
+[h264 @ 0x7a69fb2300] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb2300] error while decoding MB 21 0, bytestream 55738
+[h264 @ 0x7a69fb2680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb2680] error while decoding MB 0 4, bytestream 50671
+[h264 @ 0x7a69fb1500] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 41 0, bytestream 38509
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 7, bytestream 48343
+[h264 @ 0x7a69fb1500] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 19 0, bytestream 49736
+[h264 @ 0x7a69fb1f80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1f80] error while decoding MB 0 13, bytestream 38833
+[h264 @ 0x7a69fb2680] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb2680] error while decoding MB 18 0, bytestream 55696
+[h264 @ 0x7a69fb1180] cabac decode of qscale diff failed at 29 20
+[h264 @ 0x7a69fb1180] error while decoding MB 29 20, bytestream 27820
+[h264 @ 0x7a69fb1880] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1880] error while decoding MB 18 0, bytestream 57565
+[h264 @ 0x7a69fb2300] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb2300] error while decoding MB 0 14, bytestream 37313
+20:39:16 回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 23, bytestream 25990
+[h264 @ 0x7a69fb2680] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb2680] error while decoding MB 18 0, bytestream 55485
+[h264 @ 0x7a69fb2300] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb2300] error while decoding MB 0 8, bytestream 24417
+[h264 @ 0x7a69fb1880] cabac decode of qscale diff failed at 66 5
+[h264 @ 0x7a69fb1880] error while decoding MB 66 5, bytestream 48977
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1180] error while decoding MB 0 18, bytestream 32477
+20:39:33 経過 1分 コマ=300 顔=0 いま追跡中=0
+[h264 @ 0x7a69fb1f80] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1f80] error while decoding MB 40 0, bytestream 45531
+[h264 @ 0x7a69fb1500] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1500] error while decoding MB 0 4, bytestream 48540
+[h264 @ 0x7a69fb0e00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb0e00] error while decoding MB 0 12, bytestream 33323
+[h264 @ 0x7a69fb1500] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1500] error while decoding MB 0 10, bytestream 41705
+[h264 @ 0x7a69fb2680] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb2680] error while decoding MB 18 0, bytestream 57799
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 6, bytestream 46787
+[h264 @ 0x7a69fb1880] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1880] error while decoding MB 0 6, bytestream 44668
+[h264 @ 0x7a69fb2300] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb2300] error while decoding MB 0 5, bytestream 50000
+[h264 @ 0x7a69fb1500] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 0 3, bytestream 25442
+[h264 @ 0x7a69fb1500] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 18 0, bytestream 49970
+[h264 @ 0x7a69fb1f80] error while decoding MB 29 1, bytestream -5
+[h264 @ 0x7a69fb1500] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 0 13, bytestream 19762
+[h264 @ 0x7a69fb1c00] cabac decode of qscale diff failed at 20 7
+[h264 @ 0x7a69fb1c00] error while decoding MB 20 7, bytestream 41731
+20:40:16 回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[h264 @ 0x7a69fb1880] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1880] error while decoding MB 0 2, bytestream 19207
+[h264 @ 0x7a69fb1880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1880] error while decoding MB 0 8, bytestream 30019
+[h264 @ 0x7a69fb1180] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1180] error while decoding MB 42 0, bytestream 54298
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1180] error while decoding MB 0 4, bytestream 51985
+[h264 @ 0x7a69fb1c00] top block unavailable for requested intra mode
+[h264 @ 0x7a69fb1c00] error while decoding MB 19 0, bytestream 34741
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1180] error while decoding MB 0 2, bytestream 47035
+[h264 @ 0x7a69fb1f80] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1f80] error while decoding MB 0 4, bytestream 26463
+[h264 @ 0x7a69fb1180] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1180] error while decoding MB 42 0, bytestream 47115
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1180] error while decoding MB 0 5, bytestream 49364
+[h264 @ 0x7a69fb1f80] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1f80] error while decoding MB 18 0, bytestream 59067
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 2, bytestream 46459
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 13, bytestream 37356
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1180] error while decoding MB 0 7, bytestream 21202
+[h264 @ 0x7a69fb2300] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb2300] error while decoding MB 0 17, bytestream 31175
+[h264 @ 0x7a69fb1c00] cabac decode of qscale diff failed at 58 29
+[h264 @ 0x7a69fb1c00] error while decoding MB 58 29, bytestream 20228
+20:41:07 経過 3分 コマ=600 顔=0 いま追跡中=0
+[h264 @ 0x7a69fb0e00] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb0e00] error while decoding MB 18 0, bytestream 57371
+[h264 @ 0x7a69fb1500] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 46 0, bytestream 55261
+[h264 @ 0x7a69fb2680] cabac decode of qscale diff failed at 20 6
+[h264 @ 0x7a69fb2680] error while decoding MB 20 6, bytestream 47860
+[h264 @ 0x7a69fb1880] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1880] error while decoding MB 20 0, bytestream 2119
+20:41:19 回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 5, bytestream 50496
+[h264 @ 0x7a69fb1500] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 0 4, bytestream 50428
+[h264 @ 0x7a69fb1f80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1f80] error while decoding MB 0 18, bytestream 23785
+[h264 @ 0x7a69fb1f80] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1f80] error while decoding MB 18 0, bytestream 35278
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1180] error while decoding MB 0 6, bytestream 39798
+[h264 @ 0x7a69fb2300] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb2300] error while decoding MB 0 37, bytestream 10554
+[h264 @ 0x7a69fb1880] top block unavailable for requested intra mode
+[h264 @ 0x7a69fb1880] error while decoding MB 21 0, bytestream 55951
+[h264 @ 0x7a69fb2300] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb2300] error while decoding MB 0 12, bytestream 41101
+[h264 @ 0x7a69fb0e00] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb0e00] error while decoding MB 22 0, bytestream 40742
+[h264 @ 0x7a69fb1f80] cabac decode of qscale diff failed at 64 34
+[h264 @ 0x7a69fb1f80] error while decoding MB 64 34, bytestream 13735
+[h264 @ 0x7a69fb1180] top block unavailable for requested intra mode
+[h264 @ 0x7a69fb1180] error while decoding MB 19 0, bytestream 57232
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 9, bytestream 45529
+[h264 @ 0x7a69fb0e00] error while decoding MB 79 23, bytestream -7
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 11, bytestream 41943
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1180] error while decoding MB 0 3, bytestream 52247
+[h264 @ 0x7a69fb1f80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1f80] error while decoding MB 0 18, bytestream 2479
+[h264 @ 0x7a69fb1500] top block unavailable for requested intra mode
+[h264 @ 0x7a69fb1500] error while decoding MB 44 0, bytestream 19039
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1180] error while decoding MB 0 6, bytestream 48333
+20:42:19 回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[h264 @ 0x7a69fb1f80] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1f80] error while decoding MB 0 4, bytestream 41493
+[h264 @ 0x7a69fb2300] cabac decode of qscale diff failed at 31 3
+[h264 @ 0x7a69fb2300] error while decoding MB 31 3, bytestream 37476
+[h264 @ 0x7a69fb1880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1880] error while decoding MB 0 32, bytestream 14455
+[h264 @ 0x7a69fb1f80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1f80] error while decoding MB 0 12, bytestream 9883
+[h264 @ 0x7a69fb1880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1880] error while decoding MB 0 44, bytestream 707
+20:42:50 経過 5分 コマ=900 顔=0 いま追跡中=0
+[h264 @ 0x7a69fb0e00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb0e00] error while decoding MB 0 13, bytestream 33003
+[h264 @ 0x7a69fb2300] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb2300] error while decoding MB 0 24, bytestream 25013
+[h264 @ 0x7a69fb1500] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1500] error while decoding MB 0 15, bytestream 7165
+[h264 @ 0x7a69fb1880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1880] error while decoding MB 0 2, bytestream 54503
+[h264 @ 0x7a69fb2680] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb2680] error while decoding MB 0 18, bytestream 5175
+[h264 @ 0x7a69fb1c00] cabac decode of qscale diff failed at 56 11
+[h264 @ 0x7a69fb1c00] error while decoding MB 56 11, bytestream 14802
+[h264 @ 0x7a69fb1f80] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1f80] error while decoding MB 18 0, bytestream 56041
+20:43:19 回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[h264 @ 0x7a69fb1180] top block unavailable for requested intra mode
+[h264 @ 0x7a69fb1180] error while decoding MB 17 0, bytestream 50487
+[h264 @ 0x7a69fb2300] cabac decode of qscale diff failed at 27 6
+[h264 @ 0x7a69fb2300] error while decoding MB 27 6, bytestream 40813
+[h264 @ 0x7a69fb2680] cabac decode of qscale diff failed at 25 12
+[h264 @ 0x7a69fb2680] error while decoding MB 25 12, bytestream 39644
+[h264 @ 0x7a69fb1c00] cabac decode of qscale diff failed at 5 25
+[h264 @ 0x7a69fb1c00] error while decoding MB 5 25, bytestream -3
+[h264 @ 0x7a69fb1f80] error while decoding MB 28 20, bytestream -19
+[h264 @ 0x7a69fb2680] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb2680] error while decoding MB 0 16, bytestream 31229
+[h264 @ 0x7a69fb2300] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb2300] error while decoding MB 0 3, bytestream 23875
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 23, bytestream 20831
+[h264 @ 0x7a69fb1f80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1f80] error while decoding MB 0 20, bytestream 28184
+[h264 @ 0x7a69fb1500] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 0 34, bytestream 13388
+[h264 @ 0x7a69fb2680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb2680] error while decoding MB 0 16, bytestream 30271
+[h264 @ 0x7a69fb1f80] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1f80] error while decoding MB 0 7, bytestream 45835
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1180] error while decoding MB 0 6, bytestream 49189
+[h264 @ 0x7a69fb1f80] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1f80] error while decoding MB 0 39, bytestream 8800
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1180] error while decoding MB 0 10, bytestream 14263
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 4, bytestream 46864
+[h264 @ 0x7a69fb1f80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1f80] error while decoding MB 0 3, bytestream 54131
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1180] error while decoding MB 0 2, bytestream 44676
+20:44:19 回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+20:44:22 経過 6分 コマ=1200 顔=0 いま追跡中=0
+[h264 @ 0x7a69fb1880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1880] error while decoding MB 0 10, bytestream 41010
+[h264 @ 0x7a69fb2680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb2680] error while decoding MB 0 6, bytestream 48011
+[h264 @ 0x7a69fb1500] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 18 0, bytestream 52709
+[h264 @ 0x7a69fb2300] error while decoding MB 71 2, bytestream -5
+[h264 @ 0x7a69fb2300] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb2300] error while decoding MB 18 0, bytestream 24036
+[h264 @ 0x7a69fb1500] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 0 14, bytestream 37156
+[h264 @ 0x7a69fb2680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb2680] error while decoding MB 0 8, bytestream 44489
+[h264 @ 0x7a69fb1880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1880] error while decoding MB 0 11, bytestream 41659
+[h264 @ 0x7a69fb1500] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 0 10, bytestream 43582
+[h264 @ 0x7a69fb2300] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb2300] error while decoding MB 0 5, bytestream 46585
+[h264 @ 0x7a69fb1500] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 19 0, bytestream 25737
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 15, bytestream 19435
+[h264 @ 0x7a69fb2680] error while decoding MB 47 13, bytestream -7
+[h264 @ 0x7a69fb0a80] missing picture in access unit with size 74
+[h264 @ 0x7a69fb1c00] no frame!
+20:45:24 回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+20:45:37 映像を繋ぎ直す（1回目・2秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:0@459.975] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:45:45 映像を繋ぎ直す（2回目・2秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:0@461.985] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:45:45 コマが 10 秒来ない → 読み手を作り直す
+20:45:47 映像を繋ぎ直す（3回目・2秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:0@463.993] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:45:45   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@464.679] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:45:51 映像を繋ぎ直す（5回目・4秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:2@468.691] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:45:57 コマが 10 秒来ない → 読み手を作り直す
+20:45:59 映像を繋ぎ直す（6回目・8秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:2@476.702] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:45:57   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@476.888] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:03 映像を繋ぎ直す（8回目・4秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:3@485.991] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:10 コマが 10 秒来ない → 読み手を作り直す
+20:46:10   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@489.080] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:16 映像を繋ぎ直す（10回目・4秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:4@493.092] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:22 コマが 10 秒来ない → 読み手を作り直す
+20:46:24 映像を繋ぎ直す（11回目・8秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:4@501.096] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:22   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@501.323] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:28 映像を繋ぎ直す（13回目・4秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:5@510.421] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:34 コマが 10 秒来ない → 読み手を作り直す
+20:46:34   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@513.524] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:40 映像を繋ぎ直す（15回目・4秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:6@517.533] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:46 コマが 10 秒来ない → 読み手を作り直す
+20:46:48 映像を繋ぎ直す（16回目・8秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:6@525.547] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:46   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@525.776] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:52 映像を繋ぎ直す（18回目・4秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:7@534.870] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:46:58 コマが 10 秒来ない → 読み手を作り直す
+20:46:58   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@537.997] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:47:05 映像を繋ぎ直す（20回目・4秒待った）
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:8@547.096] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:47:11 コマが 10 秒来ない → 読み手を作り直す
+20:47:11   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@555.306] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:47:22 映像を繋ぎ直す（22回目・4秒待った）
+20:47:23 コマが 10 秒来ない → 読み手を作り直す
+20:47:23   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:9@564.407] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@569.495] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:47:35 コマが 10 秒来ない → 読み手を作り直す
+20:47:36 映像を繋ぎ直す（24回目・4秒待った）
+20:47:35   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:10@578.597] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@583.689] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:47:47 コマが 10 秒来ない → 読み手を作り直す
+20:47:47   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@591.872] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:47:58 映像を繋ぎ直す（27回目・4秒待った）
+20:48:00 コマが 10 秒来ない → 読み手を作り直す
+20:48:00   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:11@600.967] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@606.064] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:48:12 コマが 10 秒来ない → 読み手を作り直す
+20:48:13 映像を繋ぎ直す（29回目・4秒待った）
+20:48:12   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:12@615.151] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@620.244] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:48:24 コマが 10 秒来ない → 読み手を作り直す
+20:48:24   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@628.415] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:48:35 映像を繋ぎ直す（32回目・4秒待った）
+20:48:36 コマが 10 秒来ない → 読み手を作り直す
+20:48:36   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:13@637.514] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e5d60] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@642.600] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:48:48 コマが 10 秒来ない → 読み手を作り直す
+20:48:48   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[h264 @ 0x7a69fb0000] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb0000] error while decoding MB 44 0, bytestream 48852
+20:48:59 コマが 10 秒来ない → 読み手を作り直す
+20:48:59   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[h264 @ 0x7a69fb2300] top block unavailable for requested intra mode
+[h264 @ 0x7a69fb2300] error while decoding MB 19 0, bytestream 39783
+[ WARN:1@668.516] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:49:12 コマが 11 秒来ない → 読み手を作り直す
+20:49:12   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[h264 @ 0x7a69fb0000] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb0000] error while decoding MB 0 13, bytestream 25348
+20:49:24 コマが 10 秒来ない → 読み手を作り直す
+[h264 @ 0x7a69fb1880] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1880] error while decoding MB 0 5, bytestream 49591
+[h264 @ 0x7a69fb0e00] top block unavailable for requested intra mode
+[h264 @ 0x7a69fb0e00] error while decoding MB 41 0, bytestream 55609
+20:49:24   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+20:49:40 コマが 15 秒来ない → 読み手を作り直す
+20:49:40   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[h264 @ 0x7a62831500] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a62831500] error while decoding MB 0 8, bytestream 43506
+[tcp @ 0x7a721e5720] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@704.097] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:49:51 映像を繋ぎ直す（39回目・4秒待った）
+20:49:52 コマが 10 秒来ない → 読み手を作り直す
+20:49:52   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:14@713.193] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@713.196] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:50:00 映像を繋ぎ直す（41回目・4秒待った）
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:15@717.208] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:50:04 コマが 10 秒来ない → 読み手を作り直す
+20:50:04   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@723.370] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:50:10 映像を繋ぎ直す（43回目・4秒待った）
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:16@727.381] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:50:16 コマが 10 秒来ない → 読み手を作り直す
+20:50:18 映像を繋ぎ直す（44回目・8秒待った）
+20:50:16   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:16@740.467] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@745.556] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:50:29 コマが 10 秒来ない → 読み手を作り直す
+20:50:29   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@753.226] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:50:40 映像を繋ぎ直す（47回目・4秒待った）
+20:50:41 コマが 10 秒来ない → 読み手を作り直す
+20:50:41   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:17@762.326] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@767.418] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:50:53 コマが 10 秒来ない → 読み手を作り直す
+20:50:54 映像を繋ぎ直す（49回目・4秒待った）
+20:50:53   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:18@776.518] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@781.602] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:51:05 コマが 10 秒来ない → 読み手を作り直す
+20:51:05   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@789.761] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:51:16 映像を繋ぎ直す（52回目・4秒待った）
+20:51:17 コマが 10 秒来ない → 読み手を作り直す
+20:51:17   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:19@798.864] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@798.867] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:51:25 映像を繋ぎ直す（54回目・4秒待った）
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:20@802.877] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:51:30 コマが 10 秒来ない → 読み手を作り直す
+20:51:30   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@809.043] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:51:36 映像を繋ぎ直す（56回目・4秒待った）
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:21@813.052] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:51:42 コマが 10 秒来ない → 読み手を作り直す
+20:51:44 映像を繋ぎ直す（57回目・8秒待った）
+20:51:42   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:21@826.149] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@826.152] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:51:53 映像を繋ぎ直す（59回目・4秒待った）
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:22@830.159] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:51:54 コマが 10 秒来ない → 読み手を作り直す
+20:51:54   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@833.802] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:52:00 映像を繋ぎ直す（61回目・4秒待った）
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:23@837.813] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:52:07 コマが 10 秒来ない → 読み手を作り直す
+20:52:08 映像を繋ぎ直す（62回目・8秒待った）
+20:52:07   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:23@850.906] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@850.908] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:52:17 映像を繋ぎ直す（64回目・4秒待った）
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:24@854.915] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:52:19 コマが 10 秒来ない → 読み手を作り直す
+20:52:19   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@858.552] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:52:25 映像を繋ぎ直す（66回目・4秒待った）
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:25@862.558] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:52:31 コマが 10 秒来ない → 読み手を作り直す
+20:52:33 映像を繋ぎ直す（67回目・8秒待った）
+20:52:31   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:25@875.669] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@880.760] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:52:44 コマが 11 秒来ない → 読み手を作り直す
+20:52:44   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@888.429] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:52:55 映像を繋ぎ直す（70回目・4秒待った）
+20:52:56 コマが 10 秒来ない → 読み手を作り直す
+20:52:56   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:26@897.527] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@902.616] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:53:08 コマが 10 秒来ない → 読み手を作り直す
+20:53:09 映像を繋ぎ直す（72回目・4秒待った）
+20:53:08   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:27@911.711] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@916.804] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:53:20 コマが 10 秒来ない → 読み手を作り直す
+20:53:20   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@924.987] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:53:32 映像を繋ぎ直す（75回目・4秒待った）
+20:53:33 コマが 10 秒来ない → 読み手を作り直す
+20:53:33   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:28@934.081] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@939.163] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:53:45 コマが 10 秒来ない → 読み手を作り直す
+20:53:46 映像を繋ぎ直す（77回目・4秒待った）
+20:53:45   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:29@948.264] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@953.353] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:53:57 コマが 10 秒来ない → 読み手を作り直す
+20:53:57   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@961.529] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:54:08 映像を繋ぎ直す（80回目・4秒待った）
+20:54:09 コマが 10 秒来ない → 読み手を作り直す
+20:54:09   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:30@970.630] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6800] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@975.718] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:54:21 コマが 10 秒来ない → 読み手を作り直す
+20:54:22 映像を繋ぎ直す（82回目・4秒待った）
+20:54:21   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[ WARN:31@988.073] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[h264 @ 0x7a69fb1f80] error while decoding MB 27 42, bytestream -5
+[h264 @ 0x7a69fb1500] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1500] error while decoding MB 0 21, bytestream 25518
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1180] error while decoding MB 0 6, bytestream 31553
+[h264 @ 0x7a69fb2680] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb2680] error while decoding MB 0 7, bytestream 17038
+[h264 @ 0x7a69fb1500] top block unavailable for requested intra mode -1
+[h264 @ 0x7a69fb1500] error while decoding MB 18 0, bytestream 5485
+[h264 @ 0x7a69fb1500] error while decoding MB 5 8, bytestream -5
+[h264 @ 0x7a69fb1f80] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1f80] error while decoding MB 0 10, bytestream 10883
+[h264 @ 0x7a69fb1c00] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb1c00] error while decoding MB 0 37, bytestream 10490
+[h264 @ 0x7a69fb1180] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb1180] error while decoding MB 0 43, bytestream 169
+[h264 @ 0x7a69fb1180] cabac decode of qscale diff failed at 67 42
+[h264 @ 0x7a69fb1180] error while decoding MB 67 42, bytestream 2563
+[h264 @ 0x7a69fb0a80] missing picture in access unit with size 74
+[h264 @ 0x7a69fb1500] no frame!
+20:56:36 映像を繋ぎ直す（84回目・2秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:32@1118.838] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:56:43 映像を繋ぎ直す（85回目・2秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:32@1120.847] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:56:44 コマが 10 秒来ない → 読み手を作り直す
+20:56:45 映像を繋ぎ直す（86回目・2秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:32@1122.859] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:56:44   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1123.731] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:56:50 映像を繋ぎ直す（88回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:33@1127.741] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:56:56 コマが 10 秒来ない → 読み手を作り直す
+20:56:58 映像を繋ぎ直す（89回目・8秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:33@1135.752] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:56:56   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1135.927] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:03 映像を繋ぎ直す（91回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:34@1145.015] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:09 コマが 10 秒来ない → 読み手を作り直す
+20:57:09   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1148.145] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:15 映像を繋ぎ直す（93回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:35@1152.156] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:21 コマが 10 秒来ない → 読み手を作り直す
+20:57:23 映像を繋ぎ直す（94回目・8秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:35@1160.166] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:21   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1160.364] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:27 映像を繋ぎ直す（96回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:36@1169.449] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:33 コマが 10 秒来ない → 読み手を作り直す
+20:57:33   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1172.568] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:39 映像を繋ぎ直す（98回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:37@1176.575] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:45 コマが 10 秒来ない → 読み手を作り直す
+20:57:47 映像を繋ぎ直す（99回目・8秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:37@1184.586] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:45   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1184.760] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:51 映像を繋ぎ直す（101回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:38@1193.851] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:57:57 コマが 10 秒来ない → 読み手を作り直す
+20:57:57   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1196.977] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:04 映像を繋ぎ直す（103回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:39@1200.989] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:10 コマが 10 秒来ない → 読み手を作り直す
+20:58:12 映像を繋ぎ直す（104回目・8秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:39@1208.995] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:10   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1209.185] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:16 映像を繋ぎ直す（106回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:40@1213.189] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:22 コマが 10 秒来ない → 読み手を作り直す
+20:58:24 映像を繋ぎ直す（107回目・8秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: No route to host
+[ WARN:40@1221.201] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:22   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1221.391] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:28 映像を繋ぎ直す（109回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:41@1225.402] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:34 コマが 10 秒来ない → 読み手を作り直す
+20:58:36 映像を繋ぎ直す（110回目・8秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:41@1233.406] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:34   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1233.607] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:40 映像を繋ぎ直す（112回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:42@1237.613] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:46 コマが 10 秒来ない → 読み手を作り直す
+20:58:48 映像を繋ぎ直す（113回目・8秒待った）
+20:58:46   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:42@1250.698] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1250.701] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:57 映像を繋ぎ直す（115回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:43@1254.713] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:58:59 コマが 10 秒来ない → 読み手を作り直す
+20:58:59   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1258.345] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:59:05 映像を繋ぎ直す（117回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:44@1262.356] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:59:11 コマが 10 秒来ない → 読み手を作り直す
+20:59:13 映像を繋ぎ直す（118回目・8秒待った）
+20:59:11   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:44@1275.450] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1275.452] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:59:22 映像を繋ぎ直す（120回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:45@1279.459] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:59:24 コマが 10 秒来ない → 読み手を作り直す
+20:59:24   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1283.098] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:59:30 映像を繋ぎ直す（122回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:46@1292.187] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:59:36 コマが 10 秒来ない → 読み手を作り直す
+20:59:36   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1300.367] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+20:59:47 映像を繋ぎ直す（124回目・4秒待った）
+20:59:48 コマが 10 秒来ない → 読み手を作り直す
+20:59:48   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:47@1309.454] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1314.532] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:00:00 コマが 10 秒来ない → 読み手を作り直す
+21:00:01 映像を繋ぎ直す（126回目・4秒待った）
+21:00:00   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:48@1323.627] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1328.706] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:00:12 コマが 10 秒来ない → 読み手を作り直す
+21:00:12   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1336.876] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:00:23 映像を繋ぎ直す（129回目・4秒待った）
+21:00:25 コマが 10 秒来ない → 読み手を作り直す
+21:00:25   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:49@1345.973] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1351.062] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:00:37 コマが 10 秒来ない → 読み手を作り直す
+21:00:38 映像を繋ぎ直す（131回目・4秒待った）
+21:00:37   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:50@1360.154] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1365.237] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:00:49 コマが 10 秒来ない → 読み手を作り直す
+21:00:49   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1373.391] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:01:00 映像を繋ぎ直す（134回目・4秒待った）
+21:01:01 コマが 10 秒来ない → 読み手を作り直す
+21:01:01   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:51@1382.486] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1387.562] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:01:13 コマが 10 秒来ない → 読み手を作り直す
+21:01:14 映像を繋ぎ直す（136回目・4秒待った）
+21:01:13   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:52@1396.645] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1401.733] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:01:25 コマが 10 秒来ない → 読み手を作り直す
+21:01:25   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1409.908] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:01:36 映像を繋ぎ直す（139回目・4秒待った）
+21:01:38 コマが 10 秒来ない → 読み手を作り直す
+21:01:38   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:53@1419.010] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1424.098] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:01:50 コマが 10 秒来ない → 読み手を作り直す
+21:01:51 映像を繋ぎ直す（141回目・4秒待った）
+21:01:50   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:54@1433.199] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1438.274] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:02:02 コマが 10 秒来ない → 読み手を作り直す
+21:02:02   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1446.441] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:02:13 映像を繋ぎ直す（144回目・4秒待った）
+21:02:14 コマが 10 秒来ない → 読み手を作り直す
+21:02:14   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:55@1455.538] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1460.624] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:02:26 コマが 10 秒来ない → 読み手を作り直す
+21:02:27 映像を繋ぎ直す（146回目・4秒待った）
+21:02:26   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:56@1469.718] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1474.800] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:02:38 コマが 10 秒来ない → 読み手を作り直す
+21:02:38   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1482.972] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:02:50 映像を繋ぎ直す（149回目・4秒待った）
+21:02:51 コマが 10 秒来ない → 読み手を作り直す
+21:02:51   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:57@1492.065] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1497.150] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:03:03 コマが 10 秒来ない → 読み手を作り直す
+21:03:04 映像を繋ぎ直す（151回目・4秒待った）
+21:03:03   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:58@1506.241] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1511.325] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:03:15 コマが 10 秒来ない → 読み手を作り直す
+21:03:15   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1519.498] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:03:26 映像を繋ぎ直す（154回目・4秒待った）
+21:03:27 コマが 10 秒来ない → 読み手を作り直す
+21:03:27   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:59@1528.600] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1533.688] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:03:39 コマが 10 秒来ない → 読み手を作り直す
+21:03:40 映像を繋ぎ直す（156回目・4秒待った）
+21:03:39   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:60@1542.794] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1547.879] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:03:51 コマが 10 秒来ない → 読み手を作り直す
+21:03:51   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1556.039] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:03 映像を繋ぎ直す（159回目・4秒待った）
+21:04:04 コマが 10 秒来ない → 読み手を作り直す
+21:04:04   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:61@1565.141] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1570.225] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:16 コマが 10 秒来ない → 読み手を作り直す
+21:04:17 映像を繋ぎ直す（161回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:62@1574.230] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:16   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1575.330] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:22 映像を繋ぎ直す（163回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:63@1579.340] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:28 コマが 10 秒来ない → 読み手を作り直す
+21:04:30 映像を繋ぎ直す（164回目・8秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:63@1587.350] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:28   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1587.537] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:34 映像を繋ぎ直す（166回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:64@1591.550] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:40 コマが 10 秒来ない → 読み手を作り直す
+21:04:42 映像を繋ぎ直す（167回目・8秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:64@1599.560] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:40   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1599.748] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:46 映像を繋ぎ直す（169回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:65@1603.758] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:52 コマが 10 秒来ない → 読み手を作り直す
+21:04:54 映像を繋ぎ直す（170回目・8秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:65@1611.772] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:52   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1611.928] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:04:59 映像を繋ぎ直す（172回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:66@1615.936] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:05:05 コマが 10 秒来ない → 読み手を作り直す
+21:05:07 映像を繋ぎ直す（173回目・8秒待った）
+21:05:05   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:66@1629.030] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1629.032] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:05:16 映像を繋ぎ直す（175回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:67@1633.039] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:05:17 コマが 10 秒来ない → 読み手を作り直す
+21:05:17   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1636.685] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:05:23 映像を繋ぎ直す（177回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:68@1640.697] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:05:29 コマが 10 秒来ない → 読み手を作り直す
+21:05:31 映像を繋ぎ直す（178回目・8秒待った）
+21:05:29   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:68@1653.792] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1653.794] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:05:40 映像を繋ぎ直す（180回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:69@1657.806] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:05:42 コマが 10 秒来ない → 読み手を作り直す
+21:05:42   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:1@1661.442] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:05:48 映像を繋ぎ直す（182回目・4秒待った）
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Host is down
+[ WARN:70@1665.450] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:05:54 コマが 10 秒来ない → 読み手を作り直す
+21:05:56 映像を繋ぎ直す（183回目・8秒待った）
+21:05:54   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:70@1678.544] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1683.624] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:06:07 コマが 10 秒来ない → 読み手を作り直す
+21:06:07   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1691.286] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:06:18 映像を繋ぎ直す（186回目・4秒待った）
+21:06:19 コマが 10 秒来ない → 読み手を作り直す
+21:06:19   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:71@1700.380] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1705.470] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:06:31 コマが 10 秒来ない → 読み手を作り直す
+21:06:32 映像を繋ぎ直す（188回目・4秒待った）
+21:06:31   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:72@1714.566] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1719.657] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:06:43 コマが 10 秒来ない → 読み手を作り直す
+21:06:43   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1727.821] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:06:54 映像を繋ぎ直す（191回目・4秒待った）
+21:06:55 コマが 10 秒来ない → 読み手を作り直す
+21:06:55   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:73@1736.912] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+[tcp @ 0x7a721e6580] Connection to tcp://192.168.0.230:554?timeout=5000000 failed: Operation timed out
+[ WARN:1@1742.004] global cap.cpp:214 open VIDEOIO(FFMPEG): backend is generally available but can't be used to capture by name
+21:07:08 コマが 10 秒来ない → 読み手を作り直す
+21:07:09 映像を繋ぎ直す（193回目・4秒待った）
+21:07:08   そのときの回線 IP=192.168.0.19 SSID=<redacted> カメラ=届く
+[h264 @ 0x7a69fb0000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a69fb0000] error while decoding MB 0 5, bytestream 50446
+[h264 @ 0x7a69fb2d80] left block unavailable for requested intra mode
+[h264 @ 0x7a69fb2d80] error while decoding MB 0 12, bytestream 40752
+[h264 @ 0x7a62830380] cabac decode of qscale diff failed at 59 15
+[h264 @ 0x7a62830380] error while decoding MB 59 15, bytestream 35830
+[h264 @ 0x7a62830700] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a62830700] error while decoding MB 0 37, bytestream 5098
+[h264 @ 0x7a62830a80] cabac decode of qscale diff failed at 29 7
+[h264 @ 0x7a62830a80] error while decoding MB 29 7, bytestream 19217
+[h264 @ 0x7a62830e00] cabac decode of qscale diff failed at 26 18
+[h264 @ 0x7a62830e00] error while decoding MB 26 18, bytestream 18449
+[h264 @ 0x7a62831180] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x7a62831180] error while decoding MB 0 8, bytestream 11114
+[h264 @ 0x7a62831500] cabac decode of qscale diff failed at 12 5
+[h264 @ 0x7a62831500] error while decoding MB 12 5, bytestream 6158

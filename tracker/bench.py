@@ -128,6 +128,10 @@ class LatestReader(threading.Thread):
         """同じ宛先へ、新しい読み手を作って動かす。古いほうは捨てる。"""
         r = LatestReader(self.url, self.transport, self.reconnect)
         r.reconnects = self.reconnects + 1
+        # 待ち時間も引き継ぐ。作り直すたびに最初（2秒）へ戻ると、外から10秒おきに
+        # 作り直されるかぎり延々と繋ぎに行く（9/19 20:45〜21:07 に99回そうなった）。
+        r.wait = min(self.wait * 2, self.RETRY_MAX)
+        r.opened_at = time.time()      # 「いま開いたばかり」扱い。すぐ落ちれば更に倍になる
         r.start()
         return r
 
