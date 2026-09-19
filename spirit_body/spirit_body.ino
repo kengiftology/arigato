@@ -263,6 +263,12 @@ static bool QUIET = false;       // 設置版: 音あり（quiet on で試験用
 // ---- 場所の状態（目=WROVERから受信 / テストはシリアル m コマンド） ----
 static float g_M = 0.10f;        // 散らかり度 0..1（目から取得）
 static float g_N = 0.0f;         // 放置度 0..1（Mが高いまま経った時間）
+static int   g_stage = 0;        // いま居る人のなつき度の段階 0..4（/m の4つめ。誰か分からなければ0）
+// 見張り（2026-09-19）：本体は生きているのにクラウドへ行けなくなることが2回あった
+// （9/17 19:33・9/19 12:1x。UDPとpingは通り、HTTPSだけが通らない。電源の入れ直しで戻る）。
+// 5分つづけて1回も通らなければ、自分で起動し直す。
+static uint32_t lastHttpOk = 0;  // 最後にHTTP(S)が通った時刻
+static uint8_t  wdBoots = 0;     // 見張りによる起動し直しが続いた回数（通れば0に戻す）
 static uint32_t lastMrecv = 0;   // 最後にM値を取れた時刻
 // 情報源のサーバ。GET /m → "score N flag"。
 // 目(WROVER 192.168.0.202:80)か、クラウドの脳(443=HTTPS・パスに/spiritが付く)。シリアルsrcで切替。
@@ -316,6 +322,7 @@ static bool httpGet(const char *path, char *body, int bodysz) {
     c->stop();
     int i = resp.indexOf("\r\n\r\n");
     if (i < 0) return false;
+    lastHttpOk = millis();                       // 返事が来た＝道は通っている（見張り用）
     String b = resp.substring(i + 4); b.trim();
     strncpy(body, b.c_str(), bodysz - 1); body[bodysz - 1] = 0;
     return b.length() > 0;
@@ -468,7 +475,8 @@ static String processCmd(String cmd) {
         out += "VER ota-1\n";                              // 無線更新の動作確認用の版数
         out += "IP " + WiFi.localIP().toString() + "\n";
         out += "SRC " + srcIP + ":" + String(srcPort) + "\n";
-        out += "M " + String(g_M, 3) + " N " + String(g_N, 3) + "\n";
+        out += "M " + String(g_M, 3) + " N " + String(g_N, 3) + " STAGE " + String(g_stage) + "\n";
+        out += "NET ok " + String((millis() - lastHttpOk) / 1000) + "s ago wd " + String(wdBoots) + "\n";
         out += "CARE " + String(careCount) + "\n";
         out += String("QUIET ") + (QUIET ? "on" : "off") + "\n";
         // 人感の生死を無線から見る（2026-09-10：手を振っても「!」が出ないと報告あり）
@@ -551,6 +559,7 @@ static const int      VOICE_BUDGET    = 5;                      // 1回の滞在
 static bool     inEpisode = false;             // 今この場に人がいる一続き
 static uint32_t episodeStart = 0;              // その滞在が始まった時刻
 static int      voiceUsed = 0;                 // その滞在で声を出した回数
+static bool     closeGreeted = false;          // その滞在で、なついている人への喜びをもう出したか
 
 // 目から "M N" を受け取る入口。Nを更新してからM（世話判定つき）へ回す。
 static void onMN(float m, float n) { g_N = n; onM(m); }
@@ -589,7 +598,8 @@ static void updatePresence(uint32_t now) {
             inEpisode = true;
             episodeStart = now;
             voiceUsed = 0;
-            pendingScene = 1;                 // 「!」（絵だけ・音は出さない）
+            closeGreeted = false;
+            pendingScene = 1;                // 「!」（絵だけ・音は出さない）
             announceArrival = true;           // 8秒の定期を待たず即「occupied」を届ける
         }
         lastMotion = now;
@@ -626,12 +636,14 @@ void setup() {
     if (PIN_BTN >= 0) pinMode(PIN_BTN, INPUT_PULLUP);
     lcdInit();
     audioInit();
-    if (!QUIET) chimeBoot();
+    prefs.begin("spirit", false);
+    wdBoots = prefs.getUChar("wd", 0);         // 見張りが起こし直した起動なら1以上
+    bool hush = QUIET || wdBoots > 0;          // 見張りの起動し直しでは音を出さない（夜中に鳴らさない）
+    if (!hush) chimeBoot();
     playAnim(anim_hatch, 1);                   // 誕生（絵はいつも通り）
-    if (!QUIET) melodyHatch();
+    if (!hush) melodyHatch();
     lastMotion = millis();
     nextMurmur = millis() + 3000;
-    prefs.begin("spirit", false);
     careCount = prefs.getUInt("care", 0);
     srcIP = prefs.getString("srcIP", srcIP);          // 情報源(目/脳)を記憶から復元
     srcPort = prefs.getUShort("srcPort", srcPort);
@@ -693,12 +705,11 @@ void loop() {
     if (pendingScene == 5) { pendingScene = 0; playAnim(anim_hatch, 1); if (!QUIET) melodyHatch(); return; }
 
     if (!sleeping && now - lastMotion > SLEEP_AFTER_MS) sleeping = true;
-    if (sleeping) {                            // 眠り（長い無人）
-        playAnim(anim_sleep, 1, checkInterrupt);
-        return;
-    }
+    // 2026-09-19：眠りの絵は、クラウドとのやりとりの「あと」で出す（下）。
+    // 以前はここで return していたので、眠っている間（10分気配なし〜）は /m も /presence も
+    // 取りに行かず、クラウドからは「C3が止まった」と見えていた。
 
-    if (now >= nextMurmur) {                   // 独り言（声だけ・滞在中は上限つき）
+    if (now >= nextMurmur) {                  // 独り言（声だけ・滞在中は上限つき）
         // 字幕はやめた（2026-09-03）。声で届くなら、言葉を読ませる必要がない。
         // 読ませると相手は画面を見にいく。地霊は見るものではなく、居るもの。
         winIdx = (winIdx + 1) % N_WINS;        // 声の抑揚の選択に今も使っている
@@ -739,12 +750,37 @@ void loop() {
     if (now >= nextPoll) {
         nextPoll = now + 10000;
         char body[48];
-        if (httpGet("/m", body, sizeof body)) {
-            float m, n; int f;
-            if (sscanf(body, "%f %f %d", &m, &n, &f) >= 2) onMN(m, n);
+        // 起動して最初の1回は、なぜ起動したかを添える（on＝電源／wd＝見張り）。クラウドが記録に残す
+        static bool bootTold = false;
+        const char *path = bootTold ? "/m" : (wdBoots ? "/m?boot=wd" : "/m?boot=on");
+        if (httpGet(path, body, sizeof body)) {
+            bootTold = true;
+            if (wdBoots) { wdBoots = 0; prefs.putUChar("wd", 0); }   // 通った → 見張りの回数を戻す
+            float m, n; int f, s = 0;
+            int got = sscanf(body, "%f %f %d %d", &m, &n, &f, &s);
+            if (got >= 2) onMN(m, n);
+            g_stage = (got >= 4 && s >= 0 && s <= 4) ? s : 0;
+            // 段階の出し分け（まず1つ・2026-09-19）：なついている人（段階3以上）だと分かったら、
+            // その滞在で1回だけ喜ぶ。顔が分かるのは来てから少しあとなので、「!」とは別に出る。
+            if (inEpisode && !closeGreeted && g_stage >= 3) {
+                closeGreeted = true;
+                pendingScene = 2;
+            }
         }
     }
+    // 見張り：5分つづけて通らなければ起動し直す。3回つづけて駄目なら、次からは1時間おき
+    //（クラウドや家のWi-Fiが長く落ちている間、5分おきに起動し直しつづけないため）
+    if (millis() - lastHttpOk > (wdBoots < 3 ? 300000UL : 3600000UL)) {
+        if (wdBoots < 250) prefs.putUChar("wd", wdBoots + 1);
+        Serial.println("WATCHDOG RESTART");
+        delay(100);
+        ESP.restart();
+    }
 
+    if (sleeping) {                            // 眠り（長い無人）
+        playAnim(anim_sleep, 1, checkInterrupt);
+        return;
+    }
     // 気分: 放置(N>=0.5)ならしょんぼり。散らかっていても使用中(N低)は責めずふだんの呼吸
     if (g_N >= 0.5f) playAnim(anim_sad, 1, checkInterrupt);
     else             playAnim(anim_idle, 1, checkInterrupt);

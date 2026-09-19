@@ -1288,13 +1288,18 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
 
 
 @router.get("/m", response_class=PlainTextResponse)
-async def get_m():
+async def get_m(boot: str | None = None):
     """C3互換: 'score N flag stage'（flag 1=無人）。
+
+    boot（2026-09-19）＝C3が起動して最初の1回だけ添える。on＝電源が入った／
+    wd＝クラウドへ5分通らず、C3が自分で起動し直した。いつ・なぜ起動したかを記録に残す。
 
     stage（2026-09-19）＝いま居る人のなつき度の段階 0〜4（BOND_STAGES の並び順）。
     誰も居ない・誰か分からないときは 0。末尾に足しただけなので、
     先頭3つしか読まない古いファームはそのまま動く。"""
     _ALIVE["c3"] = time.time()
+    if boot in ("on", "wd"):
+        _log_event("c3_boot", {"why": boot})
     st = _load()
     n = _calc_n(st, time.time())
     return "%.3f %.3f %d %d\n" % (st["score"], n, 1 if st["empty"] else 0,
