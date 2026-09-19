@@ -1338,6 +1338,8 @@ async def get_full():
         "objects": st.get("objects", []),        # いま見えているもの（状態ページ用）
         "photo_url": st.get("photo_url"), "photo_at": st.get("photo_at"),
         "person": st.get("cur_person"), "person_state": st.get("cur_state"),
+        "stage": _cur_stage_index(st),           # いま居る人の段階0〜4（C3に渡しているのと同じ値）
+        "stage_name": BOND_STAGES[_cur_stage_index(st)][1],
         "last_judge_ago": round(now - st["last_judge"]) if st["last_judge"] else None,
         "judge_error": _judge_err[0],
     }
