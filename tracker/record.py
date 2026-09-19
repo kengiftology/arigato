@@ -18,6 +18,7 @@ B の狙いは「判定の単位を1枚の写真から、人の滞在1回に変�
 """
 import argparse
 import json
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -33,6 +34,24 @@ FRONT_YAW = 25.0
 FRONT_PITCH = 25.0
 # 追跡が切れてからこれだけ見かけなければ、その滞在は終わりとする
 TRACK_GONE = 3.0
+
+
+def net_now() -> str:
+    """いまつながっている先を短く。ネットワークが黙って切り替わったことに、
+    あとから気づけるようにする（9/19、PC側で実際に起きた）。
+    SSID は場所情報の許可が無いと伏せられるので、IP と相手先で代わりにする。"""
+    def sh(*cmd):
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=5).stdout.strip()
+        except Exception:
+            return ""
+    ip = sh("ipconfig", "getifaddr", "en0") or "なし"
+    ssid = ""
+    for line in sh("ipconfig", "getsummary", "en0").splitlines():
+        if "SSID" in line and "BSSID" not in line:
+            ssid = line.split(":", 1)[1].strip()
+    cam = "届く" if sh("ping", "-c1", "-t2", "192.168.0.230") else "届かない"
+    return "IP=%s SSID=%s カメラ=%s" % (ip, ssid or "不明", cam)
 
 
 def blur_of(gray) -> float:
@@ -73,7 +92,9 @@ def main():
     period = 1.0 / a.fps
     t_start = time.time()
     next_at = t_start
-    print(datetime.now().strftime("%H:%M:%S"), "記録を始める →", out, flush=True)
+    print(datetime.now().strftime("%H:%M:%S"), "記録を始める →", out,
+          "/", net_now(), flush=True)
+    last_net = time.time()
 
     def close_track(tid, now):
         t = tracks.pop(tid)
@@ -105,6 +126,8 @@ def main():
                     print(datetime.now().strftime("%H:%M:%S"),
                           "コマが %.0f 秒来ない → 読み手を作り直す" % reader.stalled(),
                           flush=True)
+                    print(datetime.now().strftime("%H:%M:%S"), "  そのときの回線",
+                          net_now(), flush=True)
                     reader.kick()
                     reader = reader.new_reader()
                 time.sleep(0.5)
@@ -171,6 +194,9 @@ def main():
                 print(datetime.now().strftime("%H:%M:%S"),
                       "経過 %.0f分 コマ=%d 顔=%d いま追跡中=%d"
                       % ((now - t_start) / 60, frame_i, n_emb, len(tracks)), flush=True)
+            if now - last_net > 60:        # つながっている先を1分ごとに残す
+                last_net = now
+                print(datetime.now().strftime("%H:%M:%S"), "回線", net_now(), flush=True)
     except KeyboardInterrupt:
         print("止めた", flush=True)
     finally:
