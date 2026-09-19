@@ -1310,11 +1310,15 @@ _stage_memo = [None, 0.0, 0]   # (人, 読んだ時刻, 段階)。C3は10秒お�
 
 
 def _cur_stage_index(st: dict) -> int:
-    """いま居る人（cur_person）の段階を 0〜4 で返す。居なければ 0。"""
-    pid = st.get("cur_person")
-    if not pid:
-        return 0
+    """いま居る人の段階を 0〜4 で返す。居なければ 0。
+
+    2026-09-19：`cur_person` は人が去っても消えない（消えるのは顔を消したときだけ）。
+    そのまま渡すと、何時間も前に帰った人の段階が残り、次に来た別の人に
+    その人向けの態度が出てしまう。顔で確かめてから VISIT_HOLD の間だけ渡す。"""
     now = time.time()
+    pid = st.get("cur_person")
+    if not pid or now - st.get("face_at", 0) > VISIT_HOLD:
+        return 0
     if _stage_memo[0] == pid and now - _stage_memo[1] < 60.0:
         return _stage_memo[2]
     try:
