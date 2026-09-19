@@ -1130,7 +1130,10 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                         ready = _ready_line(res["person"], doc, st)
                     if ready:                          # その人向けに先に作ってあった一言
                         kind = ready
-                    _plan_speech(st, kind, slow)
+                    # 呼び名がまだ無い人には、迎えの代わりに呼び名を聞く（2026-09-17）
+                    from server.routers import spirit_name
+                    if not spirit_name.maybe_ask(st, res["person"], doc, now):
+                        _plan_speech(st, kind, slow)
                 # 前回の判断からこちら、誰が居たかを溜めておく。
                 # 判断の時点で cur_person を見ると、とうに帰った人の名が残り、
                 # 無人の記録にまで同じIDが付いていた（2026-09-02に実際に起きた）。
@@ -1147,9 +1150,12 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 _save(st)
                 _lap("save")
                 _log_ms("face", _ms, len(data))
+                from server.routers import spirit_name
                 return {"ok": True, "person": res["person"], "state": res["state"],
                         "people": res.get("all") or [res["person"]],
-                        "judged": False, "why": "person_seen", "ms": _ms}
+                        "judged": False, "why": "person_seen", "ms": _ms,
+                        # 呼び名を聞いている相手。ラズパイはこれを見て C3 に鳴らさせ、答えを取りに行く
+                        "ask_name": spirit_name.asking(st, now)}
         except Exception as e:
             logger.warning("identify failed: %s", e)
             _identify_err[0] = "%s: %s" % (type(e).__name__, str(e)[:200])

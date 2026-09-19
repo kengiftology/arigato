@@ -32,6 +32,11 @@ app.include_router(timelapse.router)
 app.include_router(presence.router)
 if spirit is not None:
     app.include_router(spirit.router)
+    try:
+        from server.routers import spirit_name   # 呼び名を聞く（2026-09-17）
+        app.include_router(spirit_name.router)
+    except Exception as _e:  # noqa: BLE001
+        print(f"[warn] spirit_name router load failed: {_e}")
 
 PWA_DIR = Path(__file__).parent.parent / "pwa"
 

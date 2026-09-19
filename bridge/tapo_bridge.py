@@ -631,6 +631,70 @@ def report(jpg: bytes, why: str, big: bool = False, check: bool = False) -> dict
     return res
 
 
+# ---- 呼び名を聞く（2026-09-17）----
+# クラウドが写真の返事に ask_name=<ID> を付けてきたら、問いかけの声を C3 に鳴らさせ、
+# 答えの数秒ぶんだけ Tapo のマイクの音を取ってクラウドへ送る。音はここにも残さない。
+# C3 はふだん1分おきにしか声を取りに来ないので、無線の命令口（UDP 5006）に `mur`
+# （いま1回だけ取りに来る）を送って、すぐ鳴らさせる。
+C3_ADDR = (os.environ.get("C3_IP", "192.168.0.233"), 5006)
+ASK_SPEAK_WAIT = 3.3   # クラウドは問いかけを3秒ためてから渡す（spirit_name の SPEAK_SLOW）
+LISTEN_TOTAL = 12.0    # 音を取る長さ。映像の繋ぎに約3秒かかり、問いかけ（3秒）の後ろ半分も入る。
+                       # 9/19 の実測：繋いでから音が出るまでに数秒かかることがある
+ASK_REPEAT_GAP = 60.0  # 同じ人の問いかけを、続けて扱わない
+_asked = {"pid": "", "at": 0.0}
+
+
+def c3(cmd: str) -> None:
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.sendto(cmd.encode(), C3_ADDR)
+    finally:
+        s.close()
+
+
+def listen(sec: float) -> bytes | None:
+    """Tapo のマイクから sec 秒ぶん、16kHz・16bit・モノラルの WAV を取る。メモリの中だけ。"""
+    try:
+        out = subprocess.run(
+            ["ffmpeg", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", WATCH_URL,
+             "-vn", "-ac", "1", "-ar", "16000", "-acodec", "pcm_s16le", "-t", str(sec),
+             "-f", "wav", "pipe:1"],
+            capture_output=True, timeout=sec + 15)
+        return out.stdout if len(out.stdout) > 16000 else None
+    except Exception as e:
+        print("listen failed:", e, flush=True)
+        return None
+
+
+def ask_name(pid: str) -> None:
+    now = time.time()
+    if _asked["pid"] == pid and now - _asked["at"] < ASK_REPEAT_GAP:
+        return
+    _asked["pid"], _asked["at"] = pid, now
+    print(time.strftime("%H:%M:%S"), "呼び名を聞く:", pid, flush=True)
+    time.sleep(ASK_SPEAK_WAIT)          # 早く取りに行くと「まだ」で無音が返る
+    c3("mur")
+    wav = listen(LISTEN_TOTAL)
+    if wav is None:
+        print("呼び名：音が取れなかった", flush=True)
+        return
+    try:
+        req = urllib.request.Request(
+            SERVER + "/spirit/name?person=" + urllib.parse.quote(pid), data=wav,
+            headers={"Content-Type": "audio/wav", "X-Upload-Key": KEY})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            res = json.loads(r.read().decode())
+    except Exception as e:
+        print("呼び名：送れなかった", e, flush=True)
+        return
+    print(time.strftime("%H:%M:%S"), "呼び名の返事:", {k: res.get(k) for k in ("ok", "why", "say")},
+          "取れた" if res.get("name") else "取れない", flush=True)
+    if res.get("say"):
+        time.sleep(1.0)                  # クラウドは0.8秒ためてから渡す
+        c3("mur")
+
+
 def _revive_hires() -> None:
     """大きい1枚の流れが死んでいたら、起こし直す（2026-09-19）。
 
@@ -754,6 +818,9 @@ def main():
                         # 見たと言う間は「まだ居る」として見張りを続ける。
                         # 動きだけを頼りにすると、じっとしている人が消える。
                         w.last_move = now
+                    if res.get("ask_name"):
+                        ask_name(res["ask_name"])
+                        w.last_move = time.time()
                     if res.get("hires") and now - last_hires >= HIRES_GAP:
                         # 人は写っているのに顔が取れなかった、と返ってきた。
                         # 大きく撮り直せば取れるかもしれないので、もう一度送る。
