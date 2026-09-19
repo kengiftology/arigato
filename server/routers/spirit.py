@@ -1303,7 +1303,6 @@ async def get_m(boot: str | None = None):
     stage（2026-09-19）＝いま居る人のなつき度の段階 0〜4（BOND_STAGES の並び順）。
     誰も居ない・誰か分からないときは 0。末尾に足しただけなので、
     先頭3つしか読まない古いファームはそのまま動く。"""
-    _ALIVE["c3"] = time.time()
     if boot in ("on", "wd"):
         _log_event("c3_boot", {"why": boot})
     st = _load()
@@ -1360,6 +1359,11 @@ async def presence(state: str | None = None):
     """C3が ?state=empty|occupied で報告。引数なしは現在状態を返す（目が撮る前の確認用）。"""
     st = _load()
     if state in ("empty", "occupied"):
+        # C3 が生きている印は、この形の呼び出しだけで数える（2026-09-19）。
+        # もとは /spirit/m で数えていたが、あれは誰が叩いても更新されるので、
+        # 入れ替え後の自動確認や手元の道具が叩くたびに「C3は生きている」と見えた。
+        # ?state= を付けて呼ぶのは C3 だけ（spirit_body.ino の8秒ごとの報告）。
+        _ALIVE["c3"] = time.time()
         prev = st["empty"]
         st["empty"] = (state == "empty")
         if prev != st["empty"]:

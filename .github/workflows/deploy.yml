@@ -62,7 +62,9 @@ jobs:
           BASE=https://arigato-3ipecjbnha-an.a.run.app
           sleep 20
           fail=0
-          for path in /spirit/health /spirit/m /spirit/panel /spirit/presence /spirit/log; do
+          # /spirit/m は叩かない。C3 の生存の印は /presence?state= で数えるので直接は響かないが、
+          # 確認のために本番の状態を動かす口を叩くのは避ける（2026-09-19）
+          for path in /spirit/health /spirit/full /spirit/panel /spirit/presence /spirit/log; do
             code=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --retry-delay 5 "$BASE$path")
             echo "GET $path -> $code"
             [ "$code" = "200" ] || fail=1
