@@ -1289,11 +1289,37 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
 
 @router.get("/m", response_class=PlainTextResponse)
 async def get_m():
-    """C3互換: 'score N flag'（flag 1=無人）。"""
+    """C3互換: 'score N flag stage'（flag 1=無人）。
+
+    stage（2026-09-19）＝いま居る人のなつき度の段階 0〜4（BOND_STAGES の並び順）。
+    誰も居ない・誰か分からないときは 0。末尾に足しただけなので、
+    先頭3つしか読まない古いファームはそのまま動く。"""
     _ALIVE["c3"] = time.time()
     st = _load()
     n = _calc_n(st, time.time())
-    return "%.3f %.3f %d\n" % (st["score"], n, 1 if st["empty"] else 0)
+    return "%.3f %.3f %d %d\n" % (st["score"], n, 1 if st["empty"] else 0,
+                                  _cur_stage_index(st))
+
+
+_stage_memo = [None, 0.0, 0]   # (人, 読んだ時刻, 段階)。C3は10秒おきに来るので、読むのは1分に1回
+
+
+def _cur_stage_index(st: dict) -> int:
+    """いま居る人（cur_person）の段階を 0〜4 で返す。居なければ 0。"""
+    pid = st.get("cur_person")
+    if not pid:
+        return 0
+    now = time.time()
+    if _stage_memo[0] == pid and now - _stage_memo[1] < 60.0:
+        return _stage_memo[2]
+    try:
+        doc = get_db().collection("faces").document(pid).get().to_dict() or {}
+    except Exception:
+        return _stage_memo[2] if _stage_memo[0] == pid else 0
+    level = _bond_now(doc)
+    idx = sum(1 for lo, _n, _m in BOND_STAGES if level >= lo) - 1
+    _stage_memo[:] = [pid, now, max(0, idx)]
+    return _stage_memo[2]
 
 
 @router.get("/full")
@@ -2175,6 +2201,7 @@ async def bond_set(who: str = "", value: int = 0, key: str = ""):
     except Exception as e:
         return {"ok": False, "error": str(e)}
     _log_event("bond_set", {"person": who, "bond": value})
+    _stage_memo[1] = 0.0                       # C3へ渡す段階をすぐ読み直させる（別の起動体では最大1分遅れる）
     return {"ok": True, "person": who, "bond": value, "stage": _bond_stage(value)[0]}
 
 
@@ -3473,13 +3500,12 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
 
 # なつき度の動き（2026-09-03・台帳#12改訂に沿う）
 # なつき度（設計の数字 2026-09-08 / 実装 2026-09-09）
-# 0〜10の整数。初対面0。片づけ1回で+1（その時居た人ぜんぶ）。会わない7日ごとに−1。
-# 使って放置しても下げない（台帳#12：「何もしなかったこと」では動かさない。
-# 下がるのは会っていない時間だけ。ペットが久しぶりの人によそよそしいのと同じ）。
+# 0〜10の整数。初対面0。片づけ1回で+1（その時居た人ぜんぶ）。
+# 使って放置しても下げない（台帳#12：「何もしなかったこと」では動かさない）。
+# 2026-09-19：会わない時間でも下げない（貯金）。下がる道は無い。
 BOND_MAX = 10
 BOND_CARE = 1          # 片づけてくれた → +1
 BOND_USE = 0           # 使って、そのままにした → 動かさない
-BOND_FADE_DAYS = 7.0   # 会わない日が7日たつごとに −1
 # 滞在の扱い（本人決定 2026-09-09 夜）
 STAY_MIN = 300.0        # 5分以下の滞在には何も付けない（本人決定：5分から）
 VISIT_MERGE_GAP = 1800.0 # 出たり入ったりが30分以内なら、同じ滞在として続ける（本人：30分）
@@ -3545,17 +3571,15 @@ NEWS_WINDOW = 86400.0  # 「さっき誰かが」と伝えられる範囲
 
 
 def _bond_now(doc: dict) -> float:
-    """いまのなつき度。会っていない時間のぶんだけ薄れる。
+    """いまのなつき度。会わなくても減らない（貯金）。
 
-    薄れるのは「掃除しなかったから」ではなく「会っていないから」。
-    ペットが久しぶりの人によそよそしいのと同じで、罰ではない。"""
+    2026-09-19（9/15 本人決定）：会わない7日ごとの −1 をやめた。
+    「行かなきゃ」という負い目を作らないため。来ない間も、貯めたぶんはそのまま残る。"""
     try:
         b = int(round(float(doc.get("bond") or 0)))
     except (TypeError, ValueError):
         b = 0
-    last = doc.get("last_at") or doc.get("born") or 0
-    days = max(0.0, (time.time() - last) / 86400.0)
-    return max(0, min(BOND_MAX, b - int(days // BOND_FADE_DAYS)))
+    return max(0, min(BOND_MAX, b))
 
 
 def _manner(doc: dict, alone: bool) -> str:
@@ -3568,7 +3592,7 @@ def _manner(doc: dict, alone: bool) -> str:
         return ("初めて見る顔。誰だったか思い出せない。とぼけて、はぐらかす。"
                 "名前を尋ねるようなことも言わない。")
     # 2026-09-09: 5段階（0／1-2／3-5／6-8／9-10）に統一。段階の名前と指示文は BOND_STAGES。
-    # 「そっけない」段階は無くした。なつき度は0で止まり、下がるのは会わない時間だけなので、
+    # 「そっけない」段階は無くした。なつき度は0で止まり、下がる道が無い（9/19〜）ので、
     # 冷たさが罰として働く回路がそもそも生まれない（台帳#12）。alone は将来のために残す。
     return _bond_stage(_bond_now(doc))[1]
 
