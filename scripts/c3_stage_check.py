@@ -65,7 +65,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--bond", nargs=2, metavar=("だれ", "いくつ"),
                     help="先になつき度を手で書き換える（例: --bond p02 9）")
+    ap.add_argument("--stage", type=int, choices=range(5), metavar="0-4",
+                    help="C3に段階を手で入れて、態度が変わるか見る（机上の試験）")
     a = ap.parse_args()
+
+    if a.stage is not None:
+        print("C3に段階を手入れ:", udp("stage %d" % a.stage).replace("\n", " "))
 
     if a.bond:
         who, value = a.bond[0], int(a.bond[1])

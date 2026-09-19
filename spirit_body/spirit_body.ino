@@ -259,6 +259,8 @@ static void melodyHappy() {
 // PC操縦: pcm <bytes>=音声試聴 / scene notice|happy|sad|sleep|hatch / mur=次の独り言
 static int ctlScene = 0;
 static bool ctlMurmur = false;
+static int ctlStage = -1;        // stage コマンドで手入れした段階（-1＝なし）。loop で受け取る
+static uint32_t stageHold = 0;   // この時刻まで、手入れした段階をクラウドで上書きしない
 static bool QUIET = false;       // 設置版: 音あり（quiet on で試験用の無音に）
 // ---- 場所の状態（目=WROVERから受信 / テストはシリアル m コマンド） ----
 static float g_M = 0.10f;        // 散らかり度 0..1（目から取得）
@@ -446,6 +448,15 @@ static String processCmd(String cmd) {
     else if (cmd.startsWith("n ")) {                        // n 0.6 … 放置度Nを手で注入（テスト）
         float nv;
         if (sscanf(cmd.c_str(), "n %f", &nv) == 1) g_N = nv;
+    }
+    else if (cmd.startsWith("stage ")) {                    // stage 4 … 段階を手で入れる（テスト）
+        // 目の前に人が居ないとクラウドは段階0しか返さないので、机の上で
+        // 5段階を試すための口（2026-09-19）。実際の受け取りは loop（変数がそこにある）。
+        int sv;
+        if (sscanf(cmd.c_str(), "stage %d", &sv) == 1 && sv >= 0 && sv <= 4) {
+            ctlStage = sv;
+            out += "STAGE " + String(sv) + "\n";
+        }
     }
     else if (cmd == "quiet on")  QUIET = true;
     else if (cmd == "quiet off") QUIET = false;
@@ -685,6 +696,13 @@ void loop() {
     serialPcm();                               // PC操縦（声の試聴・シーン発火）
     if (ctlScene)  { pendingScene = ctlScene; ctlScene = 0; sleeping = false; }
     if (ctlMurmur) { ctlMurmur = false; nextMurmur = 0; }
+    if (ctlStage >= 0) {                       // stage コマンド（机上で5段階を試すため）
+        g_stage = ctlStage; ctlStage = -1;
+        stageHold = millis() + 60000;          // 1分は上書きしない（stat で読めるように）
+        lastMotion = millis(); sleeping = false;
+        if (!inEpisode) { inEpisode = true; episodeStart = millis(); voiceUsed = 0; closeGreeted = false; }
+        if (!closeGreeted && g_stage >= 3) { closeGreeted = true; pendingScene = 2; }
+    }
     uint32_t now = millis();
 
     if (pendingScene == 1) {                   // 人が来た → 「!」の絵だけ（音なし・通過でうるさくしない）
@@ -759,7 +777,8 @@ void loop() {
             float m, n; int f, s = 0;
             int got = sscanf(body, "%f %f %d %d", &m, &n, &f, &s);
             if (got >= 2) onMN(m, n);
-            g_stage = (got >= 4 && s >= 0 && s <= 4) ? s : 0;
+            if ((int32_t)(millis() - stageHold) >= 0)      // 手入れ中（1分）は上書きしない
+                g_stage = (got >= 4 && s >= 0 && s <= 4) ? s : 0;
             // 段階の出し分け（まず1つ・2026-09-19）：なついている人（段階3以上）だと分かったら、
             // その滞在で1回だけ喜ぶ。顔が分かるのは来てから少しあとなので、「!」とは別に出る。
             if (inEpisode && !closeGreeted && g_stage >= 3) {
