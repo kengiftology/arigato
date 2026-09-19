@@ -1,0 +1,1228 @@
+13:33:01 記録を始める → rec/20260919_1332
+[h264 @ 0x77ece03100] error while decoding MB 0 22, bytestream -7
+[h264 @ 0x77e549c000] error while decoding MB 11 18, bytestream -7
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 53 4
+[h264 @ 0x77ece03100] error while decoding MB 53 4, bytestream 46588
+[h264 @ 0x77ece03480] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03480] error while decoding MB 19 0, bytestream 57848
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 13, bytestream 20693
+[h264 @ 0x77e549c380] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c380] error while decoding MB 18 0, bytestream 66046
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 36, bytestream 3459
+[h264 @ 0x77ece03100] error while decoding MB 57 28, bytestream -7
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 55 38
+[h264 @ 0x77e549c000] error while decoding MB 55 38, bytestream -1
+[h264 @ 0x77ece03480] error while decoding MB 66 18, bytestream -5
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 17, bytestream 32532
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 13, bytestream 40638
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 8, bytestream 50471
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 1 4
+[h264 @ 0x77ece03100] error while decoding MB 1 4, bytestream 58587
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 21, bytestream 28112
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 13, bytestream 39668
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 16, bytestream 11355
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 6, bytestream 34409
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 2, bytestream 62496
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 19, bytestream 30154
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 8, bytestream 50283
+13:34:20 経過 1分 コマ=300 顔=0 いま追跡中=0
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 16, bytestream 34379
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 16, bytestream 28074
+[h264 @ 0x77ece03b80] error while decoding MB 36 44, bytestream -5
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 5, bytestream 40707
+13:34:30 滞在の始まり id=2
+13:34:35 滞在の終わり id=2 1.6秒 コマ=13 顔=0 正面=0 最大の顔幅=0px
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03100] error while decoding MB 40 0, bytestream 57818
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 9, bytestream 48248
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 4, bytestream 57656
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 2, bytestream 63504
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 12, bytestream 42925
+[h264 @ 0x77ece02d80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 18 0, bytestream 13391
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 12, bytestream 42542
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 37, bytestream 11442
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 40, bytestream 4936
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 41 5
+[h264 @ 0x77ece02a00] error while decoding MB 41 5, bytestream 56018
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 57 14
+[h264 @ 0x77e549c000] error while decoding MB 57 14, bytestream 38420
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 11, bytestream 45140
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 18, bytestream 1581
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 16, bytestream 4587
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 9, bytestream 51152
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03800] error while decoding MB 18 0, bytestream 66762
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 18 0, bytestream 66730
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 9, bytestream 50993
+13:35:35 経過 3分 コマ=600 顔=0 いま追跡中=0
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03100] error while decoding MB 18 0, bytestream 66881
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 6, bytestream 56696
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 39 1
+[h264 @ 0x77ece02d80] error while decoding MB 39 1, bytestream 13779
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 1 8
+[h264 @ 0x77ece03100] error while decoding MB 1 8, bytestream 51344
+[h264 @ 0x77ece02a00] error while decoding MB 43 17, bytestream -23
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 4, bytestream 58853
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 7, bytestream 55262
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 15, bytestream 30089
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 16, bytestream 34943
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 6, bytestream 55167
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 36, bytestream 11682
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 24, bytestream 25446
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 12, bytestream 43064
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 8, bytestream 51723
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 66 39
+[h264 @ 0x77ece03480] error while decoding MB 66 39, bytestream 6384
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 7, bytestream 53877
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 5, bytestream 57166
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 64 7
+[h264 @ 0x77e549c380] error while decoding MB 64 7, bytestream 52659
+13:36:43 経過 4分 コマ=900 顔=0 いま追跡中=0
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 28, bytestream 19676
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 27, bytestream 21875
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 42 1
+[h264 @ 0x77ece03100] error while decoding MB 42 1, bytestream 57229
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 10, bytestream 50135
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 3, bytestream 58371
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 2, bytestream 62663
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 5, bytestream 57684
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 16, bytestream 19278
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 12, bytestream 33914
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 5, bytestream 52987
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 4, bytestream 59785
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03800] error while decoding MB 19 0, bytestream 59138
+[h264 @ 0x77ece03800] cabac decode of qscale diff failed at 78 3
+[h264 @ 0x77ece03800] error while decoding MB 78 3, bytestream 59667
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 29, bytestream 20857
+[h264 @ 0x77e549c380] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c380] error while decoding MB 39 0, bytestream 66200
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 6, bytestream 22745
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 18 0, bytestream 63552
+13:37:46 経過 5分 コマ=1200 顔=0 いま追跡中=0
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 8, bytestream 52409
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 34 26
+[h264 @ 0x77e549c380] error while decoding MB 34 26, bytestream 23439
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 4, bytestream 59797
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 7, bytestream 53950
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 2, bytestream 62493
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03800] error while decoding MB 40 0, bytestream 66047
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 25 5
+[h264 @ 0x77ece03480] error while decoding MB 25 5, bytestream 25743
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 34 23
+[h264 @ 0x77ece02d80] error while decoding MB 34 23, bytestream 25650
+[h264 @ 0x77ece03b80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 40 0, bytestream 66090
+[h264 @ 0x77ece03480] error while decoding MB 11 19, bytestream -7
+[h264 @ 0x77ece03b80] cabac decode of qscale diff failed at 59 2
+[h264 @ 0x77ece03b80] error while decoding MB 59 2, bytestream 61466
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 5, bytestream 2695
+[h264 @ 0x77ece03480] error while decoding MB 52 6, bytestream -5
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 7, bytestream 5635
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 3, bytestream 13563
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 25, bytestream 21982
+[h264 @ 0x77ece02d80] error while decoding MB 19 7, bytestream -5
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 29, bytestream 13954
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 11, bytestream 41141
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 3, bytestream 49906
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 73 0, bytestream 48849
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 2, bytestream 50788
+13:38:47 経過 6分 コマ=1500 顔=0 いま追跡中=0
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 3, bytestream 14975
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 24, bytestream 24790
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 25, bytestream 23207
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 5, bytestream 47725
+[h264 @ 0x77ece02a00] error while decoding MB 42 18, bytestream -5
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 19, bytestream 16479
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 45 21
+[h264 @ 0x77e549c380] error while decoding MB 45 21, bytestream 15392
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 8, bytestream 1124
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 15 8
+[h264 @ 0x77ece02d80] error while decoding MB 15 8, bytestream 2442
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 33, bytestream 10688
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 5, bytestream 54511
+[h264 @ 0x77ece03b80] cabac decode of qscale diff failed at 45 42
+[h264 @ 0x77ece03b80] error while decoding MB 45 42, bytestream -1
+[h264 @ 0x77ece03b80] error while decoding MB 40 30, bytestream -5
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 13, bytestream 41908
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 38, bytestream 9407
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 2, bytestream 57966
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 23, bytestream 26122
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 2, bytestream 63072
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 5, bytestream 58908
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 8, bytestream 51663
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 11 9
+[h264 @ 0x77e549c380] error while decoding MB 11 9, bytestream 49490
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 18, bytestream 31854
+13:39:54 経過 7分 コマ=1800 顔=0 いま追跡中=0
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 3, bytestream 34432
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03800] error while decoding MB 18 0, bytestream 24625
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 29, bytestream 21050
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 39, bytestream 7292
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 12, bytestream 43524
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 13, bytestream 41356
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 32, bytestream 17097
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 42 19
+[h264 @ 0x77e549c380] error while decoding MB 42 19, bytestream 29760
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 18 0, bytestream 67032
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 7, bytestream 54215
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 27, bytestream 22695
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 39, bytestream 5465
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 15, bytestream 35819
+[h264 @ 0x77ece02a00] error while decoding MB 52 40, bytestream -5
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 9, bytestream 49878
+[h264 @ 0x77ece03800] cabac decode of qscale diff failed at 23 7
+[h264 @ 0x77ece03800] error while decoding MB 23 7, bytestream 53730
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 5, bytestream 28603
+[h264 @ 0x77ece03b80] cabac decode of qscale diff failed at 71 16
+[h264 @ 0x77ece03b80] error while decoding MB 71 16, bytestream 33953
+[h264 @ 0x77ece03800] cabac decode of qscale diff failed at 20 14
+[h264 @ 0x77ece03800] error while decoding MB 20 14, bytestream 38608
+13:40:52 経過 8分 コマ=2100 顔=0 いま追跡中=0
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 67 12
+[h264 @ 0x77ece02a00] error while decoding MB 67 12, bytestream 41973
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 5, bytestream 57868
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 12, bytestream 45390
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 24 21
+[h264 @ 0x77e549c000] error while decoding MB 24 21, bytestream 27785
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 17, bytestream 33897
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 31, bytestream 18655
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 27 18
+[h264 @ 0x77ece03480] error while decoding MB 27 18, bytestream 3129
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 7, bytestream 54485
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 22, bytestream 25900
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 3, bytestream 30585
+[h264 @ 0x77ece03480] error while decoding MB 5 17, bytestream -5
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 2 7
+[h264 @ 0x77ece03480] error while decoding MB 2 7, bytestream 54021
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 41 9
+[h264 @ 0x77ece03100] error while decoding MB 41 9, bytestream 48981
+[h264 @ 0x77ece02a00] error while decoding MB 19 44, bytestream -5
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 7, bytestream 54228
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 2, bytestream 62442
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 40 0, bytestream 65841
+13:41:51 経過 9分 コマ=2400 顔=0 いま追跡中=0
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 21, bytestream 15853
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 12, bytestream 43096
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 42, bytestream 4003
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 49 6
+[h264 @ 0x77e549c380] error while decoding MB 49 6, bytestream 54475
+[h264 @ 0x77ece03b80] error while decoding MB 8 42, bytestream -5
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 39 0, bytestream 66073
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 12, bytestream 43461
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 46 3
+[h264 @ 0x77ece03480] error while decoding MB 46 3, bytestream 58714
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 2, bytestream 38875
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 9, bytestream 45222
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 3, bytestream 59683
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 21, bytestream 27909
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 4, bytestream 58875
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 10, bytestream 47390
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 74 28
+[h264 @ 0x77e549c000] error while decoding MB 74 28, bytestream 21736
+[h264 @ 0x77ece03800] cabac decode of qscale diff failed at 61 23
+[h264 @ 0x77ece03800] error while decoding MB 61 23, bytestream 22020
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 79 39
+[h264 @ 0x77ece03480] error while decoding MB 79 39, bytestream 3966
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 16, bytestream 8357
+13:42:49 経過 10分 コマ=2700 顔=0 いま追跡中=0
+[h264 @ 0x77ece02d80] error while decoding MB 70 43, bytestream -5
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 6, bytestream 55794
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 58 11
+[h264 @ 0x77ece02a00] error while decoding MB 58 11, bytestream 43513
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 75 4
+[h264 @ 0x77e549c380] error while decoding MB 75 4, bytestream 57320
+[h264 @ 0x77ece03800] error while decoding MB 41 19, bytestream -5
+[h264 @ 0x77e549c380] error while decoding MB 32 19, bytestream -5
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 9, bytestream 16095
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 2, bytestream 30785
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 15, bytestream 36884
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 6, bytestream 24357
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 77 7
+[h264 @ 0x77ece02a00] error while decoding MB 77 7, bytestream 51895
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 14, bytestream 38756
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 9, bytestream 48276
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 32, bytestream 17229
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 34, bytestream 13929
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 58 8
+[h264 @ 0x77ece02d80] error while decoding MB 58 8, bytestream 50650
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03100] error while decoding MB 19 0, bytestream 67029
+13:43:47 経過 11分 コマ=3000 顔=0 いま追跡中=0
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 18 0, bytestream 24645
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 40, bytestream 1242
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 6, bytestream 55583
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 34, bytestream 14093
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 7, bytestream 54118
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03800] error while decoding MB 40 0, bytestream 59284
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 41 0, bytestream 35855
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 18, bytestream 5903
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 67 4
+[h264 @ 0x77e549c380] error while decoding MB 67 4, bytestream 51542
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 31, bytestream 18583
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 11, bytestream 46086
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 5, bytestream 58213
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 2, bytestream 48471
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 13, bytestream 31064
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 15, bytestream 33570
+[h264 @ 0x77ece02d80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 40 0, bytestream 66167
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 28, bytestream 22278
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 57 6
+[h264 @ 0x77ece03100] error while decoding MB 57 6, bytestream 55742
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 12, bytestream 43651
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 44, bytestream -2
+[h264 @ 0x77ece02d80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 40 0, bytestream 67652
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 15, bytestream 37152
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 3, bytestream 25485
+13:44:53 経過 12分 コマ=3300 顔=0 いま追跡中=0
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 6, bytestream 55714
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 32, bytestream 16797
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 8, bytestream 51419
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 40 0, bytestream 55003
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 65 2
+[h264 @ 0x77e549c000] error while decoding MB 65 2, bytestream 61596
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 39, bytestream 7586
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 11, bytestream 45544
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 40 0, bytestream 62813
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 44 0, bytestream 65907
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 31, bytestream 18862
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 39 0, bytestream 66460
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 8, bytestream 53590
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 6, bytestream 54437
+[h264 @ 0x77ece03b80] error while decoding MB 17 21, bytestream -7
+13:45:48 経過 13分 コマ=3600 顔=0 いま追跡中=0
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 11, bytestream 12229
+[h264 @ 0x77ece02a00] error while decoding MB 64 31, bytestream -5
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 2, bytestream 63907
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 33, bytestream 14992
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 4, bytestream 60049
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 26, bytestream 21483
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 2, bytestream 62917
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 2, bytestream 63773
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 72 17
+[h264 @ 0x77ece02a00] error while decoding MB 72 17, bytestream 31810
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 36, bytestream 9816
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 79 10
+[h264 @ 0x77e549c380] error while decoding MB 79 10, bytestream 34508
+13:46:41 経過 14分 コマ=3900 顔=0 いま追跡中=0
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 8, bytestream 52448
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 10, bytestream 47694
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 9, bytestream 50239
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 6, bytestream 55903
+[h264 @ 0x77e549c000] error while decoding MB 34 18, bytestream -12
+[h264 @ 0x77ece03800] cabac decode of qscale diff failed at 66 12
+[h264 @ 0x77ece03800] error while decoding MB 66 12, bytestream 40283
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 3 10
+[h264 @ 0x77ece03100] error while decoding MB 3 10, bytestream 48311
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 16, bytestream 25538
+[h264 @ 0x77ece03b80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 18 0, bytestream 65236
+[h264 @ 0x77ece02d80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 18 0, bytestream 63986
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 14, bytestream 40485
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 41 23
+[h264 @ 0x77ece03100] error while decoding MB 41 23, bytestream 26034
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 57 21
+[h264 @ 0x77ece03480] error while decoding MB 57 21, bytestream 27484
+13:47:30 経過 14分 コマ=4200 顔=0 いま追跡中=0
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 9, bytestream 49746
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 9, bytestream 41220
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 24, bytestream 25710
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 34, bytestream 14146
+[h264 @ 0x77e549c380] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c380] error while decoding MB 20 0, bytestream 57425
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 13, bytestream 41850
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 6, bytestream 56035
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 38, bytestream 9031
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 19, bytestream 30680
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 11 21
+[h264 @ 0x77ece02d80] error while decoding MB 11 21, bytestream -1
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 13, bytestream 41144
+[h264 @ 0x77ece03b80] cabac decode of qscale diff failed at 65 17
+[h264 @ 0x77ece03b80] error while decoding MB 65 17, bytestream 29791
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 33 9
+[h264 @ 0x77ece03100] error while decoding MB 33 9, bytestream 49422
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 10, bytestream 47924
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 9, bytestream 49861
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 25, bytestream 24287
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 5, bytestream 23959
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 6 17
+[h264 @ 0x77ece02d80] error while decoding MB 6 17, bytestream -1
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 71 8
+[h264 @ 0x77e549c380] error while decoding MB 71 8, bytestream 50672
+13:48:26 経過 15分 コマ=4500 顔=0 いま追跡中=0
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 34 11
+[h264 @ 0x77e549c380] error while decoding MB 34 11, bytestream 44838
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 10, bytestream 47724
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 74 2
+[h264 @ 0x77ece03480] error while decoding MB 74 2, bytestream 58351
+[h264 @ 0x77ece02d80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 20 0, bytestream 62022
+[h264 @ 0x77e549c380] error while decoding MB 13 17, bytestream -17
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 33, bytestream 15948
+[h264 @ 0x77ece02a00] error while decoding MB 56 28, bytestream -5
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 28 10
+[h264 @ 0x77ece03100] error while decoding MB 28 10, bytestream 14441
+[h264 @ 0x77e549c380] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c380] error while decoding MB 18 0, bytestream 32487
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 40 0, bytestream 52717
+[h264 @ 0x77ece03800] error while decoding MB 36 17, bytestream -5
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 20, bytestream 29053
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 38, bytestream 8693
+[h264 @ 0x77ece03480] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03480] error while decoding MB 18 0, bytestream 67356
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 43 14
+[h264 @ 0x77ece02d80] error while decoding MB 43 14, bytestream 37861
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 29, bytestream 20970
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 10, bytestream 47947
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 5, bytestream 25787
+[h264 @ 0x77ece03b80] error while decoding MB 6 17, bytestream -5
+13:49:17 経過 16分 コマ=4800 顔=0 いま追跡中=0
+[h264 @ 0x77ece03800] error while decoding MB 28 18, bytestream -16
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 2, bytestream 62935
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 6, bytestream 55479
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 11, bytestream 46242
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 41 0, bytestream 66048
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 11, bytestream 45666
+[h264 @ 0x77ece03480] error while decoding MB 79 16, bytestream -5
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 3, bytestream 57252
+[h264 @ 0x77e549c000] error while decoding MB 47 15, bytestream -7
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 25 37
+[h264 @ 0x77ece02a00] error while decoding MB 25 37, bytestream 9807
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 18 0, bytestream 42510
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 6, bytestream 56853
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 9, bytestream 18409
+[h264 @ 0x77ece03800] error while decoding MB 4 17, bytestream -5
+[h264 @ 0x77ece03100] error while decoding MB 36 18, bytestream -9
+[h264 @ 0x77e549c380] error while decoding MB 33 18, bytestream -9
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03100] error while decoding MB 20 0, bytestream 67138
+[h264 @ 0x77ece03800] error while decoding MB 34 18, bytestream -5
+13:50:12 経過 17分 コマ=5100 顔=0 いま追跡中=0
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 35, bytestream 10131
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 4, bytestream 59840
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 33, bytestream 16339
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 11, bytestream 44512
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 14, bytestream 38920
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 11, bytestream 18445
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 70 10
+[h264 @ 0x77ece02d80] error while decoding MB 70 10, bytestream 45241
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03100] error while decoding MB 39 0, bytestream 66176
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 7, bytestream 54262
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 12, bytestream 40854
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 49 8
+[h264 @ 0x77ece02a00] error while decoding MB 49 8, bytestream 50877
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 10, bytestream 43326
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 8, bytestream 52091
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 7, bytestream 21981
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 27, bytestream 23114
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 39 17
+[h264 @ 0x77ece02d80] error while decoding MB 39 17, bytestream 33014
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 55 17
+[h264 @ 0x77e549c380] error while decoding MB 55 17, bytestream 32219
+13:51:08 経過 18分 コマ=5400 顔=0 いま追跡中=0
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 15, bytestream 29096
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 10, bytestream 48902
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 12, bytestream 21796
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 8, bytestream 51842
+[h264 @ 0x77ece03800] error while decoding MB 44 17, bytestream -9
+[h264 @ 0x77e549c380] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c380] error while decoding MB 40 0, bytestream 66088
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 5, bytestream 58391
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 5, bytestream 57745
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 7, bytestream 54505
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 9, bytestream 50382
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 77 16
+[h264 @ 0x77e549c380] error while decoding MB 77 16, bytestream 32455
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 14, bytestream 38800
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 41 0, bytestream 39120
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 29, bytestream 21102
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 9, bytestream 50054
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 4, bytestream 59693
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 2, bytestream 42035
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 30, bytestream 19746
+[h264 @ 0x77ece03800] cabac decode of qscale diff failed at 15 35
+[h264 @ 0x77ece03800] error while decoding MB 15 35, bytestream -1
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 20 0, bytestream 59908
+[h264 @ 0x77e549c380] error while decoding MB 50 10, bytestream -5
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 12, bytestream 41761
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03800] error while decoding MB 20 0, bytestream 67138
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 5, bytestream 57586
+13:52:18 滞在の始まり id=15
+/Users/ken/work/arigato/tracker/.venv/lib/python3.11/site-packages/insightface/utils/face_align.py:23: FutureWarning: `estimate` is deprecated since version 0.26 and will be removed in version 2.2. Please use `SimilarityTransform.from_estimate` class constructor instead.
+  tform.estimate(lmk, dst)
+13:52:19 経過 19分 コマ=5700 顔=1 いま追跡中=1
+13:52:19 滞在の始まり id=17
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 18 0, bytestream 67358
+13:52:21 滞在の終わり id=15 0.0秒 コマ=1 顔=1 正面=0 最大の顔幅=16px
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 7, bytestream 53594
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 15, bytestream 36706
+[h264 @ 0x77e549c380] error while decoding MB 63 19, bytestream -7
+13:52:33 滞在の終わり id=17 11.0秒 コマ=44 顔=0 正面=0 最大の顔幅=0px
+[h264 @ 0x77ece03800] cabac decode of qscale diff failed at 10 2
+[h264 @ 0x77ece03800] error while decoding MB 10 2, bytestream 22999
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 26 3
+[h264 @ 0x77ece02d80] error while decoding MB 26 3, bytestream 60665
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 6, bytestream 56086
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 5, bytestream 21641
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 14, bytestream 39591
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 13, bytestream 41151
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03100] error while decoding MB 18 0, bytestream 54929
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 20, bytestream 28495
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 13, bytestream 41460
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 43 6
+[h264 @ 0x77ece02a00] error while decoding MB 43 6, bytestream 52690
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 8, bytestream 52733
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 40, bytestream 297
+[h264 @ 0x77ece03480] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03480] error while decoding MB 22 0, bytestream 31357
+[h264 @ 0x77ece03480] error while decoding MB 55 13, bytestream 120
+13:53:02 滞在の始まり id=18
+[h264 @ 0x77ece02d80] error while decoding MB 9 25, bytestream -6
+[h264 @ 0x77ece03480] error while decoding MB 21 13, bytestream -9
+13:53:05 滞在の終わり id=18 0.0秒 コマ=1 顔=0 正面=0 最大の顔幅=0px
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 2, bytestream 49621
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 43, bytestream 2211
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 3, bytestream 49965
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 12, bytestream 39069
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 70 0, bytestream 53819
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 10, bytestream 42687
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 10, bytestream 29115
+[h264 @ 0x77ece03b80] cabac decode of qscale diff failed at 19 11
+[h264 @ 0x77ece03b80] error while decoding MB 19 11, bytestream 41496
+13:53:31 経過 20分 コマ=6000 顔=1 いま追跡中=0
+[h264 @ 0x77ece03480] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03480] error while decoding MB 20 0, bytestream 31377
+[h264 @ 0x77ece03480] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03480] error while decoding MB 20 0, bytestream 27005
+[h264 @ 0x77ece03800] error while decoding MB 14 1, bytestream -16
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 8 37
+[h264 @ 0x77ece02d80] error while decoding MB 8 37, bytestream 6692
+[h264 @ 0x77ece03480] error while decoding MB 63 38, bytestream -6
+[h264 @ 0x77ece03800] cabac decode of qscale diff failed at 9 34
+[h264 @ 0x77ece03800] error while decoding MB 9 34, bytestream 1307
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 25, bytestream 3472
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 30, bytestream 12098
+[h264 @ 0x77ece02d80] error while decoding MB 63 34, bytestream -5
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 2, bytestream 60866
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 6, bytestream 56336
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 56 10
+[h264 @ 0x77ece03480] error while decoding MB 56 10, bytestream 46029
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 42, bytestream 1276
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 16, bytestream 35026
+[h264 @ 0x77ece03b80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 19 0, bytestream 67104
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 9, bytestream 47423
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 2, bytestream 62826
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 12, bytestream 42947
+[h264 @ 0x77ece02d80] error while decoding MB 31 40, bytestream -7
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 17, bytestream 33838
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 39, bytestream 5462
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 8, bytestream 52222
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 13, bytestream 41017
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 17, bytestream 34745
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 18 0, bytestream 67288
+13:54:41 経過 22分 コマ=6300 顔=1 いま追跡中=0
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 30, bytestream 19912
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 40 0, bytestream 66027
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 2, bytestream 35801
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 11, bytestream 45478
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 16, bytestream 34001
+[h264 @ 0x77ece03480] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03480] error while decoding MB 18 0, bytestream 65954
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 8, bytestream 52570
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 13, bytestream 41337
+[h264 @ 0x77ece03b80] cabac decode of qscale diff failed at 36 7
+[h264 @ 0x77ece03b80] error while decoding MB 36 7, bytestream 53475
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 12, bytestream 41967
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 13, bytestream 44977
+[h264 @ 0x77ece02d80] error while decoding MB 12 17, bytestream -7
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 19 27
+[h264 @ 0x77e549c000] error while decoding MB 19 27, bytestream 23406
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 2, bytestream 63125
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 40, bytestream 6258
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 28, bytestream 22264
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 18 0, bytestream 35857
+[h264 @ 0x77ece02d80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 20 0, bytestream 38082
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 39 0, bytestream 17949
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 72 14
+[h264 @ 0x77ece02d80] error while decoding MB 72 14, bytestream 36796
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 12, bytestream 43066
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 2, bytestream 59460
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 21 4
+[h264 @ 0x77ece02d80] error while decoding MB 21 4, bytestream 59063
+13:55:52 経過 23分 コマ=6600 顔=1 いま追跡中=0
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 22, bytestream 27232
+[h264 @ 0x77ece03b80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 18 0, bytestream 58610
+[h264 @ 0x77ece03480] top block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 17 0, bytestream 67451
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 15, bytestream 37547
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 2, bytestream 62749
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 71 9
+[h264 @ 0x77ece02d80] error while decoding MB 71 9, bytestream 48003
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 46 6
+[h264 @ 0x77ece03100] error while decoding MB 46 6, bytestream 54933
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 5, bytestream 58329
+[h264 @ 0x77e549c000] error while decoding MB 37 17, bytestream -19
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 18 0, bytestream 67540
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03800] error while decoding MB 18 0, bytestream 67780
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 29, bytestream 21751
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 13, bytestream 11243
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 4, bytestream 59543
+13:56:44 経過 24分 コマ=6900 顔=1 いま追跡中=0
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 11, bytestream 14163
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 18 0, bytestream 44088
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 31, bytestream 18329
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 2, bytestream 61576
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 5, bytestream 25865
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 10, bytestream 48029
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 33 5
+[h264 @ 0x77ece03480] error while decoding MB 33 5, bytestream 57299
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 20, bytestream 27145
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 3, bytestream 62775
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 6, bytestream 56411
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 9, bytestream 49947
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 8, bytestream 51856
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 2, bytestream 63072
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 13, bytestream 41379
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 13, bytestream 32339
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 4, bytestream 17899
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 22, bytestream 26978
+13:57:48 経過 25分 コマ=7200 顔=1 いま追跡中=0
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 19, bytestream 8211
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 42 16
+[h264 @ 0x77ece03480] error while decoding MB 42 16, bytestream 34798
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 76 10
+[h264 @ 0x77ece02a00] error while decoding MB 76 10, bytestream 14557
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03100] error while decoding MB 44 0, bytestream 4375
+[h264 @ 0x77e549c380] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c380] error while decoding MB 18 0, bytestream 67533
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 42 17
+[h264 @ 0x77e549c000] error while decoding MB 42 17, bytestream -3
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 5, bytestream 58920
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 2, bytestream 47725
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 12, bytestream 43930
+[h264 @ 0x77e549c380] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c380] error while decoding MB 40 0, bytestream 65069
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03800] error while decoding MB 18 0, bytestream 48280
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 19 0, bytestream 54902
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 37, bytestream 9703
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 8, bytestream 18239
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 3, bytestream 60946
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 5, bytestream 57903
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 11, bytestream 45437
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 35 10
+[h264 @ 0x77e549c380] error while decoding MB 35 10, bytestream -1
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 12, bytestream 1137
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 2, bytestream 8594
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 55 35
+[h264 @ 0x77ece02a00] error while decoding MB 55 35, bytestream 7800
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 36, bytestream 9649
+13:58:53 経過 26分 コマ=7500 顔=1 いま追跡中=0
+[h264 @ 0x77ece03b80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 20 0, bytestream 54740
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 66 5
+[h264 @ 0x77ece02d80] error while decoding MB 66 5, bytestream 47657
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 3, bytestream 23541
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 43, bytestream 1866
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 4, bytestream 558
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 26, bytestream 10404
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 16, bytestream 27652
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 34, bytestream 13797
+[h264 @ 0x77ece02d80] error while decoding MB 0 42, bytestream -6
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 10, bytestream 12501
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 18 0, bytestream 67576
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 14, bytestream 36867
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 9, bytestream 22837
+[h264 @ 0x77ece02d80] error while decoding MB 6 17, bytestream -13
+[h264 @ 0x77ece03b80] error while decoding MB 56 14, bytestream -19
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 6, bytestream 54496
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 50 16
+[h264 @ 0x77e549c000] error while decoding MB 50 16, bytestream 34587
+[h264 @ 0x77ece03480] error while decoding MB 37 17, bytestream -5
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 61 22
+[h264 @ 0x77e549c000] error while decoding MB 61 22, bytestream 23993
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 10, bytestream 47866
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 12, bytestream 43644
+14:00:03 経過 27分 コマ=7800 顔=1 いま追跡中=0
+[h264 @ 0x77ece03100] error while decoding MB 48 43, bytestream -5
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 15, bytestream 37371
+[h264 @ 0x77e549c380] error while decoding MB 40 17, bytestream -15
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 66 12
+[h264 @ 0x77ece03480] error while decoding MB 66 12, bytestream 40978
+[h264 @ 0x77ece02a00] error while decoding MB 14 17, bytestream -23
+[h264 @ 0x77ece03b80] error while decoding MB 30 16, bytestream -6
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 21, bytestream 28638
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 13, bytestream 37986
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 46 34
+[h264 @ 0x77ece02a00] error while decoding MB 46 34, bytestream 10853
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 7, bytestream 21177
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 6, bytestream 55996
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 11, bytestream 10575
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03100] error while decoding MB 19 0, bytestream 67233
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 34, bytestream 10719
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 9, bytestream 49753
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 2, bytestream 59556
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 15, bytestream 38352
+[h264 @ 0x77ece03480] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03480] error while decoding MB 42 0, bytestream 66535
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 45 0, bytestream 66391
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 18 0, bytestream 54171
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 55 0, bytestream 35617
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 44 0, bytestream 66273
+14:01:11 経過 28分 コマ=8100 顔=1 いま追跡中=0
+[h264 @ 0x77ece03b80] left block unavailable for requested intra mode
+[h264 @ 0x77ece03b80] error while decoding MB 0 4, bytestream 59510
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 14, bytestream 39427
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 6, bytestream 56213
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 9, bytestream 49821
+[h264 @ 0x77ece03800] cabac decode of qscale diff failed at 41 16
+[h264 @ 0x77ece03800] error while decoding MB 41 16, bytestream 6493
+[h264 @ 0x77e549c380] top block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 17 0, bytestream 28045
+[h264 @ 0x77ece03480] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03480] error while decoding MB 41 0, bytestream 54255
+[h264 @ 0x77ece02d80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 18 0, bytestream 37363
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 3, bytestream 43337
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 14, bytestream 39571
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 49 1
+[h264 @ 0x77ece03100] error while decoding MB 49 1, bytestream 64285
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 12, bytestream 43278
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03800] error while decoding MB 42 0, bytestream 66261
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 4, bytestream 60081
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 6, bytestream 55897
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 25, bytestream 24732
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03100] error while decoding MB 18 0, bytestream 67465
+[h264 @ 0x77e549c000] top block unavailable for requested intra mode -1
+[h264 @ 0x77e549c000] error while decoding MB 19 0, bytestream 55365
+14:02:13 経過 29分 コマ=8400 顔=1 いま追跡中=0
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 31, bytestream 18787
+[h264 @ 0x77ece03480] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03480] error while decoding MB 18 0, bytestream 4438
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 5, bytestream 57917
+[h264 @ 0x77e549c000] error while decoding MB 65 19, bytestream -5
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 12, bytestream 12567
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 17, bytestream 30373
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 10, bytestream 46770
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 77 3
+[h264 @ 0x77ece03480] error while decoding MB 77 3, bytestream 59697
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 60 12
+[h264 @ 0x77ece02d80] error while decoding MB 60 12, bytestream 42712
+[h264 @ 0x77e549c380] error while decoding MB 48 16, bytestream -9
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 9, bytestream 50471
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 4, bytestream 26677
+[h264 @ 0x77ece03b80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 18 0, bytestream 67876
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 6, bytestream 20439
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 41 0, bytestream 49660
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 11, bytestream 46836
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 11, bytestream 44321
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 18, bytestream 31881
+14:03:21 経過 30分 コマ=8700 顔=1 いま追跡中=0
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 5, bytestream 57577
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 43 0, bytestream 54173
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 71 4
+[h264 @ 0x77e549c000] error while decoding MB 71 4, bytestream 58213
+[h264 @ 0x77ece03100] cabac decode of qscale diff failed at 16 23
+[h264 @ 0x77ece03100] error while decoding MB 16 23, bytestream 26031
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 19, bytestream 29835
+[h264 @ 0x77ece03100] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03100] error while decoding MB 19 0, bytestream 62733
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 8, bytestream 19983
+[h264 @ 0x77ece03480] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03480] error while decoding MB 18 0, bytestream 59725
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 34, bytestream 13879
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 2, bytestream 63591
+[h264 @ 0x77e549c000] left block unavailable for requested intra mode
+[h264 @ 0x77e549c000] error while decoding MB 0 4, bytestream 60252
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03800] error while decoding MB 40 0, bytestream 60550
+[h264 @ 0x77ece02d80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 40 0, bytestream 66564
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 35, bytestream 12897
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 7, bytestream 54860
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 7, bytestream 23871
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 18, bytestream 32424
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 41 0, bytestream 66300
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 12 18
+[h264 @ 0x77e549c000] error while decoding MB 12 18, bytestream -3
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 36, bytestream 11244
+14:04:17 経過 31分 コマ=9000 顔=1 いま追跡中=0
+[h264 @ 0x77ece02a00] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 18 0, bytestream 49489
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 9, bytestream 50049
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 3, bytestream 26849
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 8 35
+[h264 @ 0x77ece02a00] error while decoding MB 8 35, bytestream -3
+[h264 @ 0x77ece03100] left block unavailable for requested intra mode
+[h264 @ 0x77ece03100] error while decoding MB 0 3, bytestream 61519
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 14, bytestream 38971
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 11, bytestream 45677
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 9, bytestream 50291
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 12 5
+[h264 @ 0x77e549c380] error while decoding MB 12 5, bytestream 57359
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 2, bytestream 63108
+[h264 @ 0x77ece02d80] cabac decode of qscale diff failed at 43 15
+[h264 @ 0x77ece02d80] error while decoding MB 43 15, bytestream 36252
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 26, bytestream 20111
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 2, bytestream 63222
+[h264 @ 0x77e549c000] error while decoding MB 31 17, bytestream -5
+[h264 @ 0x77ece03480] error while decoding MB 15 38, bytestream -11
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 12, bytestream 44225
+[h264 @ 0x77ece02d80] left block unavailable for requested intra mode
+[h264 @ 0x77ece02d80] error while decoding MB 0 41, bytestream 4888
+14:05:14 経過 32分 コマ=9300 顔=1 いま追跡中=0
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 3, bytestream 61531
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 45 11
+[h264 @ 0x77e549c000] error while decoding MB 45 11, bytestream 17127
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 2, bytestream 63219
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 36 39
+[h264 @ 0x77e549c000] error while decoding MB 36 39, bytestream 6902
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 2, bytestream 37087
+[h264 @ 0x77ece03800] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03800] error while decoding MB 18 0, bytestream 67568
+[h264 @ 0x77e549c380] cabac decode of qscale diff failed at 18 9
+[h264 @ 0x77e549c380] error while decoding MB 18 9, bytestream 18709
+[h264 @ 0x77ece03800] left block unavailable for requested intra mode
+[h264 @ 0x77ece03800] error while decoding MB 0 22, bytestream 26210
+[h264 @ 0x77e549c380] left block unavailable for requested intra mode
+[h264 @ 0x77e549c380] error while decoding MB 0 21, bytestream 27544
+[h264 @ 0x77ece03480] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03480] error while decoding MB 0 5, bytestream 57926
+[h264 @ 0x77ece02a00] cabac decode of qscale diff failed at 51 9
+[h264 @ 0x77ece02a00] error while decoding MB 51 9, bytestream 48667
+[h264 @ 0x77e549c000] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c000] error while decoding MB 0 9, bytestream 50013
+[h264 @ 0x77ece03800] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03800] error while decoding MB 0 8, bytestream 51804
+[h264 @ 0x77ece03100] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03100] error while decoding MB 0 2, bytestream 64184
+[h264 @ 0x77ece02a00] left block unavailable for requested intra mode
+[h264 @ 0x77ece02a00] error while decoding MB 0 6, bytestream 56333
+[h264 @ 0x77ece03480] cabac decode of qscale diff failed at 56 10
+[h264 @ 0x77ece03480] error while decoding MB 56 10, bytestream 46329
+[h264 @ 0x77ece02a00] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02a00] error while decoding MB 0 2, bytestream 51553
+14:06:18 経過 33分 コマ=9600 顔=1 いま追跡中=0
+[h264 @ 0x77ece03480] left block unavailable for requested intra mode
+[h264 @ 0x77ece03480] error while decoding MB 0 5, bytestream 58093
+[h264 @ 0x77ece03b80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 0 5, bytestream 26043
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 2, bytestream 63086
+[h264 @ 0x77e549c000] cabac decode of qscale diff failed at 68 9
+[h264 @ 0x77e549c000] error while decoding MB 68 9, bytestream 47673
+[h264 @ 0x77ece03b80] top block unavailable for requested intra mode -1
+[h264 @ 0x77ece03b80] error while decoding MB 19 0, bytestream 67947
+[h264 @ 0x77e549c380] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77e549c380] error while decoding MB 0 18, bytestream 31721
+[h264 @ 0x77ece02d80] left block unavailable for requested intra4x4 mode -1
+[h264 @ 0x77ece02d80] error while decoding MB 0 5, bytestream 35837
+14:07:07 コマが 10 秒来ない → 映像を切って繋ぎ直す

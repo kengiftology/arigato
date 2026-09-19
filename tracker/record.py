@@ -69,6 +69,7 @@ def main():
     tracks = {}          # tid -> 滞在の記録
     n_emb = 0
     frame_i, seq = 0, 0
+    last_kick = 0.0
     period = 1.0 / a.fps
     t_start = time.time()
     next_at = t_start
@@ -95,12 +96,18 @@ def main():
                 if not reader.alive:
                     print("映像が切れた（繋ぎ直せない）", flush=True)
                     break
-                if reader.stalled() > reader.STALE:
+                # 切るのは1回だけ。毎周よぶと、繋ぎ直している最中に何度も切って
+                # しまう（9/19 の試験で毎秒よんでいた）。次に切ってよいのは、
+                # 繋ぎ直しの待ち時間が過ぎてから。
+                if (reader.stalled() > reader.STALE
+                        and time.time() - last_kick > reader.STALE):
+                    last_kick = time.time()
                     print(datetime.now().strftime("%H:%M:%S"),
-                          "コマが %.0f 秒来ない → 映像を切って繋ぎ直す" % reader.stalled(),
+                          "コマが %.0f 秒来ない → 読み手を作り直す" % reader.stalled(),
                           flush=True)
                     reader.kick()
-                    time.sleep(1.0)
+                    reader = reader.new_reader()
+                time.sleep(0.5)
                 continue
             now = time.time()
             frame_i += 1

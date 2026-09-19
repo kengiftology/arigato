@@ -41,8 +41,13 @@ class LatestReader(threading.Thread):
     # まとめて届いた数コマは同じ瞬間なので、コマ数のわりに見える場面が増えない。
     # UDP は送り直さない代わりに、途切れずに新しい瞬間が来る（9/18 実測：
     # 同じ20秒で「別々の瞬間」が 4.2/秒 → 8.0/秒）。
-    UDP = "rtsp_transport;udp|fflags;nobuffer|flags;low_delay|reorder_queue_size;0|max_delay;100000"
-    TCP = "rtsp_transport;tcp"
+    # timeout は「これだけ何も来なければ読み取りを失敗で返す」（マイクロ秒）。
+    # これが無いと、映像が来なくなっても read() が永久に待ち、外から切ろうとした
+    # 側もろとも固まる（9/19 14:07 に実際に起き、75分ぶんを取り逃した）。
+    TIMEOUT_US = 5_000_000
+    UDP = ("rtsp_transport;udp|fflags;nobuffer|flags;low_delay|reorder_queue_size;0"
+           "|max_delay;100000|timeout;%d" % TIMEOUT_US)
+    TCP = "rtsp_transport;tcp|timeout;%d" % TIMEOUT_US
 
     # 映像はいつか必ず切れる（9/18は31分で切れた）。24時間動かす前提なので、
     # 切れたら黙って繋ぎ直す。すぐ繋がらないときは間隔を少しずつ延ばし、
@@ -55,7 +60,7 @@ class LatestReader(threading.Thread):
     def __init__(self, url: str, transport: str = "udp", reconnect: bool = True):
         super().__init__(daemon=True)
         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = self.UDP if transport == "udp" else self.TCP
-        self.url, self.reconnect = url, reconnect
+        self.url, self.transport, self.reconnect = url, transport, reconnect
         self.frame, self.seq, self.got = None, 0, 0
         self.reconnects, self.last_frame_at = 0, time.time()
         self.opened_at, self.wait = time.time(), self.RETRY_FIRST
@@ -110,15 +115,21 @@ class LatestReader(threading.Thread):
         return time.time() - self.last_frame_at
 
     def kick(self) -> None:
-        """コマが来なくなったときに、外から映像を切って繋ぎ直させる。
+        """コマが来なくなったときに、この読み手を捨てる合図。
 
-        UDP では、届かなくなっても read() は失敗と言わずに待ち続けることがある。
-        そのまま放っておくと、静かに目が閉じたままになる（ラズパイで実際に5時間
-        気づけなかった）。新しいコマが STALE 秒来なければ、こちらから切る。"""
-        try:
-            self.cap.release()
-        except Exception:
-            pass
+        以前はここで cap.release() を呼んでいた。読んでいる最中の映像を
+        別の流れから切る操作で、9/19 14:07 に読み手もろとも固まり、
+        そこから75分ぶんを取り逃した。映像には触らず、合図だけを置く。
+        古い読み手は timeout で必ず自分から終わるので、放っておいてよい。
+        呼んだ側は new_reader() で新しい読み手を作り直す。"""
+        self.stop = True
+
+    def new_reader(self):
+        """同じ宛先へ、新しい読み手を作って動かす。古いほうは捨てる。"""
+        r = LatestReader(self.url, self.transport, self.reconnect)
+        r.reconnects = self.reconnects + 1
+        r.start()
+        return r
 
     def close(self) -> None:
         self.stop = True
