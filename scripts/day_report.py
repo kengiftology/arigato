@@ -181,10 +181,33 @@ def print_report(row: dict, d: dict) -> None:
 
 
 def save_csv(row: dict) -> list:
+    """その日の行を書き直す。ただし、**前より少ない数では上書きしない**（2026-09-20）。
+
+    `/spirit/log` は最新1000件までしか返さない。混んだ日は、夜にもう一度走らせると
+    その日の前半が窓から外れていて、「人が来た5」のような小さい数が返る。
+    9/20 にこれで 9/19 の行（100件）を 5件で潰した。
+    少ない数で走らせたときは、書かずに知らせるだけにする（--force で上書きできる）。"""
     rows = []
+    old = None
     if os.path.exists(CSV_PATH):
         with open(CSV_PATH, encoding="utf-8-sig", newline="") as f:
-            rows = [r for r in csv.DictReader(f) if r.get("日付") != row["日付"]]
+            for r in csv.DictReader(f):
+                if r.get("日付") == row["日付"]:
+                    old = r
+                else:
+                    rows.append(r)
+    if old and "--force" not in sys.argv:
+        try:
+            was, now = int(old.get("人が来た") or 0), int(row["人が来た"])
+        except ValueError:
+            was = now = 0
+        if was > now:
+            print("\n※ 前の行のほうが多いので書き替えません（前 %d件／今回 %d件）。"
+                  "記録が窓から流れたあとに走らせると、こうなります。"
+                  "それでも書き替えるなら --force を付けてください。" % (was, now))
+            rows.append(old)
+            rows.sort(key=lambda r: r["日付"])
+            return rows
     rows.append({k: row[k] for k in COLUMNS})
     rows.sort(key=lambda r: r["日付"])
     with open(CSV_PATH, "w", encoding="utf-8-sig", newline="") as f:
