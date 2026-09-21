@@ -572,6 +572,7 @@ static bool     inEpisode = false;             // 今この場に人がいる一
 static uint32_t episodeStart = 0;              // その滞在が始まった時刻
 static int      voiceUsed = 0;                 // その滞在で声を出した回数
 static bool     closeGreeted = false;          // その滞在で、なついている人への喜びをもう出したか
+static int      joyToTell = -1;                // 喜んだ段階をクラウドへ知らせる待ち（-1＝なし）。stage コマンドでは立てない
 
 // 目から "M N" を受け取る入口。Nを更新してからM（世話判定つき）へ回す。
 static void onMN(float m, float n) { g_N = n; onM(m); }
@@ -774,9 +775,14 @@ void loop() {
         nextPoll = now + 10000;
         char body[48];
         // 起動して最初の1回は、なぜ起動したかを添える（on＝電源／wd＝見張り）。クラウドが記録に残す
+        // 喜んだあとの1回は、その段階を添える（joy・2026-09-21）。誰に喜んだかはクラウドが知っている
         static bool bootTold = false;
-        const char *path = bootTold ? "/m" : (wdBoots ? "/m?boot=wd" : "/m?boot=on");
+        char path[24];
+        if (!bootTold)          snprintf(path, sizeof path, "/m?boot=%s", wdBoots ? "wd" : "on");
+        else if (joyToTell > 0) snprintf(path, sizeof path, "/m?joy=%d", joyToTell);
+        else                    strcpy(path, "/m");
         if (httpGet(path, body, sizeof body)) {
+            if (bootTold) joyToTell = -1;          // 届いた → 喜んだ知らせは済んだ（起動の知らせと同時には送らない）
             bootTold = true;
             if (wdBoots) { wdBoots = 0; prefs.putUChar("wd", 0); }   // 通った → 見張りの回数を戻す
             float m, n; int f, s = 0;
@@ -789,6 +795,7 @@ void loop() {
             if (inEpisode && !closeGreeted && g_stage >= 3) {
                 closeGreeted = true;
                 pendingScene = 2;
+                joyToTell = g_stage;               // 次の問い合わせでクラウドへ知らせる（本物のときだけ）
             }
         }
     }

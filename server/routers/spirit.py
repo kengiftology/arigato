@@ -1295,11 +1295,16 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
 
 
 @router.get("/m", response_class=PlainTextResponse)
-async def get_m(boot: str | None = None):
+async def get_m(boot: str | None = None, joy: int | None = None):
     """C3互換: 'score N flag stage'（flag 1=無人）。
 
     boot（2026-09-19）＝C3が起動して最初の1回だけ添える。on＝電源が入った／
     wd＝クラウドへ5分通らず、C3が自分で起動し直した。いつ・なぜ起動したかを記録に残す。
+
+    joy（2026-09-21）＝C3が「なついている人だ」と喜んだあと、次の1回だけ添える（段階3〜4）。
+    9/21朝、p02 が本物の片づけで段階3に届いて戻ってきたのに、喜んだかどうかが
+    どこにも残っていなかった。台帳#5・#6 の証拠（いつ・誰に特別に喜んだか）を取るための記録。
+    誰に喜んだかはC3は知らないので、そのときクラウドが見ている人を添える。
 
     stage（2026-09-19）＝いま居る人のなつき度の段階 0〜4（BOND_STAGES の並び順）。
     誰も居ない・誰か分からないときは 0。末尾に足しただけなので、
@@ -1307,6 +1312,11 @@ async def get_m(boot: str | None = None):
     if boot in ("on", "wd"):
         _log_event("c3_boot", {"why": boot})
     st = _load()
+    if joy is not None and 3 <= joy <= 4:
+        # 喜んだのは前回の問い合わせのとき（10秒前）。そのあいだに人が入れ替わっていないかを
+        # あとで確かめられるよう、顔で確かめてから何秒たっているかも残す。
+        _log_event("c3_joy", {"stage": joy, "person": st.get("cur_person"),
+                              "face_ago": round(time.time() - st.get("face_at", 0))})
     n = _calc_n(st, time.time())
     return "%.3f %.3f %d %d\n" % (st["score"], n, 1 if st["empty"] else 0,
                                   _cur_stage_index(st))
