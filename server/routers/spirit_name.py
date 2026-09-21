@@ -38,10 +38,11 @@ from server.routers import spirit as sp
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/spirit", tags=["spirit"])
 
-# 聞く側（ラズパイ／PC の橋渡し）がそろうまでは、聞かない（2026-09-19）。
-# クラウドだけ先に入れると、問いかけが鳴っても誰も答えを取りに行かず、
-# そのぶん迎えの言葉も出ない。使うときに Cloud Run の環境変数で 1 にする。
-ASK_ON = os.environ.get("SPIRIT_ASK_NAME", "0") == "1"
+# 聞くかどうか。9/19 は切で出した（橋渡し側がそろっておらず、掲示も「音声は記録しない」だった）。
+# 9/21：橋渡し側に録音が入り、本人が掲示を v3 に貼り替え、QRの先のページも v3 にしたので、既定を入にした。
+# 止めたいときは環境変数 SPIRIT_ASK_NAME=0。ただし deploy.yml は入れ替えのたびに環境変数を
+# 書き直す（--set-env-vars）ので、ずっと止めるならここの既定を変える。
+ASK_ON = os.environ.get("SPIRIT_ASK_NAME", "1") == "1"
 ASK_KIND = "ask_name"            # 作り置きの問いかけ（ask_name_0 など）
 ASK_GAP = 6 * 3600.0             # 聞けなかった人に、もう一度聞くまでの間
 ASK_TTL = 90.0                   # 問いかけから、これより後に届いた答えは受け取らない
