@@ -452,6 +452,7 @@ static String processCmd(String cmd) {
     else if (cmd.startsWith("stage ")) {                    // stage 4 … 段階を手で入れる（テスト）
         // 目の前に人が居ないとクラウドは段階0しか返さないので、机の上で
         // 5段階を試すための口（2026-09-19）。実際の受け取りは loop（変数がそこにある）。
+        // 人が居ることにはしない（2026-09-21。偽の来訪を記録に混ぜないため）。
         int sv;
         if (sscanf(cmd.c_str(), "stage %d", &sv) == 1 && sv >= 0 && sv <= 4) {
             ctlStage = sv;
@@ -697,11 +698,15 @@ void loop() {
     if (ctlScene)  { pendingScene = ctlScene; ctlScene = 0; sleeping = false; }
     if (ctlMurmur) { ctlMurmur = false; nextMurmur = 0; }
     if (ctlStage >= 0) {                       // stage コマンド（机上で5段階を試すため）
+        // 2026-09-21：**人が居ることにしない。**
+        // 前の版は lastMotion と inEpisode を書き換えていたので、試験のたびに
+        // C3 がクラウドへ「在室」と報告し、**偽の来訪が研究の記録に混ざっていた**
+        // （9/19 20:56〜21:03 の7回がそれ）。観察期間に使うと数字が狂う。
+        // 本物の滞在の「1回だけ」の数え（closeGreeted）にも触らない。
+        // 試験なので毎回出す。90秒あけて滞在を切る必要もなくなった。
         g_stage = ctlStage; ctlStage = -1;
         stageHold = millis() + 60000;          // 1分は上書きしない（stat で読めるように）
-        lastMotion = millis(); sleeping = false;
-        if (!inEpisode) { inEpisode = true; episodeStart = millis(); voiceUsed = 0; closeGreeted = false; }
-        if (!closeGreeted && g_stage >= 3) { closeGreeted = true; pendingScene = 2; }
+        if (g_stage >= 3) pendingScene = 2;    // なついている／べったり → 喜ぶ
     }
     uint32_t now = millis();
 
