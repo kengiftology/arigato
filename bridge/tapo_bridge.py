@@ -663,6 +663,7 @@ ASK_SPEAK_WAIT = 3.3   # クラウドは問いかけを3秒ためてから渡す
 LISTEN_TOTAL = 12.0    # 音を取る長さ。映像の繋ぎに約3秒かかり、問いかけ（3秒）の後ろ半分も入る。
                        # 9/19 の実測：繋いでから音が出るまでに数秒かかることがある
 ASK_REPEAT_GAP = 60.0  # 同じ人の問いかけを、続けて扱わない
+ASK_ROUNDS = 5         # 聞き返しを含めて、聞いて送るのは最大この回数（打ち切りはクラウドが決める。これは保険）
 _asked = {"pid": "", "at": 0.0}
 
 
@@ -697,24 +698,31 @@ def ask_name(pid: str) -> None:
     print(time.strftime("%H:%M:%S"), "呼び名を聞く:", pid, flush=True)
     time.sleep(ASK_SPEAK_WAIT)          # 早く取りに行くと「まだ」で無音が返る
     c3("mur")
-    wav = listen(LISTEN_TOTAL)
-    if wav is None:
-        print("呼び名：音が取れなかった", flush=True)
-        return
-    try:
-        req = urllib.request.Request(
-            SERVER + "/spirit/name?person=" + urllib.parse.quote(pid), data=wav,
-            headers={"Content-Type": "audio/wav", "X-Upload-Key": KEY})
-        with urllib.request.urlopen(req, timeout=60) as r:
-            res = json.loads(r.read().decode())
-    except Exception as e:
-        print("呼び名：送れなかった", e, flush=True)
-        return
-    print(time.strftime("%H:%M:%S"), "呼び名の返事:", {k: res.get(k) for k in ("ok", "why", "say")},
-          "取れた" if res.get("name") else "取れない", flush=True)
-    if res.get("say"):
+    # クラウドが聞き返す（「◯◯……で、あってる？」「もういっかい、いって？」）あいだは、
+    # 鳴らして → 聞いて → 送る、をくり返す（2026-09-21）。回数はクラウドが打ち切る。
+    for _ in range(ASK_ROUNDS):
+        wav = listen(LISTEN_TOTAL)
+        if wav is None:
+            print("呼び名：音が取れなかった", flush=True)
+            return
+        try:
+            req = urllib.request.Request(
+                SERVER + "/spirit/name?person=" + urllib.parse.quote(pid), data=wav,
+                headers={"Content-Type": "audio/wav", "X-Upload-Key": KEY})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                res = json.loads(r.read().decode())
+        except Exception as e:
+            print("呼び名：送れなかった", e, flush=True)
+            return
+        print(time.strftime("%H:%M:%S"), "呼び名の返事:",
+              {k: res.get(k) for k in ("ok", "why", "say", "listen")},
+              "覚えた" if res.get("name") else "", flush=True)
+        if not res.get("say"):
+            return
         time.sleep(1.0)                  # クラウドは0.8秒ためてから渡す
         c3("mur")
+        if not res.get("listen"):
+            return
 
 
 def _revive_hires() -> None:

@@ -12,10 +12,12 @@
      （作り置き ask_name_*）。返事に ask_name=<ID> を付けて、ラズパイに聞く番だと知らせる
   3. ラズパイが C3 に鳴らさせ、鳴り終わるころから数秒だけ Tapo のマイクの音を取り、
      /spirit/name に送る（16kHz・16bit・モノラルの WAV）
-  4. ここで文字にし（Google の音声認識）、音は捨てる。文字から呼び名だけを取り出し（Claude）、
-     その人（faces/<ID>）に name として覚える
-  5. 「◯◯……だね。おぼえた」をクラウドの VOICEVOX で声にして、次に鳴らす声に置く。
-     返事に say=true を付け、ラズパイが C3 にもう一度鳴らさせる
+  4. ここで文字にし（Google の音声認識）、音は捨てる。文字から呼び名の候補を取り出す（Claude）
+  5. すぐには覚えず「◯◯……で、あってる？」と聞き返す（9/21・聞き間違いを残さないため）。
+     「うん」なら faces/<ID> に name として覚え「えへへ……◯◯。おぼえた」。
+     「ちがう」なら聞き直す。取れなかったときも聞き直す。1回の来訪で3回まで。
+     声はその場でクラウドの VOICEVOX で作る。返事の say=true で C3 に鳴らさせ、listen=true でまた聞く
+  6. 間違って残ったときや本人の申し出には /spirit/name/clear で消す（次に来たらまた聞く）
 
 残すもの：その人の呼び名と、聞いた時刻だけ。話した言葉そのものと音は残さない。
 """
@@ -46,7 +48,6 @@ ASK_ON = os.environ.get("SPIRIT_ASK_NAME", "1") == "1"
 ASK_KIND = "ask_name"            # 作り置きの問いかけ（ask_name_0 など）
 ASK_GAP = 6 * 3600.0             # 聞けなかった人に、もう一度聞くまでの間
 ASK_TTL = 90.0                   # 問いかけから、これより後に届いた答えは受け取らない
-LISTEN_SEC = 5.0                 # ラズパイが取る音の長さ（ラズパイ側でも同じ値を使う）
 NAME_MAX = 12                    # 呼び名の長さの上限（字）
 SILENT_LEVEL = 25                # これより静かなら、声は入っていないとみなす（9/19の実測）
 VOICEVOX_URL = os.environ.get("VOICEVOX_URL",
@@ -184,68 +185,182 @@ async def _voice(text: str) -> bytes:
     return _pcm16k(w.content)
 
 
+# ---- 2. 答えを受け取る（聞き返して確かめる・2026-09-21）----
+#
+# 本人の希望（9/21）：聞き取り間違いをそのまま覚えない。
+#   「へんちゃん……で、あってる？」と聞き返し、「うん」なら覚える。「ちがう」なら覚えずに聞き直す。
+# 1回目の実機（9/21 21:17）は答えが取れなかった（聞こえたのは8字＝問いかけの後ろ半分くらい）。
+# 取れなかったときも、聞き直す。
+#
+# やりとりは状態 st["name_ask"] で持つ：
+#   phase = "ask"（呼び名を聞いた）／"confirm"（候補を言って、あってるか聞いた）
+#   cand  = 確かめている候補、round = 何回目か（ROUND_MAX で打ち切る）
+# 返事の listen=true は「もう一度しゃべるので、鳴り終わったらまた聞いて送って」という合図。
+
+ROUND_MAX = 3                    # 1回の来訪で、聞き直すのはここまで
+
+_YESNO_SYSTEM = """共有キッチンに住む小さな精霊が、来た人に「◯◯……で、あってる？」と、呼び名が合っているかを聞きました。
+その人の返事を文字にしたものが届きます（聞き間違いが混ざることがあります。頭に精霊自身の問いかけが混ざることもあります。それは無視）。
+- 合っている（うん・はい・そう・あってる など）→ "yes"
+- 違う（ちがう・いいえ・ううん など）→ "no"。違うと言いながら正しい呼び名を言っていれば、それを name に入れる
+- どちらとも取れない・聞き取れていない → "unclear"
+JSONだけで答える：{"answer": "yes"} / {"answer": "no", "name": "けんちゃん"} / {"answer": "no", "name": null} / {"answer": "unclear"}"""
+
+
+async def _yes_no(text: str) -> tuple:
+    """聞き返しへの返事 → ("yes"|"no"|"unclear", 言い直した呼び名 or None)"""
+    if not text or not os.environ.get("ANTHROPIC_API_KEY"):
+        return "unclear", None
+    from anthropic import AsyncAnthropic
+    msg = await AsyncAnthropic().messages.create(
+        model=sp.MODEL, max_tokens=60, system=_YESNO_SYSTEM,
+        messages=[{"role": "user", "content": text}])
+    out = "".join(b.text for b in msg.content if b.type == "text")
+    i, j = out.find("{"), out.rfind("}")
+    try:
+        d = json.loads(out[i:j + 1]) if 0 <= i < j else {}
+    except Exception:
+        d = {}
+    ans = d.get("answer") if d.get("answer") in ("yes", "no", "unclear") else "unclear"
+    name = d.get("name") if isinstance(d.get("name"), str) and d["name"].strip() else None
+    return ans, (name.strip()[:NAME_MAX] if name else None)
+
+
+async def _say(st: dict, person: str, text: str) -> bool:
+    """その場で声にして、次に鳴らす声に置く。置けたら True。"""
+    line = "talk_%s_0" % person            # 持ち歌と同じ置き場。1人1本を上書きして使う
+    try:
+        upload_to(sp.LINES_PREFIX + line + ".pcm", await _voice(text), "application/octet-stream")
+    except Exception as e:
+        _err(person, "voice", e)
+        return False
+    st["speak_line"] = line
+    st["speak_at"] = time.time() + sp.SPEAK_MIN
+    return True
+
+
+def _err(person: str, step: str, e: Exception) -> None:
+    sp._log_event("name_error", {"person": person, "step": step,
+                                 "err": ("%s: %s" % (type(e).__name__, e))[:160]})
+
+
 @router.post("/name")
 async def hear_name(request: Request, person: str, x_upload_key: str = Header(None)):
-    """ラズパイが取った数秒の音を受け取り、呼び名を覚える。
+    """ラズパイが取った数秒の音を受け取る。呼び名を聞いた答えか、聞き返しへの答えか。
 
-    返事：{"ok", "name"（覚えた呼び名・無ければ null）, "say"（鳴らす声を置いたか）}"""
+    返事：{"ok", "name"（覚えた呼び名・まだなら null）,
+           "say"（鳴らす声を置いた＝C3 に mur を送る）,
+           "listen"（鳴らしたあと、もう一度聞いて送る）}"""
     if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
     st = sp._load()
     now = time.time()
     if asking(st, now) != person:
-        return {"ok": False, "why": "not_asking", "name": None, "say": False}
-    st["name_ask"] = {}                      # 1回の問いかけに、答えは1回
-    sp._save(st)
+        return {"ok": False, "why": "not_asking", "name": None, "say": False, "listen": False}
+    a = dict(st.get("name_ask") or {})
+    phase, cand, rnd = a.get("phase") or "ask", a.get("cand"), int(a.get("round") or 1)
+    st["name_ask"] = {}                      # この答えで、いったん聞く番を閉じる
     try:
         pcm = _pcm16k(await request.body())
     except Exception as e:
+        sp._save(st)
         raise HTTPException(status_code=400, detail=str(e))
 
-    # 音の大きさを先に見る（2026-09-19 の実測）。カメラに繋いでから数秒は音が出ず、
-    # そのまま送ると、無音を文字にしようとして待たされるだけになる。
+    # 音の大きさを先に見る（9/19 の実測）。無音は文字にしない。
     level = _level(pcm)
-    if level < SILENT_LEVEL:
-        sp._log_event("name_heard", {"person": person, "level": level, "why": "silent",
-                                     "got": False})
-        return {"ok": True, "name": None, "say": False, "level": level}
-
+    text = ""
     t0 = time.time()
-    try:
-        text = await _to_text(pcm)
-    except Exception as e:
-        sp._log_event("name_error", {"person": person, "step": "to_text",
-                                     "err": ("%s: %s" % (type(e).__name__, e))[:160]})
-        return {"ok": False, "why": "to_text", "name": None, "say": False}
+    if level >= SILENT_LEVEL:
+        try:
+            text = await _to_text(pcm)
+        except Exception as e:
+            _err(person, "to_text", e)
     del pcm                                  # 音はここで捨てる
     t1 = time.time()
-    name = None
-    try:
-        name = await _pick_name(text)
-    except Exception as e:
-        sp._log_event("name_error", {"person": person, "step": "pick",
-                                     "err": ("%s: %s" % (type(e).__name__, e))[:160]})
-    t2 = time.time()
-    # 話した言葉は残さない。聞こえた字数と、呼び名が取れたかだけを残す。
-    sp._log_event("name_heard", {"person": person, "chars": len(text), "got": bool(name),
-                                 "ms": {"to_text": round((t1 - t0) * 1000),
-                                        "pick": round((t2 - t1) * 1000)}})
-    if not name:
-        return {"ok": True, "name": None, "say": False}
 
-    get_db().collection("faces").document(person).update({"name": name, "name_at": now})
-    line = "named_%s_0" % person            # 持ち歌と同じ置き場・同じ名前の形
-    try:
-        upload_to(sp.LINES_PREFIX + line + ".pcm",
-                  await _voice("%s……だね。おぼえた" % name), "application/octet-stream")
-    except Exception as e:
-        sp._log_event("name_error", {"person": person, "step": "voice",
-                                     "err": ("%s: %s" % (type(e).__name__, e))[:160]})
-        return {"ok": True, "name": name, "say": False}
-    t3 = time.time()
-    st = sp._load()
-    st["speak_line"] = line
-    st["speak_at"] = time.time() + sp.SPEAK_MIN
+    def again(next_phase: str, next_cand=None) -> None:
+        st["name_ask"] = {"person": person, "at": time.time(), "phase": next_phase,
+                          "cand": next_cand, "round": rnd + 1}
+
+    say, listen, learned, result = False, False, None, ""
+    if phase == "ask":
+        name = None
+        if text:
+            try:
+                name = await _pick_name(text)
+            except Exception as e:
+                _err(person, "pick", e)
+        if name:                             # 候補が取れた → 覚える前に聞き返す
+            result = "cand"
+            say = await _say(st, person, "%s……で、あってる？" % name)
+            if say:
+                again("confirm", name)
+                listen = True
+        elif rnd < ROUND_MAX:                # 取れなかった → 聞き直す
+            result = "none_retry"
+            say = await _say(st, person, "……もういっかい、いって？")
+            if say:
+                again("ask")
+                listen = True
+        else:
+            result = "none_giveup"
+    else:                                    # phase == "confirm"
+        ans, fixed = "unclear", None
+        if text:
+            try:
+                ans, fixed = await _yes_no(text)
+            except Exception as e:
+                _err(person, "yes_no", e)
+        if ans == "yes" and cand:
+            learned, result = cand, "yes"
+            get_db().collection("faces").document(person).update({"name": cand, "name_at": now})
+            say = await _say(st, person, "えへへ……%s。おぼえた" % cand)
+        elif ans == "no" and fixed and rnd < ROUND_MAX:   # 違う、と言いながら言い直してくれた
+            result = "no_fixed"
+            say = await _say(st, person, "%s……で、あってる？" % fixed)
+            if say:
+                again("confirm", fixed)
+                listen = True
+        elif ans == "no" and rnd < ROUND_MAX:             # 違う → 聞き直す
+            result = "no_retry"
+            say = await _say(st, person, "ごめんね……なんて、よんだらいい？")
+            if say:
+                again("ask")
+                listen = True
+        elif ans == "unclear" and cand and rnd < ROUND_MAX:   # どちらか分からない → もう一度確かめる
+            result = "unclear_retry"
+            say = await _say(st, person, "%s……で、いい？" % cand)
+            if say:
+                again("confirm", cand)
+                listen = True
+        else:
+            result = "giveup"
     sp._save(st)
-    sp._log_event("name_learned", {"person": person, "voice_ms": round((t3 - t2) * 1000)})
-    return {"ok": True, "name": name, "say": True}
+    # 話した言葉は残さない。大きさ・字数・何が起きたかだけを残す。
+    sp._log_event("name_heard", {"person": person, "phase": phase, "round": rnd,
+                                 "level": level, "chars": len(text), "result": result,
+                                 "ms": {"to_text": round((t1 - t0) * 1000),
+                                        "rest": round((time.time() - t1) * 1000)}})
+    if learned:
+        sp._log_event("name_learned", {"person": person, "round": rnd})
+    return {"ok": True, "name": learned, "say": say, "listen": listen}
+
+
+# ---- 4. 呼び名を消す（2026-09-21）----
+# 聞き取り間違いで残ってしまったとき・本人から「消して」と言われたとき（掲示 v3 に書いた）。
+# 消すと、次に来たときにまた聞く。
+
+@router.post("/name/clear")
+async def clear_name(person: str, x_upload_key: str = Header(None)):
+    if not key_ok(x_upload_key):
+        raise HTTPException(status_code=401, detail="bad key")
+    from google.cloud import firestore
+    ref = get_db().collection("faces").document(person)
+    if not ref.get().exists:
+        raise HTTPException(status_code=404, detail="no such person")
+    ref.update({"name": firestore.DELETE_FIELD, "name_at": firestore.DELETE_FIELD,
+                "name_asked_at": firestore.DELETE_FIELD})
+    sp._log_event("name_clear", {"person": person})
+    return {"ok": True, "person": person}
+
+
