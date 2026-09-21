@@ -120,6 +120,7 @@ _identify_err = [""]   # 顔検出の失敗理由（/spirit/facesで確認する
 _BOOT_AT = time.time()
 _ALIVE = {"camera": 0.0, "c3": 0.0, "voice": 0.0}
 ALIVE_LIMIT = {"camera": 900, "c3": 120, "voice": 180}   # 来る間隔の3〜12倍。これを超えたら止まっている
+BUSY_CAMERA_LIMIT = 60   # 在室中はこの秒数来なければ異常（人が居る間は1.5秒おきに来る）
 ALIVE_NAME = {"camera": "カメラ（ラズパイの橋渡し役）", "c3": "キャラ（C3）",
               "voice": "声の係（ラズパイ）"}
 # 人が写る写真を一時的に残す置き場（2026-09-02・研究室の承諾のもと）。
@@ -1742,6 +1743,17 @@ def _health() -> dict:
                       "ok": ok, "unknown": not t})
         if not ok:
             bad.append(ALIVE_NAME[k])
+    # 人が居るのに写真が来ない（2026-09-21）。
+    # カメラの目安は15分だが、人が居る間は1.5秒おきに来るはずで、
+    # 9/21 は「人感は人を捉えているのに写真0枚」が何度も起きていた。
+    # 15分の目安ではそれに気づけないので、在室中だけ別の目安で見る。
+    st = _load()
+    cam = _ALIVE["camera"]
+    if not st.get("empty", True) and cam and now - cam > BUSY_CAMERA_LIMIT:
+        items.append({"id": "camera_busy", "name": "人が居るのに写真が来ない",
+                      "ago": round(now - cam), "limit": BUSY_CAMERA_LIMIT,
+                      "ok": False, "unknown": False})
+        bad = bad + ["人が居るのに写真が来ない"]
     return {"ok": not bad, "stopped": bad, "items": items,
             "boot_ago": round(up), "now": now, "mem": _memory()}
 

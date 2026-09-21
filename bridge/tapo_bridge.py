@@ -88,6 +88,9 @@ ARRIVE_SEC = 30.0     # その「最初のうち」の長さ。入ってくる�
                       # 3秒に1枚だと半分がクラウドに届かなかった（実測）。登録は25秒に2回要る
 GAP_HEARTBEAT = 300.0 # 何も起きなくても、これだけ経ったら1枚送る（定時報告）
 GAP_ERROR = 15.0      # 失敗した時
+PIR_GAP = 3.0         # C3の人感（クラウド経由）を覗きにいく間隔（2026-09-21）
+PIR_HOLD = 20.0       # 人感が「居る」と言った直後、これだけは居るものとして送り続ける
+_pir = [0.0, 0.0]     # [最後に「居る」と聞いた時刻, 最後に覗いた時刻]
 HINT_GAP = 3.0        # 「探しに行け」の札を覗きにいく間隔
 SWEEP_COOLDOWN = 600.0 # 一度探したら、しばらくは探し直さない
                        # 90秒だった頃は1日79回も首を振り、そのたびに景色が
@@ -466,10 +469,29 @@ def send(jpg: bytes, big: bool = False, check: bool = False) -> dict:
     _last_end[0] = t4
     print(time.strftime("%H:%M:%S"),
           "計測 前の送信から=%.2f 写真の古さ=%.2f %dKB 繋ぐ=%.2f 送る=%.2f 返事待ち=%.2f"
-          " 読む=%.2f 計=%.2f クラウド内=%.2f %s"
+          " 読む=%.2f 計=%.2f クラウド内=%.2f 向き=%s %s"
           % (idle, _read_age[0], len(jpg) // 1024, t1 - t0, t2 - t1, t3 - t2,
-             t4 - t3, t4 - t0, srv / 1000, res.get("why")), flush=True)
+             t4 - t3, t4 - t0, srv / 1000, _pose[0] or "?", res.get("why")), flush=True)
     return res
+
+
+def pir_here() -> bool:
+    """C3の人感が「人が居る」と言っているか（クラウド経由・2026-09-21）。
+
+    橋渡しは 80x45 の粗い白黒で動きを見ているが、人はフレームのごく一部しか
+    占めないので、実測では人の動きが 1.5〜2.9（基準1.50）しか出ない。
+    9/21 の来訪（12:47〜12:55）は一度も検知できず、写真が0枚だった。
+    C3 の人感は人を捉えているので、そちらが「居る」と言う間は動きに関係なく送る。"""
+    now = time.time()
+    if now - _pir[1] >= PIR_GAP:
+        _pir[1] = now
+        try:
+            with urllib.request.urlopen(SERVER + "/spirit/presence", timeout=5) as r:
+                if r.read().decode().strip() == "occupied":
+                    _pir[0] = now
+        except Exception as e:
+            print("人感の確認に失敗:", e, flush=True)
+    return time.time() - _pir[0] < PIR_HOLD
 
 
 def hint() -> str:
@@ -780,7 +802,7 @@ def main():
 
                 if not w.ready:
                     continue
-                busy = (now - w.last_move) < STILL_HOLD
+                busy = (now - w.last_move) < STILL_HOLD or pir_here()
                 if busy and not was_busy:
                     busy_since = now             # 動き始めの時刻（入室の最初のうちを測る）
                 was_busy = busy
