@@ -335,13 +335,13 @@ def _calc_n(st: dict, now: float) -> float:
     return 0.0
 
 
-def _sanitize(c) -> str:
+def _sanitize(c, limit: int = MAX_COMMENT) -> str:
     if not isinstance(c, str):
         return ""
     c = re.sub(r"[{}\"\\\n]", " ", c).strip()
     if any(b in c for b in _BAD):
         return "きょうもおつかれさま"
-    return c[:MAX_COMMENT]
+    return c[:limit]
 
 
 def _shrink_for_judge(data: bytes, max_w: int = 1280) -> bytes:
@@ -2189,17 +2189,27 @@ _GREET_SYSTEM = (
 )
 
 
+# 覚えた呼び名で呼ぶか（2026-09-22・本人「その後、名前で呼んでほしい」「ちゃん付け」）。
+# 本人が文面の例（/spirit/greet_preview）を見てから True にする。
+CALL_NAME = False
+
+
 async def _greet_line(persona: str, manner: str, thanks: bool = False,
-                      news: bool = False) -> str:
+                      news: bool = False, name: str = "") -> str:
     """その人へ向けた一言をつくる。
 
     thanks＝この人が前に片づけていた（ありがとうを言う）。
     news＝最近シンクがきれいになっていた（場所の様子として伝える。誰がやったかは言わない）。
     2026-09-10 本人決定：「だれかがきれいにしてくれた」は負債感になるので言わない。
-    「シンクがきれいになってた」と場所の様子を言うのはよい。"""
+    「シンクがきれいになってた」と場所の様子を言うのはよい。
+    name＝その人が教えてくれた呼び名（2026-09-22）。あれば文の中で1回だけ『◯◯ちゃん』と呼ぶ。
+    ひらがなで書かせるのは、VOICEVOX が漢字の名前を読み違えないため（「桑原」→「くわはら」）。"""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return ""
     ask = "【この相手への接し方】" + manner
+    if name:
+        ask += ("\n【呼び名】この人の呼び名は『%s』。文の中で1回だけ、自然に『（呼び名の読みをひらがなで）ちゃん』と呼ぶ。"
+                "呼び名は漢字やカタカナで書かず、読みをひらがなで書く。呼び名のぶんだけ字数を増やしてよい。" % name)
     if thanks:
         ask += ("\n【伝えたいこと】このまえ、この人が帰ったあと、シンクがきれいになっていた。"
                 "ありがとう・うれしかった、という気持ちをこの人に伝えたい。"
@@ -2218,7 +2228,8 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
             system=(persona or _DEFAULT_PERSONA) + "\n" + _GREET_SYSTEM,
             messages=[{"role": "user", "content": ask}])
         text = "".join(b.text for b in msg.content if b.type == "text").strip()
-        return _sanitize(text)
+        # 呼び名が入るぶん、上限も広げる（読みのひらがな＋「ちゃん」。途中で切れないように）
+        return _sanitize(text, MAX_COMMENT + (len(name) * 3 + 3 if name else 0))
     except Exception as e:
         logger.warning("greet failed: %s", e)
         return ""
@@ -2888,7 +2899,8 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             doc = d.to_dict() or {}
             manner = _bond_stage(_bond_now(doc))[1]
             thanks = _own_care(d.id)
-            text = await _greet_line(persona, manner, thanks, news and not thanks)
+            text = await _greet_line(persona, manner, thanks, news and not thanks,
+                                     (doc.get("name") or "") if CALL_NAME else "")
             if text:
                 ls = _put_line(_slots(doc), text, now)
                 if ls is not None:
@@ -2903,6 +2915,45 @@ async def _prepare_greetings(st: dict, now: float) -> int:
     if n:
         _log_event("prepared", {"lines": n})
     return n
+
+
+async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True) -> list:
+    """その人向けの一言を、呼び名入りで作り直す（2026-09-22）。
+
+    呼び名を覚えた瞬間に呼ぶ。それまでの4本には名前が入っていないので、全部入れ替える。
+    声は声係（ラズパイ）が順に作り直す。作り終わるまでは、ふつうの迎えの言葉が鳴る。
+    save=False なら作った文を返すだけ（本人に見せる用）。"""
+    st = _load()
+    ref = get_db().collection("faces").document(pid)
+    doc = ref.get().to_dict() or {}
+    name = doc.get("name") or ""
+    if not name:
+        return []
+    manner = _bond_stage(_bond_now(doc))[1]
+    texts = []
+    for _ in range(n * 2):                     # 同じ文が出たら数に入れない
+        t = await _greet_line(st.get("persona", ""), manner, False, False, name)
+        if t and t not in texts:
+            texts.append(t)
+        if len(texts) >= n:
+            break
+    if save and texts:
+        now = time.time()
+        ref.update({"lines": [{"t": t, "m": "", "at": now} for t in texts]})
+        _log_event("lines_remade", {"person": pid, "lines": len(texts)})
+    return texts
+
+
+@router.get("/greet_preview")
+async def greet_preview(person: str, n: int = 4, save: int = 0,
+                        x_upload_key: str = Header(None)):
+    """その人の呼び名を入れた迎えの一言を、試しに作って見せる（2026-09-22）。
+
+    本人が文面を見て決めるための口。save=1 のときだけ、その人の一言を入れ替える。"""
+    if not key_ok(x_upload_key):
+        raise HTTPException(status_code=401, detail="bad key")
+    texts = await remake_lines(person, max(1, min(n, 8)), save=bool(save))
+    return {"person": person, "lines": texts, "saved": bool(save and texts)}
 
 
 @router.get("/todo")

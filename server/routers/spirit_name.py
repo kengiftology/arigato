@@ -347,6 +347,11 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
                                         "rest": round((time.time() - t1) * 1000)}})
     if learned:
         sp._log_event("name_learned", {"person": person, "round": rnd})
+        if sp.CALL_NAME:                     # 覚えた呼び名で呼べるよう、その人の一言を作り直す（9/22）
+            try:
+                await sp.remake_lines(person)
+            except Exception as e:
+                _err(person, "remake", e)
     return {"ok": True, "name": learned, "say": say, "listen": listen}
 
 
