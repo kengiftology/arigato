@@ -1425,6 +1425,39 @@ STAGE_HOLD = 90.0
 OTHER_FACE_SIM = 0.25     # これ未満なら「渡している人とは違う顔」
 LAST_FACE_FRESH = 10.0    # この秒数より古い顔は使わない
 
+# 止める根拠を、ちゃんと見えている顔だけに絞る（2026-09-23）。
+# 9/23 05:54:20、同じ人がぶれて流れた143pxの1枚が数値のうえだけ別人寄り（p07 0.334）に出て、
+# 段階を渡すのをやめた。害は「喜ばなかった」だけだが、ぶれ・横顔・小さい顔の1枚で止めるのは
+# 行きすぎ。顔の側（研究トークA）が last_face に大きさ・正面らしさ・くっきり具合を入れるので、
+# それがそろった顔が「続けて2枚とも違う人」のときだけ止める。
+# 値が足りない顔は数に入れない（＝ふだんどおり渡す）。止めそこねるより、間違えて止めるほうが困る。
+#
+# 顔の側（研究トークA・9/23）と合わせる名前
+#   front … 正面かどうかの真偽値。帯（ratio 0.80〜1.30）は顔の側が持つので、そのまま使う
+#   ratio … 両目の幅に対する「目の中点から口の中点までの長さ」。記録用に添えるだけ
+#   blur  … ラプラシアン分散。大きいほどくっきり。112×112 に揃えてから測っている
+LF_RATIO, LF_FRONT, LF_BLUR = "ratio", "front", "blur"
+OTHER_FACE_MIN_PX = 100          # これより小さい顔は数に入れない
+OTHER_FACE_MIN_BLUR = 150.0      # これ未満はぶれている（05:54 の143pxは133で弾かれる）
+OTHER_FACE_NEED = 2              # 何枚続けて違う人なら止めるか
+OTHER_FACE_RUN_GAP = 30.0        # これより間が空いたら「続けて」ではない
+
+_other_face_run = [0.0, 0]       # (数に入れた最後の顔の時刻, 続けて違う人だった枚数)
+
+
+def _face_usable(lf: dict) -> bool:
+    """止める根拠に使える顔か（大きい・正面・くっきり）。値が足りなければ使わない。"""
+    try:
+        if float(lf.get("px") or 0) < OTHER_FACE_MIN_PX:
+            return False
+        front = lf.get(LF_FRONT)
+        if front is None or not front:
+            return False
+        blur = lf.get(LF_BLUR)           # cv2 が失敗すると None
+        return blur is not None and float(blur) >= OTHER_FACE_MIN_BLUR
+    except Exception:
+        return False
+
 
 def _other_face_now(st: dict, pid: str, now: float) -> bool:
     """いま写っている顔が、pid とは明らかに違う人か。判断できなければ False。"""
@@ -1434,13 +1467,21 @@ def _other_face_now(st: dict, pid: str, now: float) -> bool:
     # ここで落ちると /spirit/m ごと落ち、C3 が値を受け取れず見張りの再起動を繰り返す。
     # 形が思っていたのと違っても、必ず False（＝ふだんどおり渡す）に倒す。
     try:
-        if now - float(lf.get("t") or 0) > LAST_FACE_FRESH:
+        t = float(lf.get("t") or 0)
+        if now - t > LAST_FACE_FRESH:
             return False
         scores = lf.get("scores")
         if not isinstance(scores, dict):
             return False
         sc = scores.get(pid)
-        return sc is not None and float(sc) < OTHER_FACE_SIM
+        if sc is None or not _face_usable(lf):
+            return False          # 数に入れない。いまの続き数もそのままにする
+        if t != _other_face_run[0]:          # C3 は10秒おきに来る。同じ1枚を二重に数えない
+            if t - _other_face_run[0] > OTHER_FACE_RUN_GAP:
+                _other_face_run[1] = 0
+            _other_face_run[0] = t
+            _other_face_run[1] = _other_face_run[1] + 1 if float(sc) < OTHER_FACE_SIM else 0
+        return _other_face_run[1] >= OTHER_FACE_NEED
     except Exception:
         return False
 
@@ -1466,7 +1507,10 @@ def _note_stage_stop(st: dict, pid: str, now: float) -> None:
             "other_score": scores.get(best) if best else None,
             "face_ago": round(now - float(st.get("face_at") or 0)),        # その人を顔で確かめてから
             "last_face_ago": round(now - float(lf.get("t") or 0), 1),      # 別の顔が写ってから
-            "px": lf.get("px")})
+            "px": lf.get("px"),
+            "ratio": lf.get(LF_RATIO),                      # 目から口までの長さ（正面らしさ）
+            "blur": lf.get(LF_BLUR),                        # くっきり具合（大きいほどくっきり）
+            "run": _other_face_run[1]})                     # 続けて違う人だった枚数
     except Exception:
         pass
 
