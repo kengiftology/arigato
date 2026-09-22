@@ -516,17 +516,30 @@ def checked() -> None:
 _recheck = [0.0, ""]   # 使える写真が撮れなかったとき、いつ・どこを見直すか
 
 
-def _next_frame(prev: bytes | None) -> bytes | None:
+def _next_frame(prev: bytes | None, after: float = 0.0) -> bytes | None:
     """いまの1枚より新しい1枚を待って読む（最大6秒）。
 
     大きい流れは2〜4秒に1枚しか更新されない。続けて2回読むと同じ1枚が
-    返り、「止まっている」と誤って判定するので、更新を待つ。"""
+    返り、「止まっている」と誤って判定するので、更新を待つ。
+
+    after を渡すと、その時刻より後に書かれた1枚だけを使う（2026-09-22）。
+    9/22 18:13、大きい流れが止まっていたため、首を振る前の部屋側の1枚
+    （しかも小さい方）が「シンクの写真」として送られ、見本との比較が
+    336px ずれて止まった。首を振ったあとの1枚が無ければ、何も返さない。"""
     t0 = time.time()
     while time.time() - t0 < 6.0:
         jpg = grab_big(HIRES_MAX_AGE)
-        if jpg is not None and jpg != prev:
+        fresh = True
+        if after:
+            try:
+                fresh = os.path.getmtime(HIRES_SHOT) > after
+            except OSError:
+                fresh = False
+        if jpg is not None and jpg != prev and fresh:
             return jpg
         time.sleep(0.3)
+    if after:
+        return None                     # 首を振ったあとの大きい1枚が無い＝撮り直す
     return grab_big(HIRES_MAX_AGE) or grab()
 
 
@@ -542,9 +555,10 @@ def take_good_shot(x: float, y: float) -> bytes | None:
     だめなら None（送らない。RECHECK_GAP 後にもう一度来る）。"""
     prev = None
     off = 0                            # ずれで撮り直した回数
+    moved_at = time.time()             # 首を振り終えた時刻。これより前の1枚は使わない
     for i in range(1, CHECK_TRIES + 1):
         time.sleep(SETTLE_AFTER_MOVE if i == 1 else 1.0)
-        jpg = _next_frame(prev)
+        jpg = _next_frame(prev, moved_at + SETTLE_AFTER_MOVE)
         if jpg is None:
             print(time.strftime("%H:%M:%S"), "見回りの写真 %d回目: 映像が無い" % i, flush=True)
             continue
@@ -559,12 +573,14 @@ def take_good_shot(x: float, y: float) -> bytes | None:
         if not r["ok"] and r["why"] == "ずれ":
             off += 1
             sweep.look(*aimed(x, y))   # 向け直してから撮り直す
+            moved_at = time.time()
             prev = None
     # 何度振り直してもずれたまま＝カメラが動いている。画角を探し直す（30分に1回）
     if off >= 2 and realign(x, y):
+        moved_at = time.time()
         for i in range(1, 3):
             time.sleep(SETTLE_AFTER_MOVE if i == 1 else 1.0)
-            jpg = _next_frame(prev)
+            jpg = _next_frame(prev, moved_at + SETTLE_AFTER_MOVE)
             if jpg is None:
                 continue
             r = shot_check.check(jpg, prev)
