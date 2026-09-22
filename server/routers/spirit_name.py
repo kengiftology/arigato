@@ -47,6 +47,9 @@ router = APIRouter(prefix="/spirit", tags=["spirit"])
 # 書き直す（--set-env-vars）ので、ずっと止めるならここの既定を変える。
 ASK_ON = os.environ.get("SPIRIT_ASK_NAME", "1") == "1"
 ASK_KIND = "ask_name"            # 作り置きの問いかけ（ask_name_0 など）
+# 何人か居るときに聞かないか。9/22 22:0x 本人「ほかの人が居ても聞いてよい。どの服装の人に聞いているかを
+# 言ってほしい」→ 既定は聞く。服で呼びかける作りが入るまでは、何人か居ても区別せずに聞く。
+ASK_ONLY_ALONE = False
 ASK_GAP = 6 * 3600.0             # 聞けなかった人に、もう一度聞くまでの間
 ASK_TTL = 90.0                   # 問いかけから、これより後に届いた答えは受け取らない
 NAME_MAX = 12                    # 呼び名の長さの上限（字）
@@ -67,7 +70,7 @@ def maybe_ask(st: dict, pid: str, doc: dict, now: float, alone: bool = True) -> 
     alone＝いまの滞在に居るのがこの人だけか（2026-09-22）。何人か居るときは聞かない。
     9/22 21:30、2人居たときに p02 に聞いて「ゆい」を覚えたが、答えたのが p02 本人か
     分からなかった。服で呼びかける作り（誰に聞いているか伝わる）が入るまでの暫定。"""
-    if not ASK_ON or not alone or not pid or pid == "unknown" or doc.get("name"):
+    if not ASK_ON or (ASK_ONLY_ALONE and not alone) or not pid or pid == "unknown" or doc.get("name"):
         return False
     if now - float(doc.get("name_asked_at") or 0) < ASK_GAP:
         return False
