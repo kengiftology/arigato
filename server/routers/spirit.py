@@ -1169,8 +1169,11 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                     if ready:                          # その人向けに先に作ってあった一言
                         kind = ready
                     # 呼び名がまだ無い人には、迎えの代わりに呼び名を聞く（2026-09-17）
+                    # 何人か居るときは聞かない（9/22 暫定）。同じ写真に写っている人と、
+                    # この滞在で見かけた人の両方を見る（visit_people はこの後で足されるので、ここで合わせる）
                     from server.routers import spirit_name
-                    if not spirit_name.maybe_ask(st, res["person"], doc, now):
+                    others = (set(st.get("visit_people") or []) | set(res.get("all") or [])) - {res["person"]}
+                    if not spirit_name.maybe_ask(st, res["person"], doc, now, alone=not others):
                         _plan_speech(st, kind, slow)
                 # 前回の判断からこちら、誰が居たかを溜めておく。
                 # 判断の時点で cur_person を見ると、とうに帰った人の名が残り、

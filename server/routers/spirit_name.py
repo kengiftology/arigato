@@ -57,12 +57,16 @@ VOICEVOX_SPEAKER = 3             # ずんだもん（作り置きと同じ声）
 
 # ---- 1. 迎えの場面で、聞くかどうか ----
 
-def maybe_ask(st: dict, pid: str, doc: dict, now: float) -> bool:
+def maybe_ask(st: dict, pid: str, doc: dict, now: float, alone: bool = True) -> bool:
     """呼び名が無い人なら、迎えの一言の代わりに問いかけを予約する。予約したら True。
 
     spirit.py の迎えから呼ぶ。たまに黙る（SILENT_CHANCE）は通さない。
-    問いかけが鳴らないのに、ラズパイが聞きに行くことになるため。"""
-    if not ASK_ON or not pid or pid == "unknown" or doc.get("name"):
+    問いかけが鳴らないのに、ラズパイが聞きに行くことになるため。
+
+    alone＝いまの滞在に居るのがこの人だけか（2026-09-22）。何人か居るときは聞かない。
+    9/22 21:30、2人居たときに p02 に聞いて「ゆい」を覚えたが、答えたのが p02 本人か
+    分からなかった。服で呼びかける作り（誰に聞いているか伝わる）が入るまでの暫定。"""
+    if not ASK_ON or not alone or not pid or pid == "unknown" or doc.get("name"):
         return False
     if now - float(doc.get("name_asked_at") or 0) < ASK_GAP:
         return False
@@ -358,6 +362,29 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
 # ---- 4. 呼び名を消す（2026-09-21）----
 # 聞き取り間違いで残ってしまったとき・本人から「消して」と言われたとき（掲示 v3 に書いた）。
 # 消すと、次に来たときにまた聞く。
+
+@router.post("/name/set")
+async def set_name(person: str, name: str, x_upload_key: str = Header(None)):
+    """呼び名を手で付ける（2026-09-22）。付け間違いを正しい人へ付け直すとき。
+
+    例：p02 に付いた「ゆい」が本当は p13 のものだったら、p02 を clear して p13 に set する。"""
+    if not key_ok(x_upload_key):
+        raise HTTPException(status_code=401, detail="bad key")
+    name = name.strip()[:NAME_MAX]
+    if not name:
+        raise HTTPException(status_code=400, detail="empty name")
+    ref = get_db().collection("faces").document(person)
+    if not ref.get().exists:
+        raise HTTPException(status_code=404, detail="no such person")
+    ref.update({"name": name, "name_at": time.time()})
+    sp._log_event("name_set", {"person": person})
+    if sp.CALL_NAME:
+        try:
+            await sp.remake_lines(person)
+        except Exception as e:
+            _err(person, "remake", e)
+    return {"ok": True, "person": person, "name": name}
+
 
 @router.post("/name/clear")
 async def clear_name(person: str, x_upload_key: str = Header(None)):
