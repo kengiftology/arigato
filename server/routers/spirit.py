@@ -1355,6 +1355,31 @@ _stage_memo = [None, 0.0, 0]   # (人, 読んだ時刻, 段階)。C3は10秒お�
 # 顔の確認から1〜39秒の9件がすべて正しく、251秒の1件が間違い。VISIT_HOLD は片づけの +1 を
 # 誰に付けるかにも使うので、そちらは300秒のまま、段階だけを短くする。
 STAGE_HOLD = 90.0
+# 写っている顔が、段階を渡している人とは明らかに違うなら、その時点で渡すのをやめる（2026-09-22）。
+# 顔の側（研究トークA）が照合に使える顔を数値にするたびに st["last_face"] を上書きする。
+# 本人と p02 の近さは −0.02〜0.10、p02 どうしは 0.45〜0.71（9/21〜22 の実例）で、大きく離れている。
+# last_face が無いとき（顔の側の変更がまだ入っていない・うつむき等で数値にならない）は何もしない。
+OTHER_FACE_SIM = 0.25     # これ未満なら「渡している人とは違う顔」
+LAST_FACE_FRESH = 10.0    # この秒数より古い顔は使わない
+
+
+def _other_face_now(st: dict, pid: str, now: float) -> bool:
+    """いま写っている顔が、pid とは明らかに違う人か。判断できなければ False。"""
+    lf = st.get("last_face")
+    if not isinstance(lf, dict):
+        return False
+    # ここで落ちると /spirit/m ごと落ち、C3 が値を受け取れず見張りの再起動を繰り返す。
+    # 形が思っていたのと違っても、必ず False（＝ふだんどおり渡す）に倒す。
+    try:
+        if now - float(lf.get("t") or 0) > LAST_FACE_FRESH:
+            return False
+        scores = lf.get("scores")
+        if not isinstance(scores, dict):
+            return False
+        sc = scores.get(pid)
+        return sc is not None and float(sc) < OTHER_FACE_SIM
+    except Exception:
+        return False
 
 
 def _cur_stage_index(st: dict) -> int:
@@ -1366,6 +1391,8 @@ def _cur_stage_index(st: dict) -> int:
     now = time.time()
     pid = st.get("cur_person")
     if not pid or now - st.get("face_at", 0) > STAGE_HOLD:
+        return 0
+    if _other_face_now(st, pid, now):   # 別の人の顔が写っている（まだ誰とも確定していなくても）
         return 0
     if _stage_memo[0] == pid and now - _stage_memo[1] < 60.0:
         return _stage_memo[2]
