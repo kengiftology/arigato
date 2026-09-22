@@ -19,7 +19,8 @@
      声はその場でクラウドの VOICEVOX で作る。返事の say=true で C3 に鳴らさせ、listen=true でまた聞く
   6. 間違って残ったときや本人の申し出には /spirit/name/clear で消す（次に来たらまた聞く）
 
-残すもの：その人の呼び名と、聞いた時刻だけ。話した言葉そのものと音は残さない。
+残すもの：その人の呼び名と時刻。9/22 から、各往復で聞き取った文字・候補・聞き返しへの答えも
+記録（spirit_log の name_heard）に残す（本人決定「記録を残しましょう。了承は得ています」）。音は残さない。
 """
 import base64
 import io
@@ -287,11 +288,13 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
                           "cand": next_cand, "round": rnd + 1}
 
     say, listen, learned, result = False, False, None, ""
+    picked, answer = None, None               # 記録用：取り出した候補／聞き返しへの答え
     if phase == "ask":
         name = None
         if text:
             try:
                 name = await _pick_name(text)
+                picked = name
             except Exception as e:
                 _err(person, "pick", e)
         if name:                             # 候補が取れた → 覚える前に聞き返す
@@ -317,6 +320,7 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
         if text:
             try:
                 ans, fixed = await _yes_no(text)
+                answer, picked = ans, fixed
             except Exception as e:
                 _err(person, "yes_no", e)
         if ans == "yes" and cand:
@@ -345,8 +349,11 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
             result = "giveup"
     sp._save(st)
     # 話した言葉は残さない。大きさ・字数・何が起きたかだけを残す。
+    # 聞き取った文字は研究の記録として残す（9/22 本人決定「記録を残しましょう。了承は得ています」）。
+    # 音は残さない。どの往復で何と聞こえ、何を候補にし、聞き返しにどう答えたかを、誰の・いつ、と一緒に。
     sp._log_event("name_heard", {"person": person, "phase": phase, "round": rnd,
                                  "level": level, "chars": len(text), "result": result,
+                                 "text": text, "cand": cand, "picked": picked, "answer": answer,
                                  "ms": {"to_text": round((t1 - t0) * 1000),
                                         "rest": round((time.time() - t1) * 1000)}})
     if learned:
