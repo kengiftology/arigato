@@ -1349,15 +1349,23 @@ _served: list = []
 _stage_memo = [None, 0.0, 0]   # (人, 読んだ時刻, 段階)。C3は10秒おきに来るので、読むのは1分に1回
 
 
+# 段階を渡し続ける時間（2026-09-22）。VISIT_HOLD（300秒）から分けた。
+# 9/22 13:21、p02 が最後に写ってから251秒後に、本人の前で p02 向けの「なついている」の
+# 喜びが出た（本人は確定しきれず「いま居る人」が p02 のまま残った）。これまでの喜び11件は、
+# 顔の確認から1〜39秒の9件がすべて正しく、251秒の1件が間違い。VISIT_HOLD は片づけの +1 を
+# 誰に付けるかにも使うので、そちらは300秒のまま、段階だけを短くする。
+STAGE_HOLD = 90.0
+
+
 def _cur_stage_index(st: dict) -> int:
     """いま居る人の段階を 0〜4 で返す。居なければ 0。
 
     2026-09-19：`cur_person` は人が去っても消えない（消えるのは顔を消したときだけ）。
     そのまま渡すと、何時間も前に帰った人の段階が残り、次に来た別の人に
-    その人向けの態度が出てしまう。顔で確かめてから VISIT_HOLD の間だけ渡す。"""
+    その人向けの態度が出てしまう。顔で確かめてから STAGE_HOLD の間だけ渡す。"""
     now = time.time()
     pid = st.get("cur_person")
-    if not pid or now - st.get("face_at", 0) > VISIT_HOLD:
+    if not pid or now - st.get("face_at", 0) > STAGE_HOLD:
         return 0
     if _stage_memo[0] == pid and now - _stage_memo[1] < 60.0:
         return _stage_memo[2]
