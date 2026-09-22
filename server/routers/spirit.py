@@ -528,6 +528,13 @@ FACE_HOLD = 0.25
 # 外れ値＝他人の顔を残していた）。
 FACE_LEARN_SIM = 0.45
 FACE_CORE_SIM = 0.40
+# 至近距離の顔からは新しい人を作らない（2026-09-22・本人決定）。照合には使う。
+# 9/20 00:46、本人がカメラのすぐ前で下から見上げた顔（328px・画面幅の14%）は、
+# 本人の他の顔と 0.06 しか合わず、別の人（p04）として登録された。9/21 23:28 の
+# p12（D の人の割れ・309px）も同じ。9/19〜9/22 に生まれた12個のIDで試算すると、
+# 画面幅の12.5%（2304幅で約290px）を超える顔を登録に使わなければ割れ2件を防げて、
+# 本当に新しい人は1人も止めない（本当に新しい人の登録時の幅は 76〜280px）。
+FACE_ENROLL_MAX_PX = 290
 # 「人ではないもの」の覚え（2026-09-12 夜）。鍋・五徳・棚を顔と見てしまうのは
 # 顔認識では解けない——重いモデルほどひどく、glint360k_r100 は24枚中23枚を
 # 人に結びつけた。代わりに「これは人ではない」を覚えておいて弾く。
@@ -828,6 +835,10 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
             # 照合には使えるが、新しいIDを出すには傾きすぎ（1.30〜1.70）。
             # 傾いた顔から卵を作ると、そのIDが誰でも吸い込む網になる。
             _log_small("not_front", px, ratio=round(ratio, 2) if ratio else None)
+            return None
+        if best_px > FACE_ENROLL_MAX_PX:
+            # 至近距離。顔の見え方が普段とまるで違い、同じ人でも別人として登録される。
+            _log_small("too_close", best_px, sim=round(sim, 3), n=n)
             return None
         if not face.big_enough_to_enroll(best_px):
             # 小さく写った顔からは卵を作らない。同じ人でも一致度が下がり、
@@ -2274,35 +2285,75 @@ async def people():
 
 
 @router.post("/merge")
-async def merge_people(keep: str, drop: str, key: str = ""):
+async def merge_people(keep: str, drop: str, key: str = "", vecs: str = "drop_first", why: str = ""):
     """割れてしまった2つのIDを1つにまとめる。
 
-    dropの見え方をkeepへ移し、dropを消す。世話・利用の数も足し合わせる。
-    /spirit/similar で「同じ人と判定」と出た組に対して使う。"""
+    世話・利用の数は足し合わせ、なつき度は大きい方を残し、drop を消す。
+    /spirit/similar で「同じ人と判定」と出た組に対して使う。
+
+    vecs（覚えの扱い）：
+      drop_first（既定）… drop の見え方を keep の前に置いて8枚に切り詰める（2026-09-09 からの動き）
+      keep       … keep の覚えに一切触らない（2026-09-22）。drop の顔が質の悪い1枚
+                    （うつむき・至近距離）のとき用。9/17 からは覚えの先頭が「核」なので、
+                    drop_first だと drop の顔が核になって keep の覚えが崩れる。
+    呼び名：keep に無く drop にあれば、drop の呼び名を keep に移す（2026-09-22）。
+    drop の人向けの一言（for_<drop>_*）は消し、まとめた対応は spirit_meta/aliases に残す。"""
     if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
+    if vecs not in ("drop_first", "keep"):
+        raise HTTPException(status_code=400, detail="vecs must be drop_first or keep")
+    if keep == drop:
+        raise HTTPException(status_code=400, detail="keep and drop are the same")
     db = get_db()
     a = db.collection("faces").document(keep)
     b = db.collection("faces").document(drop)
     da, dbb = a.get().to_dict(), b.get().to_dict()
     if not da or not dbb:
         return {"ok": False, "error": "そのIDが見つかりません"}
-    # 2026-09-09: 消す側(drop)の見え方を前に置く。割れるのは、カメラの向きが
-    # 変わって新しい角度の顔が古い顔と結べなかったときなので、新しい角度の
-    # 見え方を残さないと、まとめた翌日にまた割れる（p01は古い向きの5枚で
-    # 埋まっていて、今日の見下ろす角度の p02〜p04 が全部別人になった）。
-    vecs = (dbb.get("vecs") or []) + (da.get("vecs") or [])
-    a.update({"vecs": vecs[:FACE_MEMORY],
-              "cares": (da.get("cares") or 0) + (dbb.get("cares") or 0),
-              "uses": (da.get("uses") or 0) + (dbb.get("uses") or 0),
-              "bond": max(float(da.get("bond") or 0), float(dbb.get("bond") or 0))})
+    upd = {"cares": (da.get("cares") or 0) + (dbb.get("cares") or 0),
+           "uses": (da.get("uses") or 0) + (dbb.get("uses") or 0),
+           "bond": max(float(da.get("bond") or 0), float(dbb.get("bond") or 0))}
+    if vecs == "drop_first":
+        # 2026-09-09: 消す側(drop)の見え方を前に置く。割れるのは、カメラの向きが
+        # 変わって新しい角度の顔が古い顔と結べなかったときなので、新しい角度の
+        # 見え方を残さないと、まとめた翌日にまた割れる（p01は古い向きの5枚で
+        # 埋まっていて、今日の見下ろす角度の p02〜p04 が全部別人になった）。
+        upd["vecs"] = ((dbb.get("vecs") or []) + (da.get("vecs") or []))[:FACE_MEMORY]
+    moved_name = None
+    if not da.get("name") and dbb.get("name"):
+        moved_name = dbb["name"]
+        upd["name"] = moved_name
+        upd["name_at"] = dbb.get("name_at") or time.time()
+    a.update(upd)
     b.delete()
+    lines = 0
+    try:
+        lines = delete_prefix(LINES_PREFIX + "for_%s_" % drop)
+        _line_cache["at"] = 0.0
+    except Exception as e:
+        logger.warning("merge lines cleanup failed: %s", e)
+    try:
+        db.collection("spirit_meta").document("aliases").set(
+            {drop: {"to": keep, "at": time.time(), "why": why[:120]}}, merge=True)
+    except Exception as e:
+        logger.warning("merge alias save failed: %s", e)
     st = _load()
+    changed = False
     if st.get("cur_person") == drop:
         st["cur_person"] = keep
+        changed = True
+    for k in ("seen_people", "visit_people", "seen_by"):
+        v = st.get(k)
+        if isinstance(v, list) and drop in v:
+            st[k] = [keep if x == drop else x for x in v]
+            changed = True
+    if changed:
         _save(st)
-    _log_event("merge", {"keep": keep, "drop": drop})
-    return {"ok": True, "keep": keep, "dropped": drop, "shots": len(vecs[:FACE_MEMORY])}
+    shots = len(upd.get("vecs", da.get("vecs") or []))
+    _log_event("merge", {"keep": keep, "drop": drop, "vecs": vecs, "name": moved_name,
+                         "lines_deleted": lines, "why": why[:120]})
+    return {"ok": True, "keep": keep, "dropped": drop, "shots": shots, "vecs": vecs,
+            "name_moved": moved_name, "lines_deleted": lines}
 
 
 @router.post("/bond")
