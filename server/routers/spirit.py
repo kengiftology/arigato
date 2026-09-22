@@ -4277,11 +4277,19 @@ async def story_page():
 
 
 @router.get("/log")
-async def get_log(limit: int = 200):
-    """研究データの取り出し口（judge/care/presenceの時系列）。"""
+async def get_log(limit: int = 200, before: float = 0):
+    """研究データの取り出し口（judge/care/presenceの時系列）。新しい順。
+
+    before を付けると、その時刻より前だけを返す（2026-09-22）。
+    1回に返すのは最大1000件なので、混んだ日は1000件で半日しか届かず、
+    9/19・9/20・9/21 と三日続けてその日の数字の一部を失った。記録は Firestore に
+    残っているので、呼ぶ側が「いちばん古い t」を before に渡して遡れば全部読める。
+    同じ項目の不等号と並べ替えだけなので、複合インデックスは要らない。"""
     try:
-        docs = get_db().collection("spirit_log").order_by(
-            "t", direction="DESCENDING").limit(min(limit, 1000)).stream()
+        q = get_db().collection("spirit_log")
+        if before:
+            q = q.where("t", "<", float(before))
+        docs = q.order_by("t", direction="DESCENDING").limit(min(limit, 1000)).stream()
         return {"events": [d.to_dict() for d in docs]}
     except Exception as e:
         return {"events": [], "error": str(e)}

@@ -50,9 +50,40 @@ COLUMNS = ["日付", "記録の欠け", "人が来た", "うち誰か分かっ�
            "なつき度が上がった", "滞在の締め", "サーバー起動"]
 
 
-def fetch(limit=1000):
-    with urllib.request.urlopen(SERVER + "/spirit/log?limit=%d" % limit, timeout=60) as r:
+def _page(before: float, limit: int = 1000) -> list:
+    url = SERVER + "/spirit/log?limit=%d" % limit
+    if before:
+        url += "&before=%.6f" % before
+    with urllib.request.urlopen(url, timeout=60) as r:
         return json.load(r)["events"]
+
+
+def fetch(day: dt.date | None = None, limit: int = 1000, max_pages: int = 40) -> list:
+    """その日の記録を、1000件ずつ遡って取り切る（2026-09-22）。
+
+    /spirit/log は1回に最大1000件しか返さないので、混んだ日は半日ぶんしか届かず、
+    9/19〜9/21 はその日の前半を失った。`before=` で「いちばん古い t より前」を
+    繰り返し頼み、その日の始まりより前まで届いたら止める。
+    古いサーバー（before を知らない）だと同じ1000件が返ってくるので、
+    遡れなかったらそこで止める（前と同じ動きに戻るだけ）。"""
+    if day is None:
+        return _page(0, limit)
+    start = dt.datetime(day.year, day.month, day.day, tzinfo=JST).timestamp()
+    before = start + 86400 + 3600          # その日の終わり＋1時間（滞在の締めが日をまたぐ分）
+    got, seen = [], set()
+    for _ in range(max_pages):
+        page = _page(before, limit)
+        fresh = [e for e in page if (e.get("t"), e.get("kind")) not in seen]
+        if not fresh:
+            break
+        for e in fresh:
+            seen.add((e.get("t"), e.get("kind")))
+        got.extend(fresh)
+        oldest = min(e["t"] for e in page)
+        if oldest >= before or oldest < start - 3600 or len(page) < limit:
+            break                          # 遡れない／その日の前まで届いた／もう無い
+        before = oldest
+    return got
 
 
 def hm(t):
@@ -263,7 +294,7 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8")
     day = (dt.date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1
            else dt.datetime.now(JST).date())
-    row, detail = count(day, fetch())
+    row, detail = count(day, fetch(day))
     print_report(row, detail)
     rows = save_csv(row)
     try:
