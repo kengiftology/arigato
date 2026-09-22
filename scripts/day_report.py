@@ -48,7 +48,7 @@ COLUMNS = ["日付", "記録の欠け", "人が来た", "うち誰か分かっ�
            "新しく登録", "物として弾いた", "顔が取れない", "見送り",
            "その人向けの声", "声ぜんぶ", "シンク比較が成立", "シンク比較を飛ばした",
            "なつき度が上がった", "滞在の締め", "サーバー起動",
-           "喜んだ（生）", "喜んだ滞在"]
+           "喜んだ（生）", "喜んだ滞在", "注記"]
 
 
 def _page(before: float, limit: int = 1000) -> list:
@@ -289,7 +289,10 @@ def save_csv(row: dict) -> list:
             rows.append(old)
             rows.sort(key=lambda r: r["日付"])
             return rows
-    rows.append({k: row[k] for k in COLUMNS})
+    new = {k: row.get(k, "") for k in COLUMNS}
+    if old and old.get("注記") and not new.get("注記"):
+        new["注記"] = old["注記"]      # 人が書いた注記（無効の区間など）は、数え直しても消さない
+    rows.append(new)
     rows.sort(key=lambda r: r["日付"])
     with open(CSV_PATH, "w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS)
