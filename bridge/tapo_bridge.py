@@ -696,6 +696,7 @@ LISTEN_TOTAL = 16.0    # 音を取る長さ。映像の繋ぎに約3秒かかり
                        # 12→16秒にして、答える時間を8秒ほど取る
 ASK_REPEAT_GAP = 60.0  # 同じ人の問いかけを、続けて扱わない
 ASK_ROUNDS = 5         # 聞き返しを含めて、聞いて送るのは最大この回数（打ち切りはクラウドが決める。これは保険）
+ASK_SPEAK_SEC = 3.1    # 作り置きの問いかけ（ask_name_0/1）の長さ。3.0秒と3.08秒
 _asked = {"pid": "", "at": 0.0}
 
 
@@ -708,18 +709,87 @@ def c3(cmd: str) -> None:
         s.close()
 
 
-def listen(sec: float) -> bytes | None:
-    """Tapo のマイクから sec 秒ぶん、16kHz・16bit・モノラルの WAV を取る。メモリの中だけ。"""
+# 声が途切れたら録音を終える（2026-09-22・本人「名前を聞いたあと、変な間がある」）。
+# 16秒固定で録っていた頃は、答え終わってからも録音の終わりまで8〜13秒待っていた。
+# キャラ自身の問いかけもマイクに入るので、「問いかけが鳴り終わるころ」までは数えない。
+CHUNK_SEC = 0.1          # 大きさを見る単位
+SPEECH_LEVEL = 60        # これより大きければ声（9/19：静か7〜10・1mの声200〜300）
+SILENCE_LEVEL = 40       # これより小さければ静か
+END_SILENCE = 1.2        # 答えのあと、これだけ静かなら締める
+NO_ANSWER_SEC = 7.0      # 問いかけが鳴り終わってから、これだけ声が無ければ締める（答えなし）
+C3_FETCH_SEC = 2.0       # mur を送ってから C3 が鳴らし始めるまでの見込み（9/21〜22 の実測 1〜3秒）
+
+
+def _wav(pcm: bytes) -> bytes:
+    import io
+    import wave
+    b = io.BytesIO()
+    w = wave.open(b, "wb")
+    w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+    w.writeframes(pcm)
+    w.close()
+    return b.getvalue()
+
+
+def _rms(chunk: bytes) -> int:
+    import array
+    import math
+    d = array.array("h")
+    d.frombytes(chunk[:len(chunk) // 2 * 2])
+    return int(math.sqrt(sum(x * x for x in d) / len(d))) if d else 0
+
+
+def listen(sec: float, speak_end: float = 0.0) -> bytes | None:
+    """Tapo のマイクから、答えが終わるまで（最長 sec 秒）の WAV を取る。メモリの中だけ。
+
+    speak_end＝キャラの声が鳴り終わる見込みの時刻。それまでの音は数えない（自分の声で締めないため）。
+    そのあと声が始まり、END_SILENCE 秒静かになったら締める。声が NO_ANSWER_SEC 来なければ締める。"""
+    step = int(16000 * 2 * CHUNK_SEC)
     try:
-        out = subprocess.run(
+        p = subprocess.Popen(
             ["ffmpeg", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", WATCH_URL,
              "-vn", "-ac", "1", "-ar", "16000", "-acodec", "pcm_s16le", "-t", str(sec),
-             "-f", "wav", "pipe:1"],
-            capture_output=True, timeout=sec + 15)
-        return out.stdout if len(out.stdout) > 16000 else None
+             "-f", "s16le", "pipe:1"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     except Exception as e:
         print("listen failed:", e, flush=True)
         return None
+    buf, spoke, quiet, why = bytearray(), False, 0.0, "上限"
+    t_end = time.time() + sec + 15
+    try:
+        while time.time() < t_end:
+            chunk = p.stdout.read(step)
+            if not chunk:
+                break
+            buf += chunk
+            now = time.time()
+            if now < speak_end:
+                continue                          # まだキャラが喋っている
+            lv = _rms(chunk)
+            if lv >= SPEECH_LEVEL:
+                spoke, quiet = True, 0.0
+            elif lv < SILENCE_LEVEL:
+                quiet += CHUNK_SEC
+            if spoke and quiet >= END_SILENCE:
+                why = "答え終わり"
+                break
+            if not spoke and now - speak_end >= NO_ANSWER_SEC:
+                why = "答えなし"
+                break
+    finally:
+        try:
+            p.kill()
+        except Exception:
+            pass
+    print(time.strftime("%H:%M:%S"), "録音を締めた：%s（%.1f秒ぶん）" % (why, len(buf) / 32000), flush=True)
+    return _wav(bytes(buf)) if len(buf) > 16000 else None
+
+
+def _post(path: str, data: bytes | None = None) -> dict:
+    req = urllib.request.Request(SERVER + path, data=data if data is not None else b"",
+                                 headers={"Content-Type": "audio/wav", "X-Upload-Key": KEY})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return json.loads(r.read().decode())
 
 
 def ask_name(pid: str) -> None:
@@ -730,19 +800,23 @@ def ask_name(pid: str) -> None:
     print(time.strftime("%H:%M:%S"), "呼び名を聞く:", pid, flush=True)
     time.sleep(ASK_SPEAK_WAIT)          # 早く取りに行くと「まだ」で無音が返る
     c3("mur")
+    speak_end = time.time() + C3_FETCH_SEC + ASK_SPEAK_SEC
+    q = "?person=" + urllib.parse.quote(pid)
     # クラウドが聞き返す（「◯◯……で、あってる？」「もういっかい、いって？」）あいだは、
     # 鳴らして → 聞いて → 送る、をくり返す（2026-09-21）。回数はクラウドが打ち切る。
     for _ in range(ASK_ROUNDS):
-        wav = listen(LISTEN_TOTAL)
+        wav = listen(LISTEN_TOTAL, speak_end)
         if wav is None:
             print("呼び名：音が取れなかった", flush=True)
             return
+        # 答えを受けたらすぐ「ん……」を鳴らす（9/22）。文字にして判断して声を作る約5秒を埋める
         try:
-            req = urllib.request.Request(
-                SERVER + "/spirit/name?person=" + urllib.parse.quote(pid), data=wav,
-                headers={"Content-Type": "audio/wav", "X-Upload-Key": KEY})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                res = json.loads(r.read().decode())
+            if _post("/spirit/name/hmm" + q).get("say"):
+                c3("mur")
+        except Exception as e:
+            print("呼び名：つなぎを鳴らせなかった", e, flush=True)
+        try:
+            res = _post("/spirit/name" + q, wav)
         except Exception as e:
             print("呼び名：送れなかった", e, flush=True)
             return
@@ -753,6 +827,7 @@ def ask_name(pid: str) -> None:
             return
         time.sleep(1.0)                  # クラウドは0.8秒ためてから渡す
         c3("mur")
+        speak_end = time.time() + C3_FETCH_SEC + float(res.get("speak_sec") or 3.0)
         if not res.get("listen"):
             return
 

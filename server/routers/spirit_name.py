@@ -231,17 +231,45 @@ async def _yes_no(text: str) -> tuple:
     return ans, (name.strip()[:NAME_MAX] if name else None)
 
 
+_said_sec = [0.0]                    # 直前に _say で置いた声の長さ（秒）。橋渡しが「鳴り終わり」を見積もるのに使う
+
+
 async def _say(st: dict, person: str, text: str) -> bool:
     """その場で声にして、次に鳴らす声に置く。置けたら True。"""
     line = "talk_%s_0" % person            # 持ち歌と同じ置き場。1人1本を上書きして使う
     try:
-        upload_to(sp.LINES_PREFIX + line + ".pcm", await _voice(text), "application/octet-stream")
+        pcm = await _voice(text)
+        upload_to(sp.LINES_PREFIX + line + ".pcm", pcm, "application/octet-stream")
     except Exception as e:
         _err(person, "voice", e)
         return False
     st["speak_line"] = line
     st["speak_at"] = time.time() + sp.SPEAK_MIN
+    _said_sec[0] = len(pcm) / 32000.0      # 16kHz・16bit・モノラル
     return True
+
+
+# ---- 答えを受けたらすぐ「ん……」を鳴らす（2026-09-22）----
+# 答えてから次の声まで、文字にする・判断する・声を作るで約5秒かかる。そのあいだ黙っていると
+# 「変な間」になる（本人）。橋渡しは録音を締めたらまずここを叩き、C3 に短いつなぎを鳴らさせてから
+# 答えの音を送る。つなぎは作り置き（filler_*）。
+FILLER_KIND = "filler"
+
+
+@router.post("/name/hmm")
+async def hmm(person: str, x_upload_key: str = Header(None)):
+    if not key_ok(x_upload_key):
+        raise HTTPException(status_code=401, detail="bad key")
+    st = sp._load()
+    if asking(st, time.time()) != person:
+        return {"ok": False, "say": False}
+    line = sp._pick_line(FILLER_KIND)
+    if not line:
+        return {"ok": True, "say": False}
+    st["speak_line"] = line
+    st["speak_at"] = time.time()          # すぐ鳴らす（つなぎなので間は置かない）
+    sp._save(st)
+    return {"ok": True, "say": True}
 
 
 def _err(person: str, step: str, e: Exception) -> None:
@@ -363,7 +391,8 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
                 await sp.remake_lines(person)
             except Exception as e:
                 _err(person, "remake", e)
-    return {"ok": True, "name": learned, "say": say, "listen": listen}
+    return {"ok": True, "name": learned, "say": say, "listen": listen,
+            "speak_sec": round(_said_sec[0], 2) if say else 0.0}
 
 
 # ---- 4. 呼び名を消す（2026-09-21）----
