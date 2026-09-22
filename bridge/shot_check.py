@@ -54,7 +54,9 @@ def conf(a: np.ndarray, b: np.ndarray) -> tuple:
     try:
         import cv2
         win = cv2.createHanningWindow((W, H), cv2.CV_32F)
-        (_, _), r = cv2.phaseCorrelate(a, b, win)
+        # 写しを渡す：phaseCorrelate は渡した配列を書き換える（窓を掛ける）。そのままだと
+        # 呼び出し側の1枚が変わり、次の「動いているか」が同じ写真でも71と出た（9/23 00:42）
+        (_, _), r = cv2.phaseCorrelate(a.copy(), b.copy(), win)
         return float(r), CONF_MIN_CV2
     except Exception:
         return shift_px(a, b)[2], CONF_MIN_NUMPY
