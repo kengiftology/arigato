@@ -764,6 +764,10 @@ def _identify(st: dict, data: bytes):
                           taken=taken)
         _collect_face(f, (r or {}).get("person", ""))
         if r:
+            # 確定した顔の枠（2026-09-22）。複数人のとき、服装で相手を指して
+            # 話しかけるために使う（研究トークC）。座標は回した後の写真の画素。
+            cx, cy = f.get("pos") or (None, None)
+            r = dict(r, box_cx=cx, box_cy=cy, box_w=f["px"])
             people.append(r)
             taken.add(r["person"])
     if not people:
@@ -771,7 +775,10 @@ def _identify(st: dict, data: bytes):
     # 先頭＝一番大きく写っている人。いま目の前に居る相手として扱う。
     head = people[0]
     return {"person": head["person"], "state": head["state"], "px": px,
-            "all": [x["person"] for x in people]}
+            "all": [x["person"] for x in people],
+            "box_cx": head["box_cx"], "box_cy": head["box_cy"], "box_w": head["box_w"],
+            "boxes": [{"person": x["person"], "box_cx": x["box_cx"], "box_cy": x["box_cy"],
+                       "box_w": x["box_w"]} for x in people]}
 
 
 def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
@@ -814,6 +821,14 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
         # 人が居る合図には使うが、誰かを決めるのにも覚えるのにも使わない。
         _log_small("looks_like_object", px, sim=round(junk, 3))
         return None
+    # 照合に使える顔（物ではない）が写った、という事実を、確定かどうかに関係なく残す（2026-09-22）。
+    # 段階を渡している人とは明らかに違う顔が写ったら渡すのをやめる、の材料（研究トークD）。
+    # 1枚ぶんの、各IDの覚えの重心との近さ。壊れても顔の判定は止めない。
+    try:
+        st["last_face"] = {"t": time.time(), "px": int(px),
+                           "scores": {k: round(v, 3) for k, v in face.score_frames([one], known).items()}}
+    except Exception as e:
+        logger.warning("last_face failed: %s", e)
     frames, n, best_px, spread = _remember_face(st, one, px, pos)
     need = FACE_MIN_FRAMES_SMALL if best_px < FACE_SMALL_PX else FACE_MIN_FRAMES
     if n < need and known:
