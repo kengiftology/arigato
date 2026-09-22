@@ -1169,11 +1169,13 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                     if ready:                          # その人向けに先に作ってあった一言
                         kind = ready
                     # 呼び名がまだ無い人には、迎えの代わりに呼び名を聞く（2026-09-17）
-                    # 何人か居るときは聞かない（9/22 暫定）。同じ写真に写っている人と、
-                    # この滞在で見かけた人の両方を見る（visit_people はこの後で足されるので、ここで合わせる）
+                    # ほかに人が居るかは、同じ写真に写っている人と、この滞在で見かけた人の両方で見る
+                    # （visit_people はこの後で足されるので、ここで合わせる）
                     from server.routers import spirit_name
                     others = (set(st.get("visit_people") or []) | set(res.get("all") or [])) - {res["person"]}
-                    if not spirit_name.maybe_ask(st, res["person"], doc, now, alone=not others):
+                    # 何人か居るときは、服で「あかい ふくの ひと、…」と呼びかけて聞く（9/22）
+                    if not await spirit_name.maybe_ask_async(st, res["person"], doc, now, not others,
+                                                             res.get("boxes") or [], data):
                         _plan_speech(st, kind, slow)
                 # 前回の判断からこちら、誰が居たかを溜めておく。
                 # 判断の時点で cur_person を見ると、とうに帰った人の名が残り、
@@ -1196,7 +1198,8 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                         "people": res.get("all") or [res["person"]],
                         "judged": False, "why": "person_seen", "ms": _ms,
                         # 呼び名を聞いている相手。ラズパイはこれを見て C3 に鳴らさせ、答えを取りに行く
-                        "ask_name": spirit_name.asking(st, now)}
+                        "ask_name": spirit_name.asking(st, now),
+                        "ask_sec": spirit_name.asking_sec(st)}
         except Exception as e:
             logger.warning("identify failed: %s", e)
             _identify_err[0] = "%s: %s" % (type(e).__name__, str(e)[:200])
@@ -2215,7 +2218,11 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
     ask = "【この相手への接し方】" + manner
     if name:
         ask += ("\n【呼び名】この人の呼び名は『%s』。文の中で1回だけ、自然に『（呼び名の読みをひらがなで）ちゃん』と呼ぶ。"
-                "呼び名は漢字やカタカナで書かず、読みをひらがなで書く。呼び名のぶんだけ字数を増やしてよい。" % name)
+                "呼び名は漢字やカタカナで書かず、読みをひらがなで書く。呼び名のぶんだけ字数を増やしてよい。"
+                # 9/22 の見本が全部「あ、◯◯ちゃんだ。」で始まり単調だった
+                "入り方は毎回変える。『あ、◯◯ちゃんだ』で始めない。名前は文の途中や終わりに置いてもよい"
+                "（例の形：『あのね、◯◯ちゃん……』『……おかえり、◯◯ちゃん』『きょうもきたね、◯◯ちゃん』）。"
+                "ただし例をそのまま使わない。" % name)
     if thanks:
         ask += ("\n【伝えたいこと】このまえ、この人が帰ったあと、シンクがきれいになっていた。"
                 "ありがとう・うれしかった、という気持ちをこの人に伝えたい。"

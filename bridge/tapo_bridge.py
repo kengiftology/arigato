@@ -792,7 +792,7 @@ def _post(path: str, data: bytes | None = None) -> dict:
         return json.loads(r.read().decode())
 
 
-def ask_name(pid: str) -> None:
+def ask_name(pid: str, ask_sec: float = 0.0) -> None:
     now = time.time()
     if _asked["pid"] == pid and now - _asked["at"] < ASK_REPEAT_GAP:
         return
@@ -800,7 +800,7 @@ def ask_name(pid: str) -> None:
     print(time.strftime("%H:%M:%S"), "呼び名を聞く:", pid, flush=True)
     time.sleep(ASK_SPEAK_WAIT)          # 早く取りに行くと「まだ」で無音が返る
     c3("mur")
-    speak_end = time.time() + C3_FETCH_SEC + ASK_SPEAK_SEC
+    speak_end = time.time() + C3_FETCH_SEC + (ask_sec or ASK_SPEAK_SEC)   # 服で呼びかけると長くなる（クラウドが ask_sec で知らせる）
     q = "?person=" + urllib.parse.quote(pid)
     # クラウドが聞き返す（「◯◯……で、あってる？」「もういっかい、いって？」）あいだは、
     # 鳴らして → 聞いて → 送る、をくり返す（2026-09-21）。回数はクラウドが打ち切る。
@@ -966,7 +966,7 @@ def main():
                         # 動きだけを頼りにすると、じっとしている人が消える。
                         w.last_move = now
                     if res.get("ask_name"):
-                        ask_name(res["ask_name"])
+                        ask_name(res["ask_name"], float(res.get("ask_sec") or 0))
                         w.last_move = time.time()
                     if res.get("hires") and now - last_hires >= HIRES_GAP:
                         # 人は写っているのに顔が取れなかった、と返ってきた。

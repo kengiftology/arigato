@@ -61,30 +61,133 @@ VOICEVOX_SPEAKER = 3             # ずんだもん（作り置きと同じ声）
 
 # ---- 1. 迎えの場面で、聞くかどうか ----
 
+def _may_ask(pid: str, doc: dict, now: float, alone: bool) -> bool:
+    if not ASK_ON or (ASK_ONLY_ALONE and not alone) or not pid or pid == "unknown" or doc.get("name"):
+        return False
+    return now - float(doc.get("name_asked_at") or 0) >= ASK_GAP
+
+
+def _mark_asked(st: dict, pid: str, now: float, line: str, sec: float, desc: str = "") -> None:
+    st["name_ask"] = {"person": pid, "at": now, "sec": sec}
+    try:
+        get_db().collection("faces").document(pid).update({"name_asked_at": now})
+    except Exception as e:
+        logger.warning("name ask mark failed: %s", e)
+    sp._log_event("name_ask", {"person": pid, "line": line, "desc": desc})
+
+
 def maybe_ask(st: dict, pid: str, doc: dict, now: float, alone: bool = True) -> bool:
     """呼び名が無い人なら、迎えの一言の代わりに問いかけを予約する。予約したら True。
 
     spirit.py の迎えから呼ぶ。たまに黙る（SILENT_CHANCE）は通さない。
     問いかけが鳴らないのに、ラズパイが聞きに行くことになるため。
-
-    alone＝いまの滞在に居るのがこの人だけか（2026-09-22）。何人か居るときは聞かない。
-    9/22 21:30、2人居たときに p02 に聞いて「ゆい」を覚えたが、答えたのが p02 本人か
-    分からなかった。服で呼びかける作り（誰に聞いているか伝わる）が入るまでの暫定。"""
-    if not ASK_ON or (ASK_ONLY_ALONE and not alone) or not pid or pid == "unknown" or doc.get("name"):
-        return False
-    if now - float(doc.get("name_asked_at") or 0) < ASK_GAP:
+    何人か居るときに服で呼びかけるのは maybe_ask_async（こちらは作り置きの問いかけだけ）。"""
+    if not _may_ask(pid, doc, now, alone):
         return False
     line = sp._pick_line(ASK_KIND)
     if not line:
         return False                       # 作り置きがまだ置かれていない
     st["speak_line"] = line
     st["speak_at"] = now + sp.SPEAK_SLOW   # ためらってから聞く
-    st["name_ask"] = {"person": pid, "at": now}
+    _mark_asked(st, pid, now, line, ASK_LINE_SEC)
+    return True
+
+
+# ---- 1b. 何人か居るときは、服で呼びかける（2026-09-22）----
+# 本人「ほかの人が居ても名前を聞いてよい。どの服装の人に聞いているかを言ってほしい」。
+# 相手の顔の下（体のあたり）を切り出して Claude に服の特徴をひらがな10字以内で言わせ、
+# 「あかい ふくの ひと、なんて よんだらいい？」をその場で声にする。1人のときは今までどおり。
+# 顔の位置は照合（研究トークA）が返す boxes（回した後の写真の画素）。
+ASK_BY_LOOK = False              # 何人か居るとき服で呼びかけるか。本人が見本（/spirit/look_preview）を見てから True
+ASK_LINE_SEC = 3.1               # 作り置きの問いかけの長さ（ask_name_0/1：3.0・3.08秒）
+
+_LOOK_SYSTEM = """写真には1人の人の体（首から下のあたり）が写っています。
+その人を、ほかの人と見分けるための見た目の特徴を1つだけ、子どもが言うような短いひらがなで答えてください。
+- 服の色と種類がいちばんよい（例：「あかい ふくの」「しろい しゃつの」「くろい ぱーかーの」）
+- 服が分からなければ、めがね・ぼうし・かみ など（例：「めがねの」「ぼうしの」）
+- ひらがなとスペースだけ、10字以内、最後は「の」で終わる
+- 体つき・年齢・性別・肌の色には触れない
+- 人が写っていない・分からないときは null
+JSONだけで答える：{"look": "あかい ふくの"} または {"look": null}"""
+
+
+def _body_crop(data: bytes, box: dict) -> bytes | None:
+    """写真から、その人の顔の下（体のあたり）を切り出して JPEG で返す。"""
     try:
-        get_db().collection("faces").document(pid).update({"name_asked_at": now})
+        import cv2
+        import numpy as np
+        img = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if img is None:
+            return None
+        k = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180,
+             270: cv2.ROTATE_90_COUNTERCLOCKWISE}.get(sp.FACE_ROTATE)
+        if k is not None:
+            img = cv2.rotate(img, k)          # 照合と同じ向き（boxes はこの向きの座標）
+        cx, cy, w = int(box["box_cx"]), int(box["box_cy"]), int(box["box_w"])
+        h, W = img.shape[:2]
+        x0, x1 = max(0, cx - int(w * 1.8)), min(W, cx + int(w * 1.8))
+        y0, y1 = max(0, cy + int(w * 0.6)), min(h, cy + int(w * 4.0))   # あごの下から胸・お腹のあたり
+        if y1 - y0 < w or x1 - x0 < w:        # 体がほとんど写っていない（顔が画面の下の端）
+            y0 = max(0, cy - w)               # 顔まわりも入れて、めがね・ぼうし・かみで言わせる
+        crop = img[y0:y1, x0:x1]
+        ok, buf = cv2.imencode(".jpg", crop, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        return buf.tobytes() if ok else None
     except Exception as e:
-        logger.warning("name ask mark failed: %s", e)
-    sp._log_event("name_ask", {"person": pid, "line": line})
+        logger.warning("body crop failed: %s", e)
+        return None
+
+
+async def _look(jpg: bytes) -> str | None:
+    """切り出した体の写真 → 「あかい ふくの」。分からなければ None。"""
+    if not jpg or not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+    from anthropic import AsyncAnthropic
+    msg = await AsyncAnthropic(timeout=15.0, max_retries=0).messages.create(
+        model=sp.MODEL, max_tokens=60, system=_LOOK_SYSTEM,
+        messages=[{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                         "data": base64.standard_b64encode(jpg).decode()}},
+            {"type": "text", "text": "この人の見た目の特徴を1つ。JSONで。"}]}])
+    out = "".join(b.text for b in msg.content if b.type == "text")
+    i, j = out.find("{"), out.rfind("}")
+    try:
+        look = json.loads(out[i:j + 1]).get("look") if 0 <= i < j else None
+    except Exception:
+        return None
+    if not isinstance(look, str):
+        return None
+    look = look.strip()
+    return look[:12] if look.endswith("の") else None
+
+
+async def maybe_ask_async(st: dict, pid: str, doc: dict, now: float, alone: bool,
+                          boxes: list, data: bytes) -> bool:
+    """何人か居て、その人の顔の位置が分かるときは、服で呼びかけて聞く。
+    それ以外（1人・位置が無い・服が分からない・声が作れない）は作り置きの問いかけ（maybe_ask）。"""
+    if not _may_ask(pid, doc, now, alone):
+        return False
+    box = next((b for b in (boxes or []) if b.get("person") == pid and b.get("box_cx") is not None), None)
+    if alone or not ASK_BY_LOOK or not box:
+        return maybe_ask(st, pid, doc, now, alone)
+    look = None
+    try:
+        look = await _look(_body_crop(data, box))
+    except Exception as e:
+        _err(pid, "look", e)
+    if not look:
+        return maybe_ask(st, pid, doc, now, alone)
+    text = "%s ひと、なんて よんだらいい？" % look
+    line = "talk_%s_0" % pid
+    try:
+        pcm = await _voice(text)
+        upload_to(sp.LINES_PREFIX + line + ".pcm", pcm, "application/octet-stream")
+    except Exception as e:
+        _err(pid, "voice", e)
+        return maybe_ask(st, pid, doc, now, alone)
+    now2 = time.time()
+    st["speak_line"] = line
+    st["speak_at"] = now2 + sp.SPEAK_MIN   # 服を見て声を作るのに数秒かかったので、ためは短く
+    _mark_asked(st, pid, now2, line, len(pcm) / 32000.0, look)
     return True
 
 
@@ -94,6 +197,11 @@ def asking(st: dict, now: float) -> str | None:
     if a.get("person") and now - float(a.get("at") or 0) < ASK_TTL:
         return a["person"]
     return None
+
+
+def asking_sec(st: dict) -> float:
+    """いまの問いかけの声の長さ（秒）。服で呼びかけると作り置きより長いので、橋渡しに知らせる。"""
+    return float((st.get("name_ask") or {}).get("sec") or ASK_LINE_SEC)
 
 
 # ---- 2. 答えを受け取る ----
@@ -401,6 +509,27 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
 # ---- 4. 呼び名を消す（2026-09-21）----
 # 聞き取り間違いで残ってしまったとき・本人から「消して」と言われたとき（掲示 v3 に書いた）。
 # 消すと、次に来たときにまた聞く。
+
+@router.post("/look_preview")
+async def look_preview(request: Request, x_upload_key: str = Header(None)):
+    """写真を1枚渡すと、写っている顔ごとに「服の言い方」と問いかけの文を返す（2026-09-22・本人に見せる用）。
+    何も覚えず、何も鳴らさない。"""
+    if not key_ok(x_upload_key):
+        raise HTTPException(status_code=401, detail="bad key")
+    from server import face
+    data = await request.body()
+    out = []
+    for f in face.detect_faces(data, rotate=sp.FACE_ROTATE):
+        box = {"box_cx": f["pos"][0], "box_cy": f["pos"][1], "box_w": f["px"]}
+        look = None
+        try:
+            look = await _look(_body_crop(data, box))
+        except Exception as e:
+            look = "（失敗：%s）" % type(e).__name__
+        out.append({"face_px": f["px"], "pos": list(f["pos"]), "look": look,
+                    "ask": ("%s ひと、なんて よんだらいい？" % look) if look and look.endswith("の") else None})
+    return {"faces": out}
+
 
 @router.post("/name/set")
 async def set_name(person: str, name: str, x_upload_key: str = Header(None)):
