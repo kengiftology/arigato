@@ -523,7 +523,11 @@ async def look_preview(request: Request, x_upload_key: str = Header(None)):
     from server import face
     data = await request.body()
     out = []
+    # 本番と同じ足切りを通った顔だけ見る（9/23・研究トークA）。ガラスの映り込みは
+    # 「小さい・大きくうつむいている」で落ちる。見本にだけ映り込みが出ると紛らわしい。
     for f in face.detect_faces(data, rotate=sp.FACE_ROTATE):
+        if not f.get("up") or f.get("edge") or not face.big_enough_to_match(f["px"]):
+            continue
         box = {"box_cx": f["pos"][0], "box_cy": f["pos"][1], "box_w": f["px"]}
         look = None
         try:

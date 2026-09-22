@@ -2241,8 +2241,8 @@ _GREET_SYSTEM = (
 
 
 # 覚えた呼び名で呼ぶか（2026-09-22・本人「その後、名前で呼んでほしい」「ちゃん付け」）。
-# 本人が文面の例（/spirit/greet_preview）を見てから True にする。
-CALL_NAME = False
+# 本人が文面の例（/spirit/greet_preview）を見て「よい」と言ったので 9/23 07:1x に入にした。
+CALL_NAME = True
 
 
 async def _greet_line(persona: str, manner: str, thanks: bool = False,
