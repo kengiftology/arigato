@@ -88,6 +88,8 @@ ARRIVE_SEC = 30.0     # その「最初のうち」の長さ。入ってくる�
                       # 3秒に1枚だと半分がクラウドに届かなかった（実測）。登録は25秒に2回要る
 GAP_HEARTBEAT = 300.0 # 何も起きなくても、これだけ経ったら1枚送る（定時報告）
 GAP_ERROR = 15.0      # 失敗した時
+AWAY_MAX = 60.0       # 人が居ても、定位置から離れたままにするのはこの秒数まで
+_away = [0.0]         # 定位置から離れた時刻（戻れば0）
 PIR_GAP = 3.0         # C3の人感（クラウド経由）を覗きにいく間隔（2026-09-21）
 PIR_HOLD = 20.0       # 人感が「居る」と言った直後、これだけは居るものとして送り続ける
 _pir = [0.0, 0.0]     # [最後に「居る」と聞いた時刻, 最後に覗いた時刻]
@@ -847,10 +849,20 @@ def main():
 
                 # 人を探しに行った先に留まったままだと、物の前後比較が成り立たない。
                 # 落ち着いたら定位置へ戻す。比べられるのは同じ向きの2枚だけ。
-                if not busy and not _stay[0] and not at_home():
-                    sweep.go_home()
-                    refresh_pose()
-                    continue
+                # 人が居る間も、定位置から長く離れたままにはしない（2026-09-22）。
+                # 「在室の間は送り続ける」を入れてから、人が居るかぎり busy が続くようになり、
+                # 起動した時の向きや人を探しに行った先から戻れなくなった。9/22 21:43〜21:53 は
+                # 試し撮りの最後の向き（IH と床）のまま348枚を送っていた。
+                if not at_home() and not _stay[0]:
+                    if _away[0] == 0.0:
+                        _away[0] = now
+                    if not busy or now - _away[0] > AWAY_MAX:
+                        sweep.go_home()
+                        refresh_pose()
+                        _away[0] = 0.0
+                        continue
+                else:
+                    _away[0] = 0.0
                 if busy and now - busy_since < ARRIVE_SEC:
                     gap = GAP_ARRIVE             # 入ってきた直後は細かく
                 else:
