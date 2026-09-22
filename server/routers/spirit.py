@@ -76,12 +76,9 @@ _SYSTEM = (
     "【scoreの定義】score は散らかり度。0.0=完全にきれい、0.3=少し物がある、"
     "0.6=それなりに散らかっている、1.0=ひどく散らかっている。"
     "きれいなほど0に近い。間違えないこと。\n"
-    # 2026-09-22 本人「評価と一言の範囲をシンクだけに絞る」。14:27、シンクにはタッパー1つなのに
-    # 調理台のかご・コップ・鍋など12個まで数えて「あちゃあ、いっぱい物があるなあ」と言った。
-    # 区画はシンクだけ（ZONE_NAMES）なのに、点数と一言だけが写真全体で作られていた。
-    "【見る範囲】score と comment は、シンク（流し台の金属のくぼみ）の底に置かれている物だけで決める。"
-    "調理台・テーブル・コンロなど、シンクの外にある物は objects には書いてよいが、score と comment には入れない"
-    "（シンクの外が散らかっていても、シンクが空なら score は0に近く、comment もすっきりした気持ちにする）。\n"
+    # 2026-09-22：ここに【見る範囲】（点数と一言はシンクの物だけで）の1行を足したが、外した。
+    # AI がシンクの外の物（道具立ての箸・コンロの鍋）を「シンク」と呼び変えて数えただけで、
+    # 物の一覧の場所まで不正確になった。点数と一言は、いまはシンクを切り出した写真で作る（receive_frame）。
     "【備え付け】ステンレスの水切りかご・壁の包丁立てと包丁・壁のフックに掛かっている道具・"
     "蛇口・排水口の網は備え付けで、物として挙げず、散らかりにも数えない。"
     "このキッチンに食洗機・食器乾燥機は無い（水切りかごを見間違えない）。\n"
@@ -369,7 +366,13 @@ def _shrink_for_judge(data: bytes, max_w: int = 1280) -> bytes:
         return data
 
 
-async def _judge_image(image_bytes: bytes, persona: str = "", sink_empty=None) -> dict:
+# 切り出した写真（_sink_crop）を判定に渡すときの断り書き。
+CROP_NOTE = ("この写真は、シンク（流し台の金属のくぼみ）の底だけを切り出して、上下を直したものです。"
+             "右の灰色の帯は隠してある所で、物ではありません。\n")
+
+
+async def _judge_image(image_bytes: bytes, persona: str = "", sink_empty=None,
+                       cropped: bool = False) -> dict:
     """写真をClaudeに直接見せて {score, comment} か {skip} を得る。失敗は {}。
     persona＝そのキャラの人格。ルール部（_SYSTEM）は人格に関わらず常に適用。"""
     if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -387,7 +390,8 @@ async def _judge_image(image_bytes: bytes, persona: str = "", sink_empty=None) -
             model=MODEL, max_tokens=1000, system=system,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
-                {"type": "text", "text": "いまのあなたの見た景色です。判断をJSONで。" + (
+                {"type": "text", "text": (CROP_NOTE if cropped else "") +
+                                         "いまのあなたの見た景色です。判断をJSONで。" + (
                     # シンクのくぼみの中は、別の確かめ（切り出して聞く）で答えが出ている。
                     # 2026-09-13：シンクが空なのに一言が「あちこちに物があって、そわそわする」
                     # と言い、聞いた人はシンクのことだと受け取った。写真全体を見るこちらは
@@ -1222,7 +1226,21 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     # _zone_cycle でも使うので、ここで1回だけ聞いて持ち回る。
     sink_now = await _sink_empty(data)
     st["sink_now"], st["sink_now_at"] = sink_now, now
-    r = await _judge_image(data, st.get("persona", ""), sink_now)
+    # 写真全体（r）からは物の一覧と人数だけを使い、点数と一言はシンクのくぼみだけを
+    # 切り出した写真（rs）で作る（2026-09-22 本人「シンクだけ」）。写真全体に「シンクの物だけで
+    # 決めて」と文で頼んだら、AI が道具立ての箸・おたまやコンロの鍋を「シンク」と呼び変えて
+    # 数えた（16:20）。9/13 の _sink_crop と同じで、文で断るより見せないのが効く。
+    # 2つは互いに関係しないので同時に聞く（待ち時間を1回ぶんに保つ。橋渡しは40秒まで待つ）。
+    persona = st.get("persona", "")
+    crop = _sink_crop(data)
+    if crop is data:                  # 切り出しに失敗すると元の写真が返る。黙って写真全体で作らない
+        r = await _judge_image(data, persona, sink_now)
+        rs, scope = {}, "crop_failed"
+        _log_event("sink_crop_failed", {"pose": pose})
+    else:
+        r, rs = await asyncio.gather(_judge_image(data, persona, sink_now),
+                                     _judge_image(crop, persona, sink_now, cropped=True))
+        scope = "sink_crop"
     st["last_judge"] = now
     st["day_calls"] += 1
     npeople = r.get("person")
@@ -1245,7 +1263,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
         return {"ok": True, "judged": False, "why": "person_in_frame"}
     else:
         st["empty"] = True
-    sc = r.get("score")
+    sc = rs.get("score")                  # 点数はシンクの切り出しから（人数と物の一覧は写真全体の r から）
     try:
         sc = max(0.0, min(1.0, float(sc)))
     except (TypeError, ValueError):
@@ -1260,7 +1278,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
         overall = sum(poses.values()) / len(poses)
         st["raw_score"] = overall
         st["score"] = (1 - SCORE_ALPHA) * st["score"] + SCORE_ALPHA * overall
-        c = _sanitize(r.get("comment", ""))
+        c = _sanitize(rs.get("comment", ""))    # 一言もシンクの切り出しから
         if c:
             st["comment"] = c
     objs = r.get("objects")
@@ -1280,7 +1298,7 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
             _log_event("hold", {"person": held,
                                 "since": round(now - st.get("face_at", 0))})
     if sc is not None:
-        _log_event("judge", {"raw": sc, "score": round(st["score"], 3), "pose": pose,
+        _log_event("judge", {"raw": sc, "score": round(st["score"], 3), "pose": pose, "scope": scope,
                              "N": round(_calc_n(st, now), 3), "comment": st.get("comment", ""),
                              "objects": st.get("objects", []), "people": npeople,
                              "who": st.get("seen_people") or []})
