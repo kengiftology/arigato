@@ -2246,7 +2246,7 @@ CALL_NAME = False
 
 
 async def _greet_line(persona: str, manner: str, thanks: bool = False,
-                      news: bool = False, name: str = "") -> str:
+                      news: bool = False, name: str = "", avoid: list | None = None) -> str:
     """その人へ向けた一言をつくる。
 
     thanks＝この人が前に片づけていた（ありがとうを言う）。
@@ -2265,6 +2265,11 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
                 "入り方は毎回変える。『あ、◯◯ちゃんだ』で始めない。名前は文の途中や終わりに置いてもよい"
                 "（例の形：『あのね、◯◯ちゃん……』『……おかえり、◯◯ちゃん』『きょうもきたね、◯◯ちゃん』）。"
                 "ただし例をそのまま使わない。" % name)
+    if avoid:
+        # 1本ずつ別々に作ると、毎回いちばんありそうな入りになる（9/23 の見本：4本中3本が同じ入り）。
+        # すでに持っている文を見せて、入り方と言い回しを変えさせる。
+        ask += ("\n【もう持っている一言】" + "／".join(avoid[:6]) +
+                "\nこれらと、最初のことば（入り方）も言い回しも変える。同じ始まり方にしない。")
     if thanks:
         ask += ("\n【伝えたいこと】このまえ、この人が帰ったあと、シンクがきれいになっていた。"
                 "ありがとう・うれしかった、という気持ちをこの人に伝えたい。"
@@ -2955,7 +2960,8 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             manner = _bond_stage(_bond_now(doc))[1]
             thanks = _own_care(d.id)
             text = await _greet_line(persona, manner, thanks, news and not thanks,
-                                     (doc.get("name") or "") if CALL_NAME else "")
+                                     (doc.get("name") or "") if CALL_NAME else "",
+                                     avoid=[x.get("t") for x in _slots(doc) if x.get("t")])
             if text:
                 ls = _put_line(_slots(doc), text, now)
                 if ls is not None:
@@ -2987,7 +2993,7 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True) -
     manner = _bond_stage(_bond_now(doc))[1]
     texts = []
     for _ in range(n * 2):                     # 同じ文が出たら数に入れない
-        t = await _greet_line(st.get("persona", ""), manner, False, False, name)
+        t = await _greet_line(st.get("persona", ""), manner, False, False, name, avoid=texts)
         if t and t not in texts:
             texts.append(t)
         if len(texts) >= n:

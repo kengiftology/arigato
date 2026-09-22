@@ -105,7 +105,7 @@ _LOOK_SYSTEM = """写真には1人の人の体（首から下のあたり）が�
 その人を、ほかの人と見分けるための見た目の特徴を1つだけ、子どもが言うような短いひらがなで答えてください。
 - 服の色と種類がいちばんよい（例：「あかい ふくの」「しろい しゃつの」「くろい ぱーかーの」）
 - 服が分からなければ、めがね・ぼうし・かみ など（例：「めがねの」「ぼうしの」）
-- ひらがなとスペースだけ、10字以内、最後は「の」で終わる
+- ひらがなとスペースだけ、10字以内、最後は「の」で終わる。カタカナ・アルファベットの服の名前も、読みをひらがなで書く（Tシャツ→「てぃーしゃつ」、パーカー→「ぱーかー」）
 - 体つき・年齢・性別・肌の色には触れない
 - 人が写っていない・分からないときは null
 JSONだけで答える：{"look": "あかい ふくの"} または {"look": null}"""
@@ -157,7 +157,11 @@ async def _look(jpg: bytes) -> str | None:
     if not isinstance(look, str):
         return None
     look = look.strip()
-    return look[:12] if look.endswith("の") else None
+    # ひらがな・長音・スペースだけを通す（9/23 の見本で「tしゃつ」が出た。声が読み違える）
+    import re
+    if not re.fullmatch(r"[ぁ-んー 　]+", look) or not look.endswith("の"):
+        return None
+    return look[:12]
 
 
 async def maybe_ask_async(st: dict, pid: str, doc: dict, now: float, alone: bool,
