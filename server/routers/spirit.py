@@ -3365,6 +3365,40 @@ def _img_block(d: bytes) -> dict:
 
 
 SHIFT_MAX_PX = 150     # 前後の写真がこれ以上ずれていたら比べない（1280幅の画素）
+# 見本との「確かさ」（位置合わせの峰の高さ）がこれ未満なら、別の景色とみなして比べない（2026-09-22）。
+# ずれの数字は、無関係な2枚でもたまたま小さく出る。9/22 16:45 は、壁を写した1枚と
+# シンクを写した1枚を「ずれが小さい」と比べて、嘘の「片づいた」を出した。
+# 実測（9/22・見本 spirit/aim_ref.jpg）：合っている 0.09〜0.22／ずれ・違う向き 0.00〜0.06。
+AIM_MIN_CONF = 0.08
+
+
+def _frame_match(a: bytes, b: bytes) -> tuple:
+    """2枚の位置ずれ（画素）と、その確かさ（0〜1）。_frame_shift と同じ計算で、確かさも返す。
+    失敗したら (0, 0, None)。"""
+    try:
+        import cv2
+        import numpy as np
+        def g(d):
+            im = cv2.imdecode(np.frombuffer(d, np.uint8), cv2.IMREAD_GRAYSCALE)
+            return np.float32(cv2.resize(im, (640, 360))) / 255.0
+        ga, gb = g(a), g(b)
+        win = cv2.createHanningWindow((640, 360), cv2.CV_32F)
+        (dx, dy), resp = cv2.phaseCorrelate(ga, gb, win)
+        return round(dx * 2), round(dy * 2), float(resp)
+    except Exception as e:
+        logger.warning("frame match failed: %s", e)
+        return 0, 0, None
+
+
+def _view_ok(now: bytes) -> tuple:
+    """今の1枚が見本と同じ景色か。(ok, resp, shift)。見本が無ければ ok（判断できないので止めない）。"""
+    ref = read_object(AIM_REF_OBJ)
+    if ref is None:
+        return True, None, None
+    dx, dy, resp = _frame_match(ref, now)
+    if resp is None:
+        return True, None, [dx, dy]
+    return resp >= AIM_MIN_CONF, round(resp, 3), [dx, dy]
 
 
 def _frame_shift(a: bytes, b: bytes) -> tuple:
@@ -3374,19 +3408,8 @@ def _frame_shift(a: bytes, b: bytes) -> tuple:
     答えてしまい門にならなかった（2026-09-09・3通りの聞き方で全部 false）。
     代わりに写真そのものの位置合わせで測る。実測：同じ向き 0px／中身が変わっただけ 20px／
     横0.05ずれ 124px（比べても平気だった）／横0.10ずれ 270px（シンクが切れて誤報した）。"""
-    try:
-        import cv2
-        import numpy as np
-        def g(d):
-            im = cv2.imdecode(np.frombuffer(d, np.uint8), cv2.IMREAD_GRAYSCALE)
-            return np.float32(cv2.resize(im, (640, 360))) / 255.0
-        ga, gb = g(a), g(b)
-        win = cv2.createHanningWindow((640, 360), cv2.CV_32F)
-        (dx, dy), _resp = cv2.phaseCorrelate(ga, gb, win)
-        return round(dx * 2), round(dy * 2)
-    except Exception as e:
-        logger.warning("frame shift failed: %s", e)
-        return (0, 0)
+    dx, dy, _conf = _frame_match(a, b)       # 確かさも欲しいときは _frame_match を使う
+    return dx, dy
 
 
 async def _compare_zone(before: bytes, after: bytes, name: str, sink=None) -> dict:
@@ -3398,6 +3421,12 @@ async def _compare_zone(before: bytes, after: bytes, name: str, sink=None) -> di
     sink＝(前が空か, 今が空か)。2026-09-10 夜：「空か」の答え（20/20で安定）を軸にする。
       空→空＝同じ（光が違っても比べない）／物あり→空＝片づいた／空→物あり＝散らかった。
       物あり→物あり（と、どちらか不明）のときだけ、くぼみ以外を塗りつぶしてAIに聞く。"""
+    # 今の1枚が、見本と同じ景色か（確かさで見る）。違えば比べない（2026-09-22）
+    view_ok, resp, vshift = _view_ok(after)
+    if not view_ok:
+        _log_event("aim_mismatch", {"zone": name, "resp": resp, "shift": vshift,
+                                    "min_resp": AIM_MIN_CONF})
+        return {"skip": "view_mismatch", "same": True, "resp": resp, "shift": vshift}
     dx, dy = _frame_shift(before, after)
     if abs(dx) > SHIFT_MAX_PX or abs(dy) > SHIFT_MAX_PX:
         # ずれすぎて比べられない。黙って止まると気づけないので記録に残す
@@ -4197,17 +4226,21 @@ async def aim():
         return {"ok": False, "error": "見本がありません。いまの画角でよければ /spirit/aim/ref に POST してください"}
     if now is None:
         return {"ok": False, "error": "いまの写真がありません"}
-    dx, dy = _frame_shift(ref, now)
+    dx, dy, resp = _frame_match(ref, now)
     off = max(abs(dx), abs(dy))
     import hashlib
+    other = resp is not None and resp < AIM_MIN_CONF
     return {"ok": True, "dx": dx, "dy": dy,
+            "resp": round(resp, 3) if resp is not None else None, "min_resp": AIM_MIN_CONF,
             # 何を読んだのかを添える。2026-09-13：見本といまの写真が
             # 同じ中身（md5一致）なのに54pxと答え、どちらを読み違えているのか
             # 外から分からなかった。
             "ref": {"bytes": len(ref), "md5": hashlib.md5(ref).hexdigest()[:10]},
             "now": {"bytes": len(now), "md5": hashlib.md5(now).hexdigest()[:10]},
-            "state": "合っている" if off <= AIM_WARN_PX else
-                     ("ずれている" if off <= SHIFT_MAX_PX else "ずれすぎ（比較が止まります）"),
+            # 確かさが低いと、ずれの数字そのものが当てにならない（9/22）。先にそちらを見る
+            "state": "違う景色（比較が止まります）" if other else
+                     ("合っている" if off <= AIM_WARN_PX else
+                      ("ずれている" if off <= SHIFT_MAX_PX else "ずれすぎ（比較が止まります）")),
             "warn_px": AIM_WARN_PX, "stop_px": SHIFT_MAX_PX}
 
 
@@ -4239,8 +4272,9 @@ async def zones_status():
     try:
         ref, now = read_object(AIM_REF_OBJ), read_object("spirit/latest.jpg")
         if ref is not None and now is not None:
-            dx, dy = _frame_shift(ref, now)
-            aim_now = {"dx": dx, "dy": dy, "off": max(abs(dx), abs(dy))}
+            dx, dy, resp = _frame_match(ref, now)
+            aim_now = {"dx": dx, "dy": dy, "off": max(abs(dx), abs(dy)),
+                       "resp": round(resp, 3) if resp is not None else None}
     except Exception as e:
         logger.warning("aim check failed: %s", e)
     return {"zones": out, "home": st.get("home_pose") or "",

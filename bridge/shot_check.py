@@ -20,6 +20,12 @@ REF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sink_ref.jpg")
 SHIFT_MAX = 150        # 1280幅の画素。クラウドの SHIFT_MAX_PX と同じ
 BLUR_MIN = 50.0        # これより小さければぶれている（実測：ぶれた1枚29・鮮明な1枚77〜260）
 STILL_MAX = 6.0        # 1秒あけた2枚の差がこれ以下なら止まっている（実測：止まっていて1.3〜3.2）
+# 見本と同じ景色か（位置合わせの確かさ）。これ未満なら「違う景色」で使わない（2026-09-22）。
+# ずれの数字だけを見ていたので、9/22 は壁を写した1枚を「ずれ小さい＝使える」と通していた。
+# クラウドと同じ cv2 の確かさなら 0.08（合っている 0.09〜0.22／違う向き 0.00〜0.06）。
+# cv2 が無いときの numpy 版は峰の高さの尺度が違うので 0.035（合っている 0.05〜0.06／違う 0.015〜0.025）。
+CONF_MIN_CV2 = 0.08
+CONF_MIN_NUMPY = 0.035
 
 
 def gray(jpg: bytes) -> np.ndarray:
@@ -41,6 +47,17 @@ def shift_px(a: np.ndarray, b: np.ndarray) -> tuple:
     if dy > H // 2:
         dy -= H
     return int(dx) * 2, int(dy) * 2, float(c.max())
+
+
+def conf(a: np.ndarray, b: np.ndarray) -> tuple:
+    """見本 a と b の確かさ。(値, 目安)。cv2 があればクラウドと同じ計算にそろえる。"""
+    try:
+        import cv2
+        win = cv2.createHanningWindow((W, H), cv2.CV_32F)
+        (_, _), r = cv2.phaseCorrelate(a, b, win)
+        return float(r), CONF_MIN_CV2
+    except Exception:
+        return shift_px(a, b)[2], CONF_MIN_NUMPY
 
 
 def blur_score(a: np.ndarray) -> float:
@@ -67,12 +84,17 @@ def ref() -> np.ndarray | None:
 def check(jpg: bytes, prev_jpg: bytes | None = None) -> dict:
     """1枚を測って {ok, why, shift, blur, still} を返す。"""
     g = gray(jpg)
-    out = {"blur": round(blur_score(g), 2), "shift": None, "still": None, "ok": True, "why": ""}
+    out = {"blur": round(blur_score(g), 2), "shift": None, "still": None, "conf": None,
+           "ok": True, "why": ""}
     r = ref()
     if r is not None:
         dx, dy, _ = shift_px(r, g)
         out["shift"] = (dx, dy)
-        if abs(dx) > SHIFT_MAX or abs(dy) > SHIFT_MAX:
+        c, cmin = conf(r, g)
+        out["conf"] = round(c, 3)
+        if c < cmin:
+            out["ok"], out["why"] = False, "違う景色"   # 確かさが低いと、ずれの数字は当てにならない
+        elif abs(dx) > SHIFT_MAX or abs(dy) > SHIFT_MAX:
             out["ok"], out["why"] = False, "ずれ"
     if prev_jpg is not None:
         out["still"] = round(still(gray(prev_jpg), g), 2)
