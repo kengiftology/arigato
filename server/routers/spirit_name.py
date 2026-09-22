@@ -291,6 +291,10 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
             except Exception as e:
                 _err(person, "pick", e)
         if name:                             # 候補が取れた → 覚える前に聞き返す
+            # 候補が取れたら、確かめる往復は上限を越えても必ず1回は残す（9/22 13:16：
+            # 本人の3往復目で候補が取れたのに、聞き返しの答えが「うん」以外受け付けられず終わった）
+            # 確かめの往復で「ちがう、◯◯」や聞き取れなかったときの確かめ直しも1回できるよう、2つ戻す。
+            rnd = min(rnd, ROUND_MAX - 2)
             result = "cand"
             say = await _say(st, person, "%s……で、あってる？" % name)
             if say:
