@@ -1311,7 +1311,7 @@ async def get_m(boot: str | None = None, joy: int | None = None):
     joy（2026-09-21）＝C3が「なついている人だ」と喜んだあと、次の1回だけ添える（段階3〜4）。
     9/21朝、p02 が本物の片づけで段階3に届いて戻ってきたのに、喜んだかどうかが
     どこにも残っていなかった。台帳#5・#6 の証拠（いつ・誰に特別に喜んだか）を取るための記録。
-    誰に喜んだかはC3は知らないので、そのときクラウドが見ている人を添える。
+    誰に喜んだかはC3は知らないので、クラウドが「その段階を渡した相手」を覚えておいて添える。
 
     stage（2026-09-19）＝いま居る人のなつき度の段階 0〜4（BOND_STAGES の並び順）。
     誰も居ない・誰か分からないときは 0。末尾に足しただけなので、
@@ -1319,14 +1319,31 @@ async def get_m(boot: str | None = None, joy: int | None = None):
     if boot in ("on", "wd"):
         _log_event("c3_boot", {"why": boot})
     st = _load()
+    now = time.time()
     if joy is not None and 3 <= joy <= 4:
-        # 喜んだのは前回の問い合わせのとき（10秒前）。そのあいだに人が入れ替わっていないかを
-        # あとで確かめられるよう、顔で確かめてから何秒たっているかも残す。
-        _log_event("c3_joy", {"stage": joy, "person": st.get("cur_person"),
-                              "face_ago": round(time.time() - st.get("face_at", 0))})
-    n = _calc_n(st, time.time())
-    return "%.3f %.3f %d %d\n" % (st["score"], n, 1 if st["empty"] else 0,
-                                  _cur_stage_index(st))
+        # 喜んだのは「前の問い合わせで段階 joy を渡した相手」で、知らせが届いた今の人ではない。
+        # 2026-09-22 13:15：p02 に段階3を渡して C3 が喜んだあと、知らせが届くまでの10秒で
+        # p01 の顔が確定し、喜びが p01 に付いた（p01 は段階2なのに stage 3 と記録された）。
+        hit = next((s for s in reversed(_served) if s[2] == joy and now - s[0] <= 30), None)
+        if hit:
+            who, face_ago, served_ago, src = hit[1], hit[3], round(now - hit[0]), "served"
+        else:      # 覚えが無い（別の起動体に当たった・起動し直した）。今の人を使い、そう印を付ける
+            who, face_ago = st.get("cur_person"), round(now - st.get("face_at", 0))
+            served_ago, src = None, "now"
+        _log_event("c3_joy", {"stage": joy, "person": who, "face_ago": face_ago,
+                              "served_ago": served_ago, "who_from": src,
+                              "person_now": st.get("cur_person")})
+    stage = _cur_stage_index(st)
+    _served.append((now, st.get("cur_person") if stage else None, stage,
+                    round(now - st.get("face_at", 0))))
+    del _served[:-12]
+    n = _calc_n(st, now)
+    return "%.3f %.3f %d %d\n" % (st["score"], n, 1 if st["empty"] else 0, stage)
+
+
+# 直近の問い合わせで C3 に渡したもの（時刻, 人, 段階, 顔で確かめてからの秒）。
+# 喜んだ知らせが来たら、ここから「その段階を渡した相手」を引く。起動体ごと・メモリだけ。
+_served: list = []
 
 
 _stage_memo = [None, 0.0, 0]   # (人, 読んだ時刻, 段階)。C3は10秒おきに来るので、読むのは1分に1回
