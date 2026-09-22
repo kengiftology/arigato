@@ -47,7 +47,8 @@ CAMERA_GAP = 300   # カメラだけが人を見た記録は、これ以上あ�
 COLUMNS = ["日付", "記録の欠け", "人が来た", "うち誰か分かった", "照合できた",
            "新しく登録", "物として弾いた", "顔が取れない", "見送り",
            "その人向けの声", "声ぜんぶ", "シンク比較が成立", "シンク比較を飛ばした",
-           "なつき度が上がった", "滞在の締め", "サーバー起動"]
+           "なつき度が上がった", "滞在の締め", "サーバー起動",
+           "喜んだ（生）", "喜んだ滞在"]
 
 
 def _page(before: float, limit: int = 1000) -> list:
@@ -88,6 +89,44 @@ def fetch(day: dt.date | None = None, limit: int = 1000, max_pages: int = 40) ->
 
 def hm(t):
     return dt.datetime.fromtimestamp(t, JST).strftime("%H:%M")
+
+
+JOY_MERGE_GAP = 1800   # 締まっていない滞在は、喜びどうしが30分以内なら同じ滞在（VISIT_MERGE_GAP と同じ）
+JOY_EDGE = 120         # 滞在の端の前後これだけは、その滞在に入れる（締めの記録は数秒遅れる）
+
+
+def joy_visits(joys: list, closes: list) -> tuple:
+    """キャラが喜んだ記録（c3_joy）を「滞在あたり1回」にまとめる（2026-09-22 本人決定）。
+
+    C3 は「90秒気配が途切れたら滞在おわり」、クラウドは「30分以内の出入りは同じ滞在」と
+    区切りが違い、少し離れて戻ると C3 はもう一度喜ぶ（それは良い）。ただし研究の数字は
+    増やさない。滞在の区切りはクラウドの visit 記録（締めの時刻と、人ごとの滞在秒）に合わせ、
+    どの滞在にも入らない喜び（まだ締まっていない滞在）は、30分以内どうしを束ねる。
+    人は問わない：9/22 15:23 より前の記録は、喜んだ相手が取り違えられていることがあるため。
+    人ごとの内訳は who_from == "served"（段階を渡した相手を覚えていた）の記録だけで出す。"""
+    spans = []
+    for c in closes:
+        stay = c.get("stay") or {}
+        longest = max(stay.values()) if isinstance(stay, dict) and stay else 0
+        spans.append((c["t"] - longest - JOY_EDGE, c["t"] + JOY_EDGE))
+    groups, loose = set(), []
+    for j in joys:
+        hit = next((i for i, (a, b) in enumerate(spans) if a <= j["t"] <= b), None)
+        if hit is None:
+            loose.append(j["t"])
+        else:
+            groups.add(("visit", hit))
+    loose.sort()
+    last = None
+    for t in loose:
+        if last is None or t - last > JOY_MERGE_GAP:
+            groups.add(("loose", t))
+        last = t
+    by_person = {}
+    for j in joys:
+        if j.get("who_from") == "served" and j.get("person"):
+            by_person[j["person"]] = by_person.get(j["person"], 0) + 1
+    return len(groups), by_person
 
 
 def count(day: dt.date, events: list) -> tuple:
@@ -142,6 +181,8 @@ def count(day: dt.date, events: list) -> tuple:
     zone_skip = [e for e in ev if e["kind"] == "zone_skip"]
     bond = [e for e in ev if e["kind"] == "bond_up"]
     closes = [e for e in ev if e["kind"] in ("visit", "visit_short")]
+    joys = [e for e in ev if e["kind"] == "c3_joy"]
+    joy_n, joy_by = joy_visits(joys, [c for c in closes if c["kind"] == "visit"])
 
     row = {
         "日付": day.isoformat(),
@@ -160,10 +201,12 @@ def count(day: dt.date, events: list) -> tuple:
         "なつき度が上がった": len(bond),
         "滞在の締め": len(closes),
         "サーバー起動": sum(1 for e in ev if e["kind"] == "boot"),
+        "喜んだ（生）": len(joys),
+        "喜んだ滞在": joy_n,
     }
     detail = {"visits": visits, "known": known, "new": new, "why": why,
               "for_person": for_person, "zone": zone, "zone_skip": zone_skip,
-              "bond": bond, "closes": closes,
+              "bond": bond, "closes": closes, "joys": joys, "joy_by": joy_by,
               "shots": [e for e in ev if e["kind"] == "shot" and e.get("person") not in (None, "small")]}
     return row, detail
 
@@ -207,6 +250,13 @@ def print_report(row: dict, d: dict) -> None:
     p("なつき度が上がった  %d" % row["なつき度が上がった"])
     for e in d["bond"]:
         p("   %s %s → %s（%s）" % (hm(e["t"]), e.get("person"), e.get("bond"), e.get("why")))
+    p("")
+    p("キャラが喜んだ      生 %d 回 ／ 喜んだ滞在 %d" % (row["喜んだ（生）"], row["喜んだ滞在"]))
+    for e in d["joys"]:
+        p("   %s 段階%s %s%s" % (hm(e["t"]), e.get("stage"), e.get("person") or "?",
+                            "" if e.get("who_from") == "served" else "（相手は参考）"))
+    if d["joy_by"]:
+        p("   人ごと（渡した相手が確かな分だけ）：%s" % d["joy_by"])
     p("")
     p("滞在の締め %d／サーバー起動 %d" % (row["滞在の締め"], row["サーバー起動"]))
 
