@@ -1245,7 +1245,17 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
 
     # シンクの答えを先に出して、一言のAIにも渡す（2026-09-13）。
     # _zone_cycle でも使うので、ここで1回だけ聞いて持ち回る。
-    sink_now = await _sink_empty(data)
+    # 見本（`AIM_REF_OBJ`）と景色が違うなら、シンクの判定をしない（2026-09-22）。
+    # 16:25〜22:09、カメラが壁やシンクの外を向いたまま、決め打ちの枠で切り出して
+    # 「シンク、きれいだなあ」「ピンクのもの」と言い続け、16:45 には嘘の片づけまで記録した。
+    # 違う向きの切り出しに「空か」を聞くと嘘の「空」が出て、滞在の sink_empty から
+    # なつき度+1まで付きうるので、そのときは「空か」も聞かずに「分からない」（None）にする。
+    view_ok, view_resp, view_shift = _view_ok(data)
+    if view_ok:
+        sink_now = await _sink_empty(data)
+    else:
+        sink_now = None
+        _log_event("judge_skip", {"scope": "aim_off", "pose": pose, "shift": view_shift, "resp": view_resp})
     st["sink_now"], st["sink_now_at"] = sink_now, now
     # 写真全体（r）からは物の一覧と人数だけを使い、点数と一言はシンクのくぼみだけを
     # 切り出した写真（rs）で作る（2026-09-22 本人「シンクだけ」）。写真全体に「シンクの物だけで
@@ -1254,7 +1264,10 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     # 2つは互いに関係しないので同時に聞く（待ち時間を1回ぶんに保つ。橋渡しは40秒まで待つ）。
     persona = st.get("persona", "")
     crop = _sink_crop(data)
-    if crop is data:                  # 切り出しに失敗すると元の写真が返る。黙って写真全体で作らない
+    if not view_ok:                   # 景色が違う：切り出しはシンクでない所を見るので、点数と一言は作らない
+        r = await _judge_image(data, persona, sink_now)
+        rs, scope = {}, "aim_off"
+    elif crop is data:                # 切り出しに失敗すると元の写真が返る。黙って写真全体で作らない
         r = await _judge_image(data, persona, sink_now)
         rs, scope = {}, "crop_failed"
         _log_event("sink_crop_failed", {"pose": pose})
@@ -1432,6 +1445,32 @@ def _other_face_now(st: dict, pid: str, now: float) -> bool:
         return False
 
 
+# 別の顔で段階を渡すのをやめたときの記録（2026-09-22）。C3 は10秒おきに来るので、
+# 毎回書くと同じ行が並ぶ。止まり始めと、止めた相手・写っている別の顔が変わったときだけ書く。
+_stage_stop_memo = [None, None]   # (止めた相手, 写っている顔にいちばん近いID)
+
+
+def _note_stage_stop(st: dict, pid: str, now: float) -> None:
+    """stage_stop を1行残す。ここで落ちると /spirit/m ごと落ちるので、何があっても黙って戻る。"""
+    try:
+        lf = st.get("last_face") or {}
+        scores = lf.get("scores") if isinstance(lf.get("scores"), dict) else {}
+        best = max(scores, key=lambda k: float(scores[k])) if scores else None
+        if _stage_stop_memo == [pid, best]:
+            return
+        _stage_stop_memo[:] = [pid, best]
+        _log_event("stage_stop", {
+            "person": pid,                                  # 段階を渡すのをやめた相手
+            "person_score": scores.get(pid),                # 写っている顔と、その人との近さ（0.25未満）
+            "other_best": best,                             # 写っている顔にいちばん近いID
+            "other_score": scores.get(best) if best else None,
+            "face_ago": round(now - float(st.get("face_at") or 0)),        # その人を顔で確かめてから
+            "last_face_ago": round(now - float(lf.get("t") or 0), 1),      # 別の顔が写ってから
+            "px": lf.get("px")})
+    except Exception:
+        pass
+
+
 def _cur_stage_index(st: dict) -> int:
     """いま居る人の段階を 0〜4 で返す。居なければ 0。
 
@@ -1441,9 +1480,12 @@ def _cur_stage_index(st: dict) -> int:
     now = time.time()
     pid = st.get("cur_person")
     if not pid or now - st.get("face_at", 0) > STAGE_HOLD:
+        _stage_stop_memo[:] = [None, None]  # 別の顔で止めているのではない。次に止まったらまた記録する
         return 0
     if _other_face_now(st, pid, now):   # 別の人の顔が写っている（まだ誰とも確定していなくても）
+        _note_stage_stop(st, pid, now)
         return 0
+    _stage_stop_memo[:] = [None, None]  # 渡している＝止まっていない。次に止まったらまた記録する
     if _stage_memo[0] == pid and now - _stage_memo[1] < 60.0:
         return _stage_memo[2]
     try:
