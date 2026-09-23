@@ -604,7 +604,7 @@ static String processCmd(String cmd) {
         int v = 1;
         sscanf(cmd.c_str(), "listen %d", &v);
         listenUntil = v ? millis() + LISTEN_MAX_MS : 0;
-        out += "OK listen " + String(v) + "\n";
+        // 返事はこの関数の最後で「OK <命令>」が付く。ここで足すと二重になる
     }
     else if (cmd.startsWith("m ")) {                        // m 0.8 … M値を手で注入（テスト）
         float mv;
