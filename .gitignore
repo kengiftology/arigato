@@ -30,3 +30,7 @@ create_firestore.py
 get_logs.py
 get_cloudrun_logs.py
 get_cloudrun_logs2.py
+
+# C3の合言葉（本物は C:/Users/kengk/.arigato/spirit_secrets.h に置く・git に上げない）
+spirit_body/secrets.h
+spirit_secrets.h

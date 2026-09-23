@@ -40,8 +40,8 @@
 
 ## 完了 ✅
 - [x] 3機体すべて無線編集体制 2026-08-30
-      脳=git push／目=POST /update／C3=espota(合言葉40568478・ポート3232)＋spirit_net.py(UDP5006・find/stat/コマンド)
-      C3のOTA書込: arduino-cli compile --export-binaries → espota.py -i <IP> -p 3232 --auth=40568478 -f build/…/spirit_body.ino.bin
+      脳=git push／目=POST /update／C3=espota(合言葉は spirit_secrets.h の OTA_PASS・ポート3232)＋spirit_net.py(UDP5006・find/stat/コマンド)
+      C3のOTA書込: arduino-cli compile --export-binaries → espota.py -i <IP> -p 3232 --auth=<OTA_PASS> -f build/…/spirit_body.ino.bin
       ※ArduinoOTA等はコアのライブラリを --library で明示指定が必要（探索が拾わない）
 - [x] B-1 地霊C3と目の接続（GET /m でM・N取得・在室/不在を通知）2026-08-27
 - [x] 段階3 世話イベント検出＋永続カウント（CARE・電源断で保持）

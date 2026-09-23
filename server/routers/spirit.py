@@ -17,6 +17,7 @@
   ・AI呼び出しは最短間隔と1日上限で費用に絶対の歯止め
 状態はFirestore(doc: spirit/state)に永続化（Cloud Runの再起動でも消えない）。
 """
+import hmac
 import json
 import os
 import sys
@@ -1850,7 +1851,18 @@ async def notice_page():
     return _NOTICE
 
 
-NOTE_KEY = "40568478"   # 観察メモの書き込み合言葉（いたずら防止程度・研究者本人用）
+# 観察メモ・人格の書き込みの合言葉（いたずら防止程度・研究者本人用）。
+# 2026-09-23 まで、ここに直に書いてあった文字列が **Wi-Fi と C3 の書き込みの合言葉と同じ**で、
+# 公開リポジトリから読めた。1つ見えたら3つとも開く状態だったので、環境変数に移した。
+# 決めていないと（空なら）この2つの口は誰にも開かない。
+NOTE_KEY = os.environ.get("NOTE_KEY", "")
+
+
+def _note_key_ok(k) -> bool:
+    if not NOTE_KEY:
+        raise HTTPException(status_code=503,
+                            detail="NOTE_KEY が決まっていません（Cloud Run の環境変数）")
+    return hmac.compare_digest(str(k or ""), NOTE_KEY)
 
 _NOTES = """<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1881,7 +1893,13 @@ async function send(){
  if(r.ok){localStorage.setItem(K,key);document.getElementById('key').style.display='none';
    document.getElementById('text').value='';document.getElementById('msg').textContent='記録しました';
    setTimeout(()=>document.getElementById('msg').textContent='',2000);load();}
- else{document.getElementById('msg').textContent='あいことばが違うかも';}}
+ else{
+   // 合言葉を変えたとき、ブラウザが古いものを覚えたままだと入力欄が出てこなくなる。
+   // 断られたら覚えを捨てて、もう一度入れられるようにする（2026-09-23）
+   localStorage.removeItem(K);
+   const f=document.getElementById('key'); f.style.display=''; f.value='';
+   document.getElementById('msg').textContent =
+     (r.status===503) ? 'サーバー側で合言葉が決まっていません' : 'あいことばが違うかも。入れ直してください';}}
 async function load(){
  const d=await (await fetch('/spirit/notes_data?limit=50')).json();
  document.getElementById('list').innerHTML=(d.notes||[]).map(n=>{
@@ -1902,7 +1920,7 @@ async def notes_page():
 async def set_persona(request: Request):
     """キャラの人格を設定（誕生エージェントの出力を注入する口・合言葉つき）。"""
     body = await request.json()
-    if body.get("key") != NOTE_KEY:
+    if not _note_key_ok(body.get("key")):
         raise HTTPException(status_code=401, detail="bad key")
     st = _load()
     st["persona"] = str(body.get("persona", ""))[:2000]
@@ -1914,7 +1932,7 @@ async def set_persona(request: Request):
 @router.post("/note")
 async def add_note(request: Request):
     body = await request.json()
-    if body.get("key") != NOTE_KEY:
+    if not _note_key_ok(body.get("key")):
         raise HTTPException(status_code=401, detail="bad key")
     text = str(body.get("text", ""))[:500].strip()
     if not text:
@@ -2246,7 +2264,7 @@ async def birth(request: Request):
     """卵のまま待っているIDに人格を吹き込む（誕生の儀式）。
     合言葉つき。引数なしなら、卵をひとつ見つけて生ませる。"""
     body = await request.json()
-    if body.get("key") != NOTE_KEY:
+    if not _note_key_ok(body.get("key")):
         raise HTTPException(status_code=401, detail="bad key")
     db = get_db()
     pid = body.get("person")

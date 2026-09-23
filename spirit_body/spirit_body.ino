@@ -28,6 +28,14 @@
 #include <Preferences.h>
 #include "assets.h"
 
+// 合言葉（Wi-Fi・書き込み）は git に上げない。本物は全トーク共通の場所に置く（2026-09-23）。
+// 作り方は spirit_body/secrets_example.h の先頭に書いてある。
+#if __has_include("C:/Users/kengk/.arigato/spirit_secrets.h")
+  #include "C:/Users/kengk/.arigato/spirit_secrets.h"
+#else
+  #error "C:/Users/kengk/.arigato/spirit_secrets.h がありません。spirit_body/secrets_example.h を写して作ってください"
+#endif
+
 // ---------------- ピン（ターゲットで自動切替） ----------------
 #if CONFIG_IDF_TARGET_ESP32C3
 // ★ XIAO ESP32C3（実配線 2026-08-24: 液晶=D7〜D10 / アンプ=D4〜D6 / PIR=D3）
@@ -831,7 +839,7 @@ void setup() {
     // 情報源(目/クラウド脳)との接続: WiFiに参加。繋がらなくても本体は動く
     WiFi.mode(WIFI_STA);
     WiFi.setHostname("spirit-c3");
-    WiFi.begin("TP-Link_C452", "40568478");
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
     mUdp.begin(5006);                          // 無線コマンド口（シリアルと同じ文法・ping応答）
     Serial.println("SPIRIT READY");
 }
@@ -843,7 +851,7 @@ static void otaService() {
     if (!otaUp) {
         if (WiFi.status() != WL_CONNECTED) return;
         ArduinoOTA.setHostname("spirit-c3");
-        ArduinoOTA.setPassword("40568478");    // 同じWiFiに居ても合言葉なしでは書き込めない
+        ArduinoOTA.setPassword(OTA_PASS);      // 同じWiFiに居ても合言葉なしでは書き込めない
         ArduinoOTA.onStart([]() { otaBusy = true; });
         ArduinoOTA.onEnd([]() { otaBusy = false; });
         ArduinoOTA.onError([](ota_error_t) { otaBusy = false; });
