@@ -4138,7 +4138,7 @@ def _manner(doc: dict, alone: bool) -> str:
     return _bond_stage(_bond_now(doc))[1]
 
 
-def _recent_memory(pid: str, window: float = 0.0) -> dict | None:
+def _recent_memory(pid: str, window: float = 0.0, limit: int = 300) -> dict | None:
     """その人に話せる「このまえの思い出」（2026-09-23・本人「思い出を混ぜたい」）。
 
     直近24時間の記録から、場所に起きた変化を1つ拾う。返すのは
@@ -4146,8 +4146,10 @@ def _recent_memory(pid: str, window: float = 0.0) -> dict | None:
     mine は「その変化のときに居たのがその人ひとり」のときだけ True。
     2人以上居たときは、実際にやったのが別の人かもしれないので、場所の様子として言う。"""
     try:
+        # 60件だけ見ていた頃は、混んだ時間帯だと数分ぶんしか遡れず、
+        # さっきの片づけを見落としていた（9/23 12:33 の見本が「なし」になった）。
         docs = get_db().collection("spirit_log").order_by(
-            "t", direction="DESCENDING").limit(60).stream()
+            "t", direction="DESCENDING").limit(limit).stream()
         now = time.time()
         for d in docs:
             e = d.to_dict() or {}
