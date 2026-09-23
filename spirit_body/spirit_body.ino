@@ -151,6 +151,131 @@ static void playAnim(const uint8_t *bin, int loops, BetweenFn between = nullptr)
     }
 }
 
+// ---------------- 顔をその場で描き替える（2026-09-23） ----------------
+// 絵は assets.h の読み出し専用のもとから、いったん控え（gWork）に写してから描く。
+// 控えのマスを書き替えれば、絵を足さずに「考えている顔」や「開いた口」が作れる。
+// 重ねて塗るのではなく控えを描き直すので、差分描画（前のコマとの違いだけ）がそのまま効く。
+// ＝印が顔に残る心配がない。
+static uint8_t gWork[1024];           // これから描くマス目
+static uint8_t mouthBase[1024];       // 喋る前の顔（口を戻すときの元）
+
+// 目・口の色（6色のうちいちばん暗いもの）。絵を作り直しても付いていけるよう、毎回さがす
+static int darkIndex(const uint8_t *pal) {
+    int best = 1; long dim = 1L << 30;
+    for (int i = 1; i < 6; i++) {
+        uint16_t v = ((uint16_t)pal[i * 2] << 8) | pal[i * 2 + 1];
+        long lum = (long)((v >> 11) & 31) * 2 + ((v >> 5) & 63) + (long)(v & 31) * 2;
+        if (lum < dim) { dim = lum; best = i; }
+    }
+    return best;
+}
+
+// 暗いマスを「目（上のかたまり）」と「口（下）」に分ける。
+// part には順に 目の上端・目の下端・口の上端・口の下端 が入る（無ければ -1）。
+// ※ひとまとめの値を返さないのは、.ino の前処理が型より先に宣言を並べてしまうため。
+static void darkParts(const uint8_t *grid, int dk, int part[4]) {
+    part[0] = part[1] = part[2] = part[3] = -1;
+    for (int r = 0; r < GRID; r++) {
+        bool any = false;
+        for (int c = 0; c < GRID; c++) if (grid[r * GRID + c] == dk) { any = true; break; }
+        if (!any) continue;
+        if (part[0] < 0)            { part[0] = part[1] = r; }
+        else if (r <= part[0] + 2)  { part[1] = r; }
+        else { if (part[2] < 0) part[2] = r; part[3] = r; }
+    }
+}
+
+// 「？」5×6マス（頭の右上・絵のない場所）
+static const uint8_t QMARK[6] = {0x0E, 0x11, 0x02, 0x04, 0x00, 0x04};
+static const int Q_COL = 26, Q_ROW = 0;
+
+// 聞いている顔（2026-09-23 本人が選んだ案B）：目を1マス上と右へ・口を小さく・「？」を出す
+static void buildThinking(const uint8_t *grid, const uint8_t *pal, int qDown) {
+    memcpy(gWork, grid, 1024);
+    int dk = darkIndex(pal), d[4];
+    darkParts(grid, dk, d);
+    if (d[0] > 0) {
+        int skin = grid[(d[0] - 1) * GRID + GRID / 2];           // 目のすぐ上＝顔の色
+        for (int r = d[0]; r <= d[1]; r++)
+            for (int c = 0; c < GRID; c++)
+                if (grid[r * GRID + c] == dk) gWork[r * GRID + c] = skin;
+        for (int r = d[0]; r <= d[1]; r++)
+            for (int c = 0; c < GRID - 1; c++)
+                if (grid[r * GRID + c] == dk) gWork[(r - 1) * GRID + c + 1] = dk;
+    }
+    if (d[2] > 0) {                                              // 口は真ん中2マスだけ残す
+        int lo = GRID, hi = -1;
+        for (int r = d[2]; r <= d[3]; r++)
+            for (int c = 0; c < GRID; c++)
+                if (grid[r * GRID + c] == dk) { if (c < lo) lo = c; if (c > hi) hi = c; }
+        int mid = (lo + hi) / 2;
+        for (int r = d[2]; r <= d[3]; r++)
+            for (int c = 0; c < GRID; c++)
+                if (grid[r * GRID + c] == dk && (c < mid || c > mid + 1))
+                    gWork[r * GRID + c] = grid[(d[2] - 1) * GRID + c];
+    }
+    for (int r = 0; r < 6; r++)                                  // 「？」
+        for (int c = 0; c < 5; c++)
+            if (QMARK[r] & (0x10 >> c)) gWork[(Q_ROW + qDown + r) * GRID + Q_COL + c] = dk;
+}
+
+// 喋るときの口（0=閉じる 1=すこし開く 2=大きく開く）。いまの顔の口だけを描き替える
+static void buildMouth(const uint8_t *base, const uint8_t *pal, int level) {
+    memcpy(gWork, base, 1024);
+    if (level <= 0) return;                                      // 0＝もとのまま
+    int dk = darkIndex(pal), d[4];
+    darkParts(base, dk, d);
+    if (d[2] <= 0) return;
+    int lo = GRID, hi = -1;
+    for (int r = d[2]; r <= d[3]; r++)
+        for (int c = 0; c < GRID; c++)
+            if (base[r * GRID + c] == dk) { if (c < lo) lo = c; if (c > hi) hi = c; }
+    if (hi <= lo + 1) return;
+    int skin = base[(d[2] - 1) * GRID + (lo + hi) / 2];
+    for (int r = d[2]; r <= d[3]; r++)                           // いまの口を消す
+        for (int c = 0; c < GRID; c++)
+            if (base[r * GRID + c] == dk) gWork[r * GRID + c] = skin;
+    int top = (level >= 2) ? d[2] - 1 : d[2];                    // 大きく開くときだけ1行上へ
+    int bot = d[2] + 1;
+    for (int r = top; r <= bot; r++)
+        for (int c = lo + 1; c <= hi - 1; c++) {
+            if (level >= 2 && (r == top || r == bot) && (c == lo + 1 || c == hi - 1)) continue;
+            gWork[r * GRID + c] = dk;                            // 角を落として丸く見せる
+        }
+}
+
+// 喋っている間だけ口を動かす。いま出ている顔を元にするので、どの表情でもそのまま使える
+static uint8_t palWork[12];
+static bool    mouthOn = false;
+static int     mouthNow = -1;
+
+static void mouthBegin() {
+    if (!havePrev) return;                       // まだ何も描いていない＝動かさない
+    memcpy(mouthBase, prevGrid, 1024);
+    memcpy(palWork, prevPal, 12);                // 描くときに prevPal を自分自身へ写さないため
+    mouthOn = true;
+    mouthNow = 0;
+}
+
+static void mouthSet(int level) {
+    if (!mouthOn || level == mouthNow) return;
+    buildMouth(mouthBase, palWork, level);
+    drawGrid(gWork, palWork, false);
+    mouthNow = level;
+}
+
+static void mouthEnd() {
+    if (!mouthOn) return;
+    mouthSet(0);                                 // もとの口に戻す
+    mouthOn = false;
+}
+
+// 音の大きさから口の開き具合を決める（0〜2）。しきい値は実機で詰める
+static const long MOUTH_TH1 = 900, MOUTH_TH2 = 3000;
+static int mouthLevelOf(long avgAbs) {
+    return avgAbs < MOUTH_TH1 ? 0 : (avgAbs < MOUTH_TH2 ? 1 : 2);
+}
+
 // ---------------- 音（あつ森語・オンデバイス合成） ----------------
 // C3はFPU無し → sinfのリアルタイム計算は間に合わない（ぷつぷつの原因）。
 // 対策: サイン表(LUT)＋整数位相アキュムレータ。無音も明示的にゼロを流してDMAを絶やさない。
@@ -224,19 +349,23 @@ static int   V_GAIN = 230;      // 音量(0-256)。voiceコマンド第3引数�
 
 // あつ森語: 母音列（gen_assets.pyの楽譜）を鳴らす
 static void speak(const uint8_t *vows, int n, uint32_t noisyMask) {
+    mouthBegin();                       // 喋っている間は口を動かす（2026-09-23）
     for (int m = 0; m < n; m++) {
         uint8_t v = vows[m];
-        if (v == 5) { writeSilence(140); continue; }
-        if (v == 6) { writeSilence(60);  continue; }
+        if (v == 5) { mouthSet(0); writeSilence(140); continue; }
+        if (v == 6) { mouthSet(0); writeSilence(60);  continue; }
         // ピッチダウンは廃止（下がる＝悲しい）。常に一定の高さで
         float f0 = V_BASE * VPITCH_Q8[v] / 256.0f
                    * (0.96f + 0.08f * (float)(esp_random() % 100) / 100.0f);
         if (m == n - 1 && (esp_random() % 100) < 35) f0 *= 1.10f;  // たまに語尾だけ小さく上がる（?の気配）
         int pace = V_PACE - 20 + (int)(esp_random() % 41);          // 1文字の長さを±20ms揺らす（機械感を消す）
+        mouthSet((v == 0 || v == 4) ? 2 : 1);                       // あ・お は大きく、い・う・え は小さく
         toneLUT(f0, pace, V_GAIN, VTIMBRE_Q8[v], (noisyMask >> m) & 1);
+        mouthSet(0);
         writeSilence(pace / 6 + esp_random() % (pace / 6));
     }
     writeSilence(30);
+    mouthEnd();
 }
 
 static void chimeNotice() { playTone(659.25f, 120, 0.5f); writeSilence(30); playTone(880.0f, 200, 0.5f); }
@@ -356,14 +485,31 @@ static bool speakCloud() {
     uint8_t buf[512];
     size_t total = 0;
     t0 = millis();
+    // 声の大きさで口を動かす（2026-09-23）。512バイト＝16ミリ秒ぶんなので、
+    // 6回ためして（約100ミリ秒）から動かす。人の口の速さに近く、絵の描き直しも減る。
+    long acc = 0; int accN = 0;
+    mouthBegin();
     while (millis() - t0 < 20000) {
         int avail = tls.available();
         if (avail > 0) {
             int n = tls.read(buf, min(avail, (int)sizeof(buf)));
-            if (n > 0) { i2s.write(buf, n); total += n; t0 = millis(); }
+            if (n > 0) {
+                for (int i = 0; i + 1 < n; i += 2) {
+                    int16_t s = (int16_t)((uint16_t)buf[i] | ((uint16_t)buf[i + 1] << 8));
+                    acc += (s < 0) ? -(long)s : (long)s;
+                }
+                accN += n / 2;
+                i2s.write(buf, n);                 // 音を送ったあとの合間に描く（途切れさせない）
+                if (accN >= 256 * 6) {
+                    mouthSet(mouthLevelOf(acc / accN));
+                    acc = 0; accN = 0;
+                }
+                total += n; t0 = millis();
+            }
         } else if (!tls.connected()) break;
         else delay(5);
     }
+    mouthEnd();
     tls.stop();
     Serial.print("VOICE bytes="); Serial.println(total);
     return total > 1000;
@@ -430,6 +576,17 @@ static uint32_t lastCareAt = 0;
 static uint32_t lastMotion = 0, lastNotice = 0;
 static bool sleeping = false;
 static void onM(float mv);
+// ---- 名前を聞いている間（2026-09-23 本人の決定）----
+// 「録音中は表情と『？』だけ、答えたあとは声を続ける」。表情はここ、声はクラウド側。
+static const uint32_t LISTEN_MAX_MS = 25000;   // 合図の「切り」が落ちても、これで自分から戻る
+static uint32_t listenUntil = 0;               // 0＝聞いていない
+static bool     listenDrawn = false;           // 考えている顔をもう描いたか
+static uint32_t nextQBob = 0;                  // 次に「？」を上下させる時刻
+static int      qDown = 0;                     // 「？」の位置（0＝上 1＝下）
+static inline bool listening() {
+    return listenUntil != 0 && (int32_t)(millis() - listenUntil) < 0;
+}
+
 // 1行コマンドを処理して返事を返す（シリアル・無線UDPの共通部）。
 // pcmストリーミングだけはシリアル専用（serialPcm側で処理）。
 static String processCmd(String cmd) {
@@ -441,6 +598,14 @@ static String processCmd(String cmd) {
     else if (cmd == "sleep")  ctlScene = 4;
     else if (cmd == "hatch")  ctlScene = 5;
     else if (cmd == "mur")    { ctlMurmur = true; voiceOnce = true; }
+    else if (cmd.startsWith("listen")) {                    // listen 1／listen 0（名前を聞いている間）
+        // 橋渡しが無線で送る（同じ家の中なので0.2〜1秒）。クラウドからはここへ直接届かない。
+        // 無線の合図は届かないことがあるので、「切り」が落ちても LISTEN_MAX_MS で自分から戻る。
+        int v = 1;
+        sscanf(cmd.c_str(), "listen %d", &v);
+        listenUntil = v ? millis() + LISTEN_MAX_MS : 0;
+        out += "OK listen " + String(v) + "\n";
+    }
     else if (cmd.startsWith("m ")) {                        // m 0.8 … M値を手で注入（テスト）
         float mv;
         if (sscanf(cmd.c_str(), "m %f", &mv) == 1) onM(mv);
@@ -491,6 +656,8 @@ static String processCmd(String cmd) {
         out += "NET ok " + String((millis() - lastHttpOk) / 1000) + "s ago wd " + String(wdBoots) + "\n";
         out += "CARE " + String(careCount) + "\n";
         out += String("QUIET ") + (QUIET ? "on" : "off") + "\n";
+        out += String("LISTEN ") + (listening() ? "on" : "off")
+             + (listening() ? " " + String((listenUntil - millis()) / 1000) + "s left" : "") + "\n";
         // 人感の生死を無線から見る（2026-09-10：手を振っても「!」が出ないと報告あり）
         out += String("PIR ") + (pirNow() ? "HIGH" : "LOW")
              + " lastMotion " + String((millis() - lastMotion) / 1000) + "s ago\n";
@@ -785,9 +952,15 @@ void loop() {
             if (bootTold) joyToTell = -1;          // 届いた → 喜んだ知らせは済んだ（起動の知らせと同時には送らない）
             bootTold = true;
             if (wdBoots) { wdBoots = 0; prefs.putUChar("wd", 0); }   // 通った → 見張りの回数を戻す
-            float m, n; int f, s = 0;
-            int got = sscanf(body, "%f %f %d %d", &m, &n, &f, &s);
+            float m, n; int f, s = 0, li = -1;
+            int got = sscanf(body, "%f %f %d %d %d", &m, &n, &f, &s, &li);
             if (got >= 2) onMN(m, n);
+            // 5つめ＝いま名前を聞いているか（2026-09-23）。速さは無線の合図に任せ、
+            // ここは「合図が届かなかったとき」の直し。最大10秒遅れるが、ずれたままにはならない。
+            if (got >= 5 && li >= 0) {
+                if (li && !listening())      listenUntil = millis() + LISTEN_MAX_MS;
+                else if (!li && listening()) listenUntil = 0;
+            }
             if ((int32_t)(millis() - stageHold) >= 0)      // 手入れ中（1分）は上書きしない
                 g_stage = (got >= 4 && s >= 0 && s <= 4) ? s : 0;
             // 段階の出し分け（まず1つ・2026-09-19）：なついている人（段階3以上）だと分かったら、
@@ -806,6 +979,30 @@ void loop() {
         Serial.println("WATCHDOG RESTART");
         delay(100);
         ESP.restart();
+    }
+
+    // 名前を聞いている間（2026-09-23）：絵を1コマで止めて、考えている顔と「？」を出す。
+    // 絵を止めるのは、コマが動くと目の位置も動いて、描き替える場所が決まらないため。
+    // 眠りより先に見る（聞いている最中に眠った顔にならないように）。
+    if (listening()) {
+        uint32_t t = millis();
+        // 喋っている最中は描き直さない（口の動きと取り合って、ちらつくため）
+        if (!mouthOn && (!listenDrawn || (int32_t)(t - nextQBob) >= 0)) {
+            const uint8_t *p = anim_idle + 1;          // 待ち受けのコマ0
+            const uint8_t *pal = p + 2, *grid = p + 14;
+            qDown = listenDrawn ? (qDown ? 0 : 1) : 0;  // 「？」を上下にゆらす
+            buildThinking(grid, pal, qDown);
+            if (!havePrev) fillRect(0, 240, pal);
+            drawGrid(gWork, pal, false);
+            listenDrawn = true;
+            nextQBob = t + 300;
+        }
+        delay(10);
+        return;
+    }
+    if (listenDrawn) {                          // 聞きおわった → ふつうの絵に戻す
+        listenDrawn = false;
+        havePrev = false;                       // 次の1枚で画面ぜんぶを描き直す
     }
 
     if (sleeping) {                            // 眠り（長い無人）
