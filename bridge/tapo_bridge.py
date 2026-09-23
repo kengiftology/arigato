@@ -820,49 +820,57 @@ def ask_name(pid: str, ask_sec: float = 0.0) -> None:
         return
     _asked["pid"], _asked["at"] = pid, now
     print(time.strftime("%H:%M:%S"), "呼び名を聞く:", pid, flush=True)
-    time.sleep(ASK_SPEAK_WAIT)          # 早く取りに行くと「まだ」で無音が返る
-    c3("mur")
-    speak_end = time.time() + C3_FETCH_SEC + (ask_sec or ASK_SPEAK_SEC)   # 服で呼びかけると長くなる（クラウドが ask_sec で知らせる）
-    q = "?person=" + urllib.parse.quote(pid)
-    # クラウドが聞き返す（「◯◯……で、あってる？」「もういっかい、いって？」）あいだは、
-    # 鳴らして → 聞いて → 送る、をくり返す（2026-09-21）。回数はクラウドが打ち切る。
-    for _ in range(ASK_ROUNDS):
-        wav = listen(LISTEN_TOTAL, speak_end)
-        if wav is None:
-            print("呼び名：音が取れなかった", flush=True)
-            return
-        # 答えを受けたら、返事が決まるまで相づちを続ける（9/23・本人「確認が取れるまで無音を無くす」）。
-        # 録音はもう締めているので、相づちがマイクに入ることはない。
-        done = threading.Event()
-
-        def hmm_loop():
-            for _ in range(HMM_MAX):
-                try:
-                    if _post("/spirit/name/hmm" + q).get("say"):
-                        c3("mur")
-                except Exception as e:
-                    print("呼び名：つなぎを鳴らせなかった", e, flush=True)
-                if done.wait(HMM_GAP):
-                    return
-        t = threading.Thread(target=hmm_loop, daemon=True)
-        t.start()
-        try:
-            res = _post("/spirit/name" + q, wav)
-        except Exception as e:
-            print("呼び名：送れなかった", e, flush=True)
-            return
-        finally:
-            done.set()
-        print(time.strftime("%H:%M:%S"), "呼び名の返事:",
-              {k: res.get(k) for k in ("ok", "why", "say", "listen")},
-              "覚えた" if res.get("name") else "", flush=True)
-        if not res.get("say"):
-            return
-        time.sleep(1.0)                  # クラウドは0.8秒ためてから渡す
+    # C3 に「いま聞いているよ」を伝える（2026-09-23）。受け取り側は C3 のファーム。
+    # 届かないことがあるので、C3 側にも自動で戻る仕掛けがある。こちらは必ず 0 を送る。
+    c3("listen 1")
+    try:
+        time.sleep(ASK_SPEAK_WAIT)          # 早く取りに行くと「まだ」で無音が返る
         c3("mur")
-        speak_end = time.time() + C3_FETCH_SEC + float(res.get("speak_sec") or 3.0)
-        if not res.get("listen"):
-            return
+        speak_end = time.time() + C3_FETCH_SEC + (ask_sec or ASK_SPEAK_SEC)   # 服で呼びかけると長くなる（クラウドが ask_sec で知らせる）
+        q = "?person=" + urllib.parse.quote(pid)
+        # クラウドが聞き返す（「◯◯……で、あってる？」「もういっかい、いって？」）あいだは、
+        # 鳴らして → 聞いて → 送る、をくり返す（2026-09-21）。回数はクラウドが打ち切る。
+        for _ in range(ASK_ROUNDS):
+            wav = listen(LISTEN_TOTAL, speak_end)
+            if wav is None:
+                print("呼び名：音が取れなかった", flush=True)
+                return
+            # 答えを受けたら、返事が決まるまで相づちを続ける（9/23・本人「確認が取れるまで無音を無くす」）。
+            # 録音はもう締めているので、相づちがマイクに入ることはない。
+            done = threading.Event()
+
+            def hmm_loop():
+                for _ in range(HMM_MAX):
+                    try:
+                        if _post("/spirit/name/hmm" + q).get("say"):
+                            c3("mur")
+                    except Exception as e:
+                        print("呼び名：つなぎを鳴らせなかった", e, flush=True)
+                    if done.wait(HMM_GAP):
+                        return
+            t = threading.Thread(target=hmm_loop, daemon=True)
+            t.start()
+            try:
+                res = _post("/spirit/name" + q, wav)
+            except Exception as e:
+                print("呼び名：送れなかった", e, flush=True)
+                return
+            finally:
+                done.set()
+            print(time.strftime("%H:%M:%S"), "呼び名の返事:",
+                  {k: res.get(k) for k in ("ok", "why", "say", "listen")},
+                  "覚えた" if res.get("name") else "", flush=True)
+            if not res.get("say"):
+                return
+            time.sleep(1.0)                  # クラウドは0.8秒ためてから渡す
+            c3("mur")
+            speak_end = time.time() + C3_FETCH_SEC + float(res.get("speak_sec") or 3.0)
+            if not res.get("listen"):
+                return
+
+
+    finally:
+        c3("listen 0")
 
 
 def _revive_hires() -> None:
