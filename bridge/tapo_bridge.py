@@ -698,7 +698,7 @@ ASK_REPEAT_GAP = 60.0  # 同じ人の問いかけを、続けて扱わない
 ASK_ROUNDS = 5         # 聞き返しを含めて、聞いて送るのは最大この回数（打ち切りはクラウドが決める。これは保険）
 ASK_SPEAK_SEC = 3.1    # 作り置きの問いかけ（ask_name_0/1）の長さ。3.0秒と3.08秒
 HMM_GAP = 2.5          # 相づち（「えっと……」）の間隔。答えを送ってから返事が決まるまで（9/23）
-HMM_MAX = 4            # 1往復で鳴らす相づちの上限
+HMM_MAX = 2            # 1往復で鳴らす相づちの上限（9/23：4→2。遅れて鳴った相づちが次の録音に混ざるため）
 _asked = {"pid": "", "at": 0.0}
 
 
@@ -862,7 +862,7 @@ def ask_name(pid: str, ask_sec: float = 0.0) -> None:
                   "覚えた" if res.get("name") else "", flush=True)
             if not res.get("say"):
                 return
-            time.sleep(1.0)                  # クラウドは0.8秒ためてから渡す
+            time.sleep(1.2)                  # クラウドは0.8秒ためてから渡す。飛んでいる相づちが鳴り終わるのも待つ（9/23）
             c3("mur")
             speak_end = time.time() + C3_FETCH_SEC + float(res.get("speak_sec") or 3.0)
             if not res.get("listen"):
