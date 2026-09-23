@@ -720,6 +720,8 @@ SILENCE_LEVEL = 40       # これより小さければ静か
 END_SILENCE = 1.2        # 答えのあと、これだけ静かなら締める
 NO_ANSWER_SEC = 7.0      # 問いかけが鳴り終わってから、これだけ声が無ければ締める（答えなし）
 C3_FETCH_SEC = 2.0       # mur を送ってから C3 が鳴らし始めるまでの見込み（9/21〜22 の実測 1〜3秒）
+OWN_VOICE_WAIT = 6.0     # キャラの声がこれだけ経っても聞こえなければ、鳴らなかったとみなす
+OWN_END_SILENCE = 0.6    # キャラの声が終わったとみなす静けさ（人の答えの 1.2 秒より短く）
 
 
 def _wav(pcm: bytes) -> bytes:
@@ -756,8 +758,16 @@ def listen(sec: float, speak_end: float = 0.0) -> bytes | None:
     except Exception as e:
         print("listen failed:", e, flush=True)
         return None
-    buf, spoke, quiet, why = bytearray(), False, 0.0, "上限"
-    t_end = time.time() + sec + 15
+    # キャラの声は「時刻の見込み」ではなく、実際に聞こえた1つ目の声として数える（2026-09-23）。
+    # C3 が声を取りに来るまで1〜4.5秒ばらつくので、見込みで数え始めると、相手が答え終わって
+    # から録音が始まることがあった（9/23 09:13 の p13、9/23 02:03 の p08 はこれで空振り）。
+    # 1つ目の声＝キャラ → 静かになる → 2つ目の声＝相手の答え → 静かになったら締める。
+    buf, why = bytearray(), "上限"
+    own_done = False                              # キャラの声が終わったか
+    spoke, quiet, own_quiet = False, 0.0, 0.0
+    t0 = time.time()
+    t_end = t0 + sec + 15
+    late = max(speak_end, t0) + OWN_VOICE_WAIT    # ここまでに声が無ければ、鳴らなかったとみなす
     try:
         while time.time() < t_end:
             chunk = p.stdout.read(step)
@@ -765,9 +775,19 @@ def listen(sec: float, speak_end: float = 0.0) -> bytes | None:
                 break
             buf += chunk
             now = time.time()
-            if now < speak_end:
-                continue                          # まだキャラが喋っている
             lv = _rms(chunk)
+            if not own_done:                      # 1つ目の声（キャラ）を待つ
+                if lv >= SPEECH_LEVEL:
+                    own_quiet = 0.0
+                    late = 0.0                    # 鳴り始めた。時間切れの見込みはもう使わない
+                elif late == 0.0:
+                    own_quiet += CHUNK_SEC
+                    if own_quiet >= OWN_END_SILENCE:
+                        own_done = True           # 鳴り終わった。ここから相手の番
+                        t_ans = now
+                if late and now >= late:
+                    own_done, t_ans = True, now   # 声が聞こえなかった（届かなかった）
+                continue
             if lv >= SPEECH_LEVEL:
                 spoke, quiet = True, 0.0
             elif lv < SILENCE_LEVEL:
@@ -775,7 +795,7 @@ def listen(sec: float, speak_end: float = 0.0) -> bytes | None:
             if spoke and quiet >= END_SILENCE:
                 why = "答え終わり"
                 break
-            if not spoke and now - speak_end >= NO_ANSWER_SEC:
+            if not spoke and now - t_ans >= NO_ANSWER_SEC:
                 why = "答えなし"
                 break
     finally:

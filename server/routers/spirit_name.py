@@ -69,6 +69,8 @@ def _may_ask(pid: str, doc: dict, now: float, alone: bool) -> bool:
 
 def _mark_asked(st: dict, pid: str, now: float, line: str, sec: float, desc: str = "") -> None:
     st["name_ask"] = {"person": pid, "at": now, "sec": sec}
+    # いつまで聞いているか。C3 が「聞いている顔」になる元（2026-09-23・研究トークD）
+    st["listen_until"] = now + ASK_TTL
     try:
         get_db().collection("faces").document(pid).update({"name_asked_at": now})
     except Exception as e:
@@ -440,6 +442,7 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
     a = dict(st.get("name_ask") or {})
     phase, cand, rnd = a.get("phase") or "ask", a.get("cand"), int(a.get("round") or 1)
     st["name_ask"] = {}                      # この答えで、いったん聞く番を閉じる
+    st["listen_until"] = 0                   # 聞き返すなら again() で入れ直す
     try:
         pcm = _pcm16k(await request.body())
     except Exception as e:
@@ -461,6 +464,7 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
     def again(next_phase: str, next_cand=None) -> None:
         st["name_ask"] = {"person": person, "at": time.time(), "phase": next_phase,
                           "cand": next_cand, "round": rnd + 1}
+        st["listen_until"] = time.time() + ASK_TTL
 
     say, listen, learned, result = False, False, None, ""
     picked, answer = None, None               # 記録用：取り出した候補／聞き返しへの答え
