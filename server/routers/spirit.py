@@ -3526,19 +3526,28 @@ SHIFT_MAX_PX = 150     # 前後の写真がこれ以上ずれていたら比べ�
 # シンクを写した1枚を「ずれが小さい」と比べて、嘘の「片づいた」を出した。
 # 実測（9/22・見本 spirit/aim_ref.jpg）：合っている 0.09〜0.22／ずれ・違う向き 0.00〜0.06。
 AIM_MIN_CONF = 0.08
+LAST_GOOD_TTL = 7200   # 直前に通った写真を、この秒数だけ「同じ向きの証人」として使う
+# 向きを見分けるときは、画面の**下半分**（調理台・コンロ・床）だけで測る（2026-09-23）。
+# シンクの中は水・光・映り込みで毎回変わるので、画面全体だと同じ向きでも確かさが暴れる。
+# 実測（見本 spirit/aim_ref.jpg・全体→下半分）：
+#   合っている 0.004→0.170／0.167→0.168／0.147→0.158／0.126→0.196
+#   違う向き   0.070→0.042／0.005→0.042／0.018→0.043／0.012→0.003
+# 全体だと合っている側が 0.004 まで落ちて分けられないが、下半分なら 0.158〜0.196 と 0.00〜0.06 で分かれる。
+VIEW_BAND = (0.5, 1.0)   # 縦の何割目から何割目までを見るか
 
 
-def _frame_match(a: bytes, b: bytes) -> tuple:
+def _frame_match(a: bytes, b: bytes, band: tuple = None) -> tuple:
     """2枚の位置ずれ（画素）と、その確かさ（0〜1）。_frame_shift と同じ計算で、確かさも返す。
-    失敗したら (0, 0, None)。"""
+    band を渡すと、縦のその範囲だけで測る（向きの見分け用）。失敗したら (0, 0, None)。"""
     try:
         import cv2
         import numpy as np
+        y0, y1 = (0, 360) if band is None else (round(360 * band[0]), round(360 * band[1]))
         def g(d):
             im = cv2.imdecode(np.frombuffer(d, np.uint8), cv2.IMREAD_GRAYSCALE)
-            return np.float32(cv2.resize(im, (640, 360))) / 255.0
+            return np.float32(cv2.resize(im, (640, 360))[y0:y1]) / 255.0
         ga, gb = g(a), g(b)
-        win = cv2.createHanningWindow((640, 360), cv2.CV_32F)
+        win = cv2.createHanningWindow((640, y1 - y0), cv2.CV_32F)
         (dx, dy), resp = cv2.phaseCorrelate(ga, gb, win)
         return round(dx * 2), round(dy * 2), float(resp)
     except Exception as e:
@@ -3546,15 +3555,39 @@ def _frame_match(a: bytes, b: bytes) -> tuple:
         return 0, 0, None
 
 
+_last_good = {"jpg": None, "ref_at": 0.0}   # 「見本そのものと合った」最後の1枚（錨）
+
+
 def _view_ok(now: bytes) -> tuple:
-    """今の1枚が見本と同じ景色か。(ok, resp, shift)。見本が無ければ ok（判断できないので止めない）。"""
+    """今の1枚が見本と同じ景色か。(ok, resp, shift)。見本が無ければ ok（判断できないので止めない）。
+
+    見分けは画面の下半分（VIEW_BAND）だけで測る。シンクの中は毎回変わるため。
+
+    それでも、見本と比べるだけだと**向きは合っているのに中身が大きく変わった**ときに落ちる。
+    9/23 11:06、シンクを白いまな板が覆った1枚が確かさ 0.004 で飛ばされた（見本は空のシンク）。
+    同じ日の別の1枚とは 0.695 で一致していたので、向きは合っていた。
+    そこで、見本に落ちても**「見本と合った最後の1枚」と合えば通す**。
+
+    通した写真をその1枚に格上げはしない（2026-09-23・D の指摘）。
+    格上げすると通った写真が次の基準になり、少しずつのずれが積み上がっても誰も気づけない
+    （9/22、自動の向き直しがこの形で壁の方へ歩いていった）。錨は見本と合った時だけ打ち直す。"""
     ref = read_object(AIM_REF_OBJ)
     if ref is None:
         return True, None, None
-    dx, dy, resp = _frame_match(ref, now)
+    now_t = time.time()
+    dx, dy, resp = _frame_match(ref, now, VIEW_BAND)
     if resp is None:
         return True, None, [dx, dy]
-    return resp >= AIM_MIN_CONF, round(resp, 3), [dx, dy]
+    if resp >= AIM_MIN_CONF:
+        _last_good["jpg"], _last_good["ref_at"] = now, now_t
+        return True, round(resp, 3), [dx, dy]
+    prev = _last_good["jpg"]
+    if prev is not None and now_t - _last_good["ref_at"] < LAST_GOOD_TTL:
+        pdx, pdy, presp = _frame_match(prev, now, VIEW_BAND)
+        if (presp is not None and presp >= AIM_MIN_CONF
+                and abs(pdx) <= SHIFT_MAX_PX and abs(pdy) <= SHIFT_MAX_PX):
+            return True, round(presp, 3), [pdx, pdy]   # 錨は打ち直さない
+    return False, round(resp, 3), [dx, dy]
 
 
 def _frame_shift(a: bytes, b: bytes) -> tuple:

@@ -23,9 +23,13 @@ STILL_MAX = 6.0        # 1秒あけた2枚の差がこれ以下なら止まっ�
 # 見本と同じ景色か（位置合わせの確かさ）。これ未満なら「違う景色」で使わない（2026-09-22）。
 # ずれの数字だけを見ていたので、9/22 は壁を写した1枚を「ずれ小さい＝使える」と通していた。
 # クラウドと同じ cv2 の確かさなら 0.08（合っている 0.09〜0.22／違う向き 0.00〜0.06）。
-# cv2 が無いときの numpy 版は峰の高さの尺度が違うので 0.035（合っている 0.05〜0.06／違う 0.015〜0.025）。
+# cv2 が無いときの numpy 版は峰の高さの尺度が違う。下半分での実測（9/23）：
+# 合っている 0.069〜0.121／違う向き 0.020〜0.025。あいだを取って 0.04。
 CONF_MIN_CV2 = 0.08
-CONF_MIN_NUMPY = 0.035
+CONF_MIN_NUMPY = 0.04
+# 向きを見分けるのは画面の下半分だけ（調理台・コンロ・床）。クラウドの VIEW_BAND と同じ（2026-09-23）。
+# シンクの中は水・光・映り込みで毎回変わるので、全体で測ると同じ向きでも 0.004 まで落ちる。
+VIEW_BAND = (0.5, 1.0)
 
 
 def gray(jpg: bytes) -> np.ndarray:
@@ -35,25 +39,41 @@ def gray(jpg: bytes) -> np.ndarray:
 
 def shift_px(a: np.ndarray, b: np.ndarray) -> tuple:
     """a→b の位置ずれ（1280幅の画素）。cv2.phaseCorrelate と同じ計算。"""
-    win = np.outer(np.hanning(H), np.hanning(W)).astype(np.float32)
+    h, w = a.shape
+    win = np.outer(np.hanning(h), np.hanning(w)).astype(np.float32)
     fa = np.fft.fft2((a - a.mean()) * win)
     fb = np.fft.fft2((b - b.mean()) * win)
     r = fa * np.conj(fb)
     r /= np.abs(r) + 1e-9
     c = np.real(np.fft.ifft2(r))
     dy, dx = np.unravel_index(np.argmax(c), c.shape)
-    if dx > W // 2:
-        dx -= W
-    if dy > H // 2:
-        dy -= H
+    if dx > w // 2:
+        dx -= w
+    if dy > h // 2:
+        dy -= h
     return int(dx) * 2, int(dy) * 2, float(c.max())
 
 
-def conf(a: np.ndarray, b: np.ndarray) -> tuple:
-    """見本 a と b の確かさ。(値, 目安)。cv2 があればクラウドと同じ計算にそろえる。"""
+def band(jpg: bytes) -> np.ndarray:
+    """向きを見分けるのに使う範囲（下半分）。クラウドの VIEW_BAND と同じ切り方・同じ縮小。
+
+    縮小の仕方でも数字は変わる。PIL の縮小だと 9/22 に決めた向きの1枚が 0.083 まで落ち、
+    しきい値 0.08 ぎりぎりになった（cv2 の縮小なら 0.158）。cv2 があればそちらにそろえる。"""
     try:
         import cv2
-        win = cv2.createHanningWindow((W, H), cv2.CV_32F)
+        im = cv2.imdecode(np.frombuffer(jpg, np.uint8), cv2.IMREAD_GRAYSCALE)
+        g = np.float32(cv2.resize(im, (W, H))) / 255.0
+    except Exception:
+        g = gray(jpg)
+    return g[round(H * VIEW_BAND[0]):round(H * VIEW_BAND[1])]
+
+
+def conf(ref_jpg: bytes, jpg: bytes) -> tuple:
+    """見本と今の1枚が同じ向きかの確かさ。(値, 目安)。下半分だけで測る。"""
+    a, b = band(ref_jpg), band(jpg)
+    try:
+        import cv2
+        win = cv2.createHanningWindow((a.shape[1], a.shape[0]), cv2.CV_32F)
         # 写しを渡す：phaseCorrelate は渡した配列を書き換える（窓を掛ける）。そのままだと
         # 呼び出し側の1枚が変わり、次の「動いているか」が同じ写真でも71と出た（9/23 00:42）
         (_, _), r = cv2.phaseCorrelate(a.copy(), b.copy(), win)
@@ -74,12 +94,14 @@ def still(a: np.ndarray, b: np.ndarray) -> float:
 
 
 _ref = [None]
+_ref_raw = [None]
 
 
 def ref() -> np.ndarray | None:
     if _ref[0] is None and os.path.exists(REF):
         with open(REF, "rb") as f:
-            _ref[0] = gray(f.read())
+            _ref_raw[0] = f.read()
+        _ref[0] = gray(_ref_raw[0])
     return _ref[0]
 
 
@@ -92,7 +114,7 @@ def check(jpg: bytes, prev_jpg: bytes | None = None) -> dict:
     if r is not None:
         dx, dy, _ = shift_px(r, g)
         out["shift"] = (dx, dy)
-        c, cmin = conf(r, g)
+        c, cmin = conf(_ref_raw[0], jpg)
         out["conf"] = round(c, 3)
         if c < cmin:
             out["ok"], out["why"] = False, "違う景色"   # 確かさが低いと、ずれの数字は当てにならない
