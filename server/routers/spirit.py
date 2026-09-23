@@ -2313,7 +2313,7 @@ SAID_MIN_CHARS = 10      # 合計でこれだけの字数がたまってから
 
 async def _greet_line(persona: str, manner: str, thanks: bool = False,
                       news: bool = False, name: str = "", avoid: list | None = None,
-                      said: list | None = None) -> str:
+                      said: list | None = None, memory: dict | None = None) -> str:
     """その人へ向けた一言をつくる。
 
     thanks＝この人が前に片づけていた（ありがとうを言う）。
@@ -2339,6 +2339,16 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
                 "\nこれらと、最初のことば（入り方）も言い回しも変える。同じ始まり方にしない。")
     # その人のしゃべり方を少しだけ写す（2026-09-23・本人「人ごとに個性を出したい」）。
     # 声も性格の型も変えず、実際に聞こえた言葉から言い方のくせだけを借りる。
+    # このまえの思い出を1つ混ぜる（2026-09-23）。回数や「ひさしぶり」は言わない（負い目になる）。
+    if memory and memory.get("what"):
+        ask += ("\n【このまえの思い出】" + str(memory["what"]) +
+                "（%d時間くらい前）。" % int(memory.get("hours") or 0) +
+                ("この人が居たときの変化なので、『◯◯ちゃんが やってくれたやつ』のように"
+                 "この人のしたこととして言ってよい。ありがとうの気持ちで。"
+                 if memory.get("mine") else
+                 "誰がやったかは言わない。場所の様子として『このまえ、〜なってたなあ』と言う。") +
+                "\n思い出は1つだけ、短く。**英語やかたい言い方は使わず、子どもの短いひらがなに言い直す**。"
+                "回数（◯回目）・『ひさしぶり』・『また来た』のような、来かたに触れることばは言わない。")
     said = [s for s in (said or []) if isinstance(s, str) and s.strip()]
     if len(said) >= SAID_MIN_LINES and sum(len(s) for s in said) >= SAID_MIN_CHARS:
         ask += ("\n【この人が実際に言った言葉】" + "／".join("『%s』" % s for s in said[:6]) +
@@ -3037,7 +3047,7 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             text = await _greet_line(persona, manner, thanks, news and not thanks,
                                      (doc.get("name") or "") if CALL_NAME else "",
                                      avoid=[x.get("t") for x in _slots(doc) if x.get("t")],
-                                     said=doc.get("said"))
+                                     said=doc.get("said"), memory=_recent_memory(d.id))
             if text:
                 ls = _put_line(_slots(doc), text, now)
                 if ls is not None:
@@ -3067,10 +3077,11 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True) -
     if not name:
         return []
     manner = _bond_stage(_bond_now(doc))[1]
+    mem = _recent_memory(pid)
     texts = []
     for _ in range(n * 2):                     # 同じ文が出たら数に入れない
         t = await _greet_line(st.get("persona", ""), manner, False, False, name,
-                              avoid=texts, said=doc.get("said"))
+                              avoid=texts, said=doc.get("said"), memory=mem)
         if t and t not in texts:
             texts.append(t)
         if len(texts) >= n:
@@ -3093,7 +3104,7 @@ async def greet_preview(person: str, n: int = 4, save: int = 0,
     texts = await remake_lines(person, max(1, min(n, 8)), save=bool(save))
     doc = get_db().collection("faces").document(person).get().to_dict() or {}
     return {"person": person, "name": doc.get("name"), "said": doc.get("said") or [],
-            "lines": texts, "saved": bool(save and texts)}
+            "memory": _recent_memory(person), "lines": texts, "saved": bool(save and texts)}
 
 
 @router.get("/todo")
@@ -4025,6 +4036,37 @@ def _manner(doc: dict, alone: bool) -> str:
     # 「そっけない」段階は無くした。なつき度は0で止まり、下がる道が無い（9/19〜）ので、
     # 冷たさが罰として働く回路がそもそも生まれない（台帳#12）。alone は将来のために残す。
     return _bond_stage(_bond_now(doc))[1]
+
+
+def _recent_memory(pid: str) -> dict | None:
+    """その人に話せる「このまえの思い出」（2026-09-23・本人「思い出を混ぜたい」）。
+
+    直近24時間の記録から、場所に起きた変化を1つ拾う。返すのは
+    {"what": 変化の文, "hours": 何時間前か, "mine": その人の手柄として言ってよいか}。
+    mine は「その変化のときに居たのがその人ひとり」のときだけ True。
+    2人以上居たときは、実際にやったのが別の人かもしれないので、場所の様子として言う。"""
+    try:
+        docs = get_db().collection("spirit_log").order_by(
+            "t", direction="DESCENDING").limit(60).stream()
+        now = time.time()
+        for d in docs:
+            e = d.to_dict() or {}
+            t = e.get("t") or 0
+            if now - t > NEWS_WINDOW:
+                break
+            who = e.get("who") or []
+            what = ""
+            if e.get("kind") == "zone" and e.get("better"):
+                what = "、".join((c.get("what") or "") for c in (e.get("changes") or []) if c.get("what"))
+            elif e.get("kind") == "care" or (e.get("kind") == "visit" and e.get("sink_empty")):
+                what = "シンクが きれいに なっていた"
+            if not what:
+                continue
+            return {"what": what[:60], "hours": int((now - t) // 3600),
+                    "mine": who == [pid]}
+    except Exception as e:
+        logger.warning("recent memory lookup failed: %s", e)
+    return None
 
 
 def _recent_care() -> bool:
