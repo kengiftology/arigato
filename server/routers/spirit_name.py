@@ -373,18 +373,27 @@ FILLER_KIND = "filler"
 
 @router.post("/name/hmm")
 async def hmm(person: str, x_upload_key: str = Header(None)):
+    """つなぎ（相づち）を1つ置く。橋渡しは答えを送っている間、2.5秒おきにここを叩く（9/23）。"""
     if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
     st = sp._load()
-    if asking(st, time.time()) != person:
+    now = time.time()
+    if asking(st, now) != person:
         return {"ok": False, "say": False}
-    line = sp._pick_line(FILLER_KIND)
-    if not line:
+    # 聞き返しの声が置かれていたら、つなぎで上書きしない（9/23：上書きすると返事が消える）
+    cur = st.get("speak_line") or ""
+    if cur.startswith("talk_") and now < float(st.get("speak_at") or 0) + sp.SPEAK_TTL:
+        return {"ok": True, "say": False, "why": "答えの声が先にある"}
+    names = [n for n in sp._line_names() if n.rsplit("_", 1)[0] == FILLER_KIND]
+    names = [n for n in names if n != st.get("last_hmm")] or names   # 同じ相づちを続けない
+    if not names:
         return {"ok": True, "say": False}
-    st["speak_line"] = line
-    st["speak_at"] = time.time()          # すぐ鳴らす（つなぎなので間は置かない）
+    import random
+    line = random.choice(names)
+    st["speak_line"], st["last_hmm"] = line, line
+    st["speak_at"] = now                  # すぐ鳴らす（つなぎなので間は置かない）
     sp._save(st)
-    return {"ok": True, "say": True}
+    return {"ok": True, "say": True, "line": line}
 
 
 # ---- その人の言い方を覚えておく（2026-09-23）----

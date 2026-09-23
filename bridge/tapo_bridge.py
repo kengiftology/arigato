@@ -697,6 +697,8 @@ LISTEN_TOTAL = 16.0    # 音を取る長さ。映像の繋ぎに約3秒かかり
 ASK_REPEAT_GAP = 60.0  # 同じ人の問いかけを、続けて扱わない
 ASK_ROUNDS = 5         # 聞き返しを含めて、聞いて送るのは最大この回数（打ち切りはクラウドが決める。これは保険）
 ASK_SPEAK_SEC = 3.1    # 作り置きの問いかけ（ask_name_0/1）の長さ。3.0秒と3.08秒
+HMM_GAP = 2.5          # 相づち（「えっと……」）の間隔。答えを送ってから返事が決まるまで（9/23）
+HMM_MAX = 4            # 1往復で鳴らす相づちの上限
 _asked = {"pid": "", "at": 0.0}
 
 
@@ -809,17 +811,28 @@ def ask_name(pid: str, ask_sec: float = 0.0) -> None:
         if wav is None:
             print("呼び名：音が取れなかった", flush=True)
             return
-        # 答えを受けたらすぐ「ん……」を鳴らす（9/22）。文字にして判断して声を作る約5秒を埋める
-        try:
-            if _post("/spirit/name/hmm" + q).get("say"):
-                c3("mur")
-        except Exception as e:
-            print("呼び名：つなぎを鳴らせなかった", e, flush=True)
+        # 答えを受けたら、返事が決まるまで相づちを続ける（9/23・本人「確認が取れるまで無音を無くす」）。
+        # 録音はもう締めているので、相づちがマイクに入ることはない。
+        done = threading.Event()
+
+        def hmm_loop():
+            for _ in range(HMM_MAX):
+                try:
+                    if _post("/spirit/name/hmm" + q).get("say"):
+                        c3("mur")
+                except Exception as e:
+                    print("呼び名：つなぎを鳴らせなかった", e, flush=True)
+                if done.wait(HMM_GAP):
+                    return
+        t = threading.Thread(target=hmm_loop, daemon=True)
+        t.start()
         try:
             res = _post("/spirit/name" + q, wav)
         except Exception as e:
             print("呼び名：送れなかった", e, flush=True)
             return
+        finally:
+            done.set()
         print(time.strftime("%H:%M:%S"), "呼び名の返事:",
               {k: res.get(k) for k in ("ok", "why", "say", "listen")},
               "覚えた" if res.get("name") else "", flush=True)
