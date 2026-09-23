@@ -547,6 +547,11 @@ FACE_CORE_SIM = 0.40
 # 画面幅の12.5%（2304幅で約290px）を超える顔を登録に使わなければ割れ2件を防げて、
 # 本当に新しい人は1人も止めない（本当に新しい人の登録時の幅は 76〜280px）。
 FACE_ENROLL_MAX_PX = 290
+# 「誰とも言い切れない」帯（0.25〜確定の線）に居つづける人を、新しい人として出す条件（2026-09-23）
+FACE_NEW_MIN_N = 5            # そろっていてほしい枚数（正面・100px以上）
+FACE_NEW_SIM = 0.50           # 互いの似ている度合い（中央）。同じ人どうしでも 0.48〜0.54 しか出ない
+FACE_NEW_SPAN = 10.0          # 何秒にわたって取れているか
+FACE_NEW_WINDOW = 120.0       # この秒数より古い顔は忘れる
 # 「人ではないもの」の覚え（2026-09-12 夜）。鍋・五徳・棚を顔と見てしまうのは
 # 顔認識では解けない——重いモデルほどひどく、glint360k_r100 は24枚中23枚を
 # 人に結びつけた。代わりに「これは人ではない」を覚えておいて弾く。
@@ -789,6 +794,42 @@ def _identify(st: dict, data: bytes):
                        "box_w": x["box_w"]} for x in people]}
 
 
+def _distinct_enough_to_enroll(st: dict, vec: list, px: int, front: bool) -> bool:
+    """「誰とも言い切れない（保留）」人でも、新しい人として登録してよいか（2026-09-23）。
+
+    9/23 17:43〜17:49、未登録の人がキッチンに6分いたのに、登録済みの誰かと 0.25〜0.33 で
+    似ていたため、ずっと保留のまま（22回）どのIDにもならなかった。「登録済みの誰とも
+    0.25未満」を求めると、少し似ている人は永久に登録されない。
+    そこで、**同じ顔が長くはっきり取れている**ときは、保留の帯でも新しい人として出す：
+      FACE_NEW_MIN_N 枚以上・時間の広がり FACE_NEW_SPAN 秒以上・互いの中央 FACE_NEW_SIM 以上。
+    取り違えではなく「二重のID」が増える向きの緩めなので、間違えても夜のまとめ直し
+    （重いモデル・r50）で1つに戻せる。"""
+    import numpy as np
+    try:
+        if not front or px < FACE_SMALL_PX:
+            return False
+        now = time.time()
+        buf = [x for x in (st.get("new_buf") or [])
+               if isinstance(x, dict) and x.get("v") and now - float(x.get("t") or 0) <= FACE_NEW_WINDOW]
+        buf.append({"v": vec, "t": now, "px": int(px)})
+        st["new_buf"] = buf[-8:]
+        if len(buf) < FACE_NEW_MIN_N:
+            return False
+        span = max(x["t"] for x in buf) - min(x["t"] for x in buf)
+        if span < FACE_NEW_SPAN:
+            return False
+        M = np.asarray([x["v"] for x in buf], dtype=np.float32)
+        iu = np.triu_indices(len(M), 1)
+        med = float(np.median((M @ M.T)[iu]))
+        ok = med >= FACE_NEW_SIM
+        _log_event("new_from_hold", {"n": len(buf), "span": round(span), "med": round(med, 3),
+                                     "px": int(px), "ok": ok})
+        return ok
+    except Exception as e:
+        logger.warning("distinct check failed: %s", e)
+        return False
+
+
 def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
                   up: bool = True, ratio=None, pts=None, front: bool = True, taken=None):
     """切り抜き1つを匿名IDに結びつける。
@@ -848,7 +889,7 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
     pid = max(scores, key=scores.get) if scores else None
     sim = scores[pid] if pid else 0.0
     if pid is not None and sim < (FACE_CONFIRM_FRONT if front else FACE_CONFIRM_TILT):
-        if sim >= FACE_HOLD:
+        if sim >= FACE_HOLD and not _distinct_enough_to_enroll(st, one, px, front):
             # 保留：誰かに似ているが、言い切れない。名前を付けず、新しい人も作らず、覚えも変えない。
             _log_small("hold", best_px, sim=round(sim, 3), who=pid, n=n,
                        ratio=round(ratio, 2) if ratio else None)
