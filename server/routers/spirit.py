@@ -2297,8 +2297,13 @@ _GREET_SYSTEM = (
 CALL_NAME = True
 
 
+SAID_MIN_LINES = 2       # その人の言葉が何件たまったら、しゃべり方を写すか（2026-09-23）
+SAID_MIN_CHARS = 10      # 合計でこれだけの字数がたまってから
+
+
 async def _greet_line(persona: str, manner: str, thanks: bool = False,
-                      news: bool = False, name: str = "", avoid: list | None = None) -> str:
+                      news: bool = False, name: str = "", avoid: list | None = None,
+                      said: list | None = None) -> str:
     """その人へ向けた一言をつくる。
 
     thanks＝この人が前に片づけていた（ありがとうを言う）。
@@ -2322,6 +2327,14 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
         # すでに持っている文を見せて、入り方と言い回しを変えさせる。
         ask += ("\n【もう持っている一言】" + "／".join(avoid[:6]) +
                 "\nこれらと、最初のことば（入り方）も言い回しも変える。同じ始まり方にしない。")
+    # その人のしゃべり方を少しだけ写す（2026-09-23・本人「人ごとに個性を出したい」）。
+    # 声も性格の型も変えず、実際に聞こえた言葉から言い方のくせだけを借りる。
+    said = [s for s in (said or []) if isinstance(s, str) and s.strip()]
+    if len(said) >= SAID_MIN_LINES and sum(len(s) for s in said) >= SAID_MIN_CHARS:
+        ask += ("\n【この人が実際に言った言葉】" + "／".join("『%s』" % s for s in said[:6]) +
+                "\nこの人の言い方のくせ（短く答える・砕けた語尾・ていねい・よく出ることば）を、"
+                "キッチンちゃんの子どもの口調のまま、ほんの少しだけ写す。まねすぎない。"
+                "相手の言葉をそのまま繰り返さない。ていねい語は使わない。")
     if thanks:
         ask += ("\n【伝えたいこと】このまえ、この人が帰ったあと、シンクがきれいになっていた。"
                 "ありがとう・うれしかった、という気持ちをこの人に伝えたい。"
@@ -3013,7 +3026,8 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             thanks = _own_care(d.id)
             text = await _greet_line(persona, manner, thanks, news and not thanks,
                                      (doc.get("name") or "") if CALL_NAME else "",
-                                     avoid=[x.get("t") for x in _slots(doc) if x.get("t")])
+                                     avoid=[x.get("t") for x in _slots(doc) if x.get("t")],
+                                     said=doc.get("said"))
             if text:
                 ls = _put_line(_slots(doc), text, now)
                 if ls is not None:
@@ -3045,7 +3059,8 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True) -
     manner = _bond_stage(_bond_now(doc))[1]
     texts = []
     for _ in range(n * 2):                     # 同じ文が出たら数に入れない
-        t = await _greet_line(st.get("persona", ""), manner, False, False, name, avoid=texts)
+        t = await _greet_line(st.get("persona", ""), manner, False, False, name,
+                              avoid=texts, said=doc.get("said"))
         if t and t not in texts:
             texts.append(t)
         if len(texts) >= n:
@@ -3066,7 +3081,9 @@ async def greet_preview(person: str, n: int = 4, save: int = 0,
     if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
     texts = await remake_lines(person, max(1, min(n, 8)), save=bool(save))
-    return {"person": person, "lines": texts, "saved": bool(save and texts)}
+    doc = get_db().collection("faces").document(person).get().to_dict() or {}
+    return {"person": person, "name": doc.get("name"), "said": doc.get("said") or [],
+            "lines": texts, "saved": bool(save and texts)}
 
 
 @router.get("/todo")

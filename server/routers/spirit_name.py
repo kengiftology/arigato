@@ -387,6 +387,29 @@ async def hmm(person: str, x_upload_key: str = Header(None)):
     return {"ok": True, "say": True}
 
 
+# ---- その人の言い方を覚えておく（2026-09-23）----
+# 本人「人ごとに個性を出したい」→ 声も型も変えず、**その人のしゃべり方を真似る**。
+# 聞き取った文字を、その人の faces に短い一覧で残し、一言を作るときに見せる。
+# 記録（spirit_log）から引くと索引が要るので、その人の欄にも置いておく。
+SAID_KEEP = 10                   # 覚えておく件数（新しいものから）
+SAID_MAX = 40                    # 1件の長さ
+SAID_MIN = 4                     # これより短い聞き取りは入れない（0字や崩れた聞き取りを混ぜない）
+
+
+def _keep_said(person: str, text: str) -> None:
+    text = (text or "").strip()[:SAID_MAX]
+    if len(text) < SAID_MIN:
+        return
+    try:
+        ref = get_db().collection("faces").document(person)
+        said = [s for s in ((ref.get().to_dict() or {}).get("said") or []) if isinstance(s, str)]
+        if text in said:
+            return
+        ref.update({"said": ([text] + said)[:SAID_KEEP]})
+    except Exception as e:
+        logger.warning("keep said failed: %s", e)
+
+
 def _err(person: str, step: str, e: Exception) -> None:
     sp._log_event("name_error", {"person": person, "step": step,
                                  "err": ("%s: %s" % (type(e).__name__, e))[:160]})
@@ -499,6 +522,7 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
                                  "text": text, "cand": cand, "picked": picked, "answer": answer,
                                  "ms": {"to_text": round((t1 - t0) * 1000),
                                         "rest": round((time.time() - t1) * 1000)}})
+    _keep_said(person, text)
     if learned:
         sp._log_event("name_learned", {"person": person, "round": rnd})
         if sp.CALL_NAME:                     # 覚えた呼び名で呼べるよう、その人の一言を作り直す（9/22）
@@ -537,6 +561,38 @@ async def look_preview(request: Request, x_upload_key: str = Header(None)):
         out.append({"face_px": f["px"], "pos": list(f["pos"]), "look": look,
                     "ask": ("%s ひと、なんて よんだらいい？" % look) if look and look.endswith("の") else None})
     return {"faces": out}
+
+
+@router.post("/said/import")
+async def said_import(x_upload_key: str = Header(None), limit: int = 1000):
+    """記録に残っている聞き取りの文字を、その人の欄（faces.said）へ一度だけ移す（2026-09-23）。
+
+    しゃべり方を写す仕組みは faces.said を見る。9/22〜23 のぶんは spirit_log にしかないので、
+    これを一度叩いて移す。以後は聞き取るたびに両方へ入る。"""
+    if not key_ok(x_upload_key):
+        raise HTTPException(status_code=401, detail="bad key")
+    db = get_db()
+    rows = [d.to_dict() for d in db.collection("spirit_log")
+            .order_by("t", direction="DESCENDING").limit(min(limit, 2000)).stream()]
+    got = {}
+    for r in sorted((r for r in rows if r.get("kind") == "name_heard"), key=lambda r: r.get("t") or 0):
+        t = (r.get("text") or "").strip()[:SAID_MAX]
+        if r.get("person") and len(t) >= SAID_MIN:
+            got.setdefault(r["person"], [])
+            if t not in got[r["person"]]:
+                got[r["person"]].insert(0, t)
+    out = {}
+    for pid, said in got.items():
+        try:
+            ref = db.collection("faces").document(pid)
+            old = [s for s in ((ref.get().to_dict() or {}).get("said") or []) if isinstance(s, str)]
+            merged = said + [s for s in old if s not in said]
+            ref.update({"said": merged[:SAID_KEEP]})
+            out[pid] = merged[:SAID_KEEP]
+        except Exception as e:
+            logger.warning("said import failed (%s): %s", pid, e)
+    sp._log_event("said_import", {"people": list(out)})
+    return {"ok": True, "people": out}
 
 
 @router.post("/name/set")
