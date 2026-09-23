@@ -4,13 +4,21 @@ name: Write down the daily numbers
 # 手で毎晩叩いていたが、叩き忘れるとその日の数字は二度と取れない。
 # /spirit/log は新しい順にしか返さず、古い記録から消えていくため（9/19 は半日ぶん落とした）。
 #
-# 1日2回：日本時間の 15:00（昼までの分を確保）と 23:30（その日の締め）。
+# **GitHub の予定実行はあてにならない。**見張り（watch.yml）で実測したところ、
+# 10分おきの予定に対して実際は中央値3時間10分・最長7時間に1回しか走っていない
+# （9/17〜9/23 の38回で、10分前後だったのは0回。GitHub 側の間引き）。
+# そこで
+#   ・1日4回に増やして、間引かれても数回は走るようにする
+#   ・**前日ぶんも数え直す**。23時台の予定が日付をまたいで走ると、その日の締めが
+#     永久に取れなくなるため（/spirit/log は古いものから消える）
 # 書き替えは day_report.py が守る。前より小さい数にはしないので、
 # 記録が届ききらなかった実行が、届いていた実行の数字を潰すことはない。
 on:
   schedule:
-    - cron: '0 6 * * *'     # 日本時間 15:00
-    - cron: '30 14 * * *'   # 日本時間 23:30
+    - cron: '0 21 * * *'    # 日本時間 06:00
+    - cron: '0 3 * * *'     # 日本時間 12:00
+    - cron: '0 9 * * *'     # 日本時間 18:00
+    - cron: '0 14 * * *'    # 日本時間 23:00
   workflow_dispatch:
     inputs:
       day:
@@ -45,7 +53,16 @@ jobs:
           rm -rf ~/.cache/matplotlib
 
       - name: Count the day
-        run: python scripts/day_report.py ${{ github.event.inputs.day }}
+        run: |
+          if [ -n "${{ github.event.inputs.day }}" ]; then
+            python scripts/day_report.py ${{ github.event.inputs.day }}
+            exit 0
+          fi
+          # 前日 → 今日 の順。前日ぶんは、日付をまたいで走ったときの取りこぼし対策。
+          # まだ記録が届く範囲にあれば数え直せるし、届かなければ小さい数になって
+          # day_report.py 側が書き替えを断る（既にある数字は守られる）
+          python scripts/day_report.py "$(TZ=Asia/Tokyo date -d yesterday +%F)" || true
+          python scripts/day_report.py "$(TZ=Asia/Tokyo date +%F)"
 
       - name: Keep it if anything changed
         run: |
