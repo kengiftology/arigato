@@ -2307,7 +2307,7 @@ _GREET_SYSTEM = (
 CALL_NAME = True
 
 
-MEMORY_ON = False        # 思い出を一言に混ぜるか（2026-09-23。本人が見本を見てから True）
+MEMORY_ON = True         # 思い出を一言に混ぜるか（2026-09-23。本人が見本を見て「よい」→ 入）
 SAID_MIN_LINES = 2       # その人の言葉が何件たまったら、しゃべり方を写すか（2026-09-23）
 SAID_MIN_CHARS = 10      # 合計でこれだけの字数がたまってから
 
@@ -2344,12 +2344,15 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
     # 声も性格の型も変えず、実際に聞こえた言葉から言い方のくせだけを借りる。
     # このまえの思い出を1つ混ぜる（2026-09-23）。回数や「ひさしぶり」は言わない（負い目になる）。
     if memory and memory.get("what"):
-        ask += ("\n【このまえの思い出】" + str(memory["what"]) +
-                "（%d時間くらい前）。" % int(memory.get("hours") or 0) +
+        # いつのことかで言い分ける（9/23：0時間前なのに「このまえ」と言っていた）
+        h = int(memory.get("hours") or 0)
+        when = "さっき" if h < 6 else ("きのう" if h < 36 else "このまえ")
+        ask += ("\n【思い出】" + str(memory["what"]) +
+                "（%d時間くらい前のこと。言うときは『%s』と言う）。" % (h, when) +
                 ("この人が居たときの変化なので、『◯◯ちゃんが やってくれたやつ』のように"
                  "この人のしたこととして言ってよい。ありがとうの気持ちで。"
                  if memory.get("mine") else
-                 "誰がやったかは言わない。場所の様子として『このまえ、〜なってたなあ』と言う。") +
+                 "誰がやったかは言わない。場所の様子として『%s、〜なってたなあ』と言う。" % when) +
                 "\n思い出は1つだけ、短く。**英語やかたい言い方は使わず、子どもの短いひらがなに言い直す**。"
                 "回数（◯回目）・『ひさしぶり』・『また来た』のような、来かたに触れることばは言わない。")
     said = [s for s in (said or []) if isinstance(s, str) and s.strip()]
