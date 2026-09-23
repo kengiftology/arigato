@@ -1,0 +1,68 @@
+name: Write down the daily numbers
+
+# その日の数字を自分で取って記録に残す（2026-09-23）。
+# 手で毎晩叩いていたが、叩き忘れるとその日の数字は二度と取れない。
+# /spirit/log は新しい順にしか返さず、古い記録から消えていくため（9/19 は半日ぶん落とした）。
+#
+# 1日2回：日本時間の 15:00（昼までの分を確保）と 23:30（その日の締め）。
+# 書き替えは day_report.py が守る。前より小さい数にはしないので、
+# 記録が届ききらなかった実行が、届いていた実行の数字を潰すことはない。
+on:
+  schedule:
+    - cron: '0 6 * * *'     # 日本時間 15:00
+    - cron: '30 14 * * *'   # 日本時間 23:30
+  workflow_dispatch:
+    inputs:
+      day:
+        description: '数える日（YYYY-MM-DD・空なら今日）'
+        required: false
+        default: ''
+
+# 同時に走らせない。2つの実行が同じ行を書き替えると、あとの1つが押し負ける
+concurrency:
+  group: daily-numbers
+  cancel-in-progress: false
+
+jobs:
+  count:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the chart library and a Japanese font
+        run: |
+          python -m pip install --quiet matplotlib
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk
+          # matplotlib は入れたばかりのフォントを見つけられないことがある
+          rm -rf ~/.cache/matplotlib
+
+      - name: Count the day
+        run: python scripts/day_report.py ${{ github.event.inputs.day }}
+
+      - name: Keep it if anything changed
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          if git diff --quiet -- docs/毎日の数字.csv docs/毎日の数字.png; then
+            echo "変わりなし（書き替えを見送ったか、同じ数字）"
+            exit 0
+          fi
+          git add docs/毎日の数字.csv docs/毎日の数字.png
+          git commit -m "chore: record the numbers for $(TZ=Asia/Tokyo date +%F)"
+          # ほかの作業が先に入っていることがあるので、載せ直してから送る
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin ${{ github.ref_name }} && \
+              git push origin HEAD:${{ github.ref_name }} && exit 0
+            echo "ぶつかったので $i 回目のやり直し"
+            sleep 10
+          done
+          echo "::error::3回試しても送れませんでした。手で scripts/day_report.py を実行してください"
+          exit 1

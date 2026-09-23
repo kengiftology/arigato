@@ -308,7 +308,10 @@ def draw(rows: list) -> None:
     import matplotlib.pyplot as plt
     from matplotlib import font_manager
     from matplotlib.ticker import MaxNLocator
-    for name in ("Yu Gothic", "Meiryo", "MS Gothic"):
+    # Windows の3つで足りていたが、GitHub の予定実行（Ubuntu）では見つからず、
+    # 日本語が全部 □ になる。Linux 側の名前も足した（2026-09-23）
+    for name in ("Yu Gothic", "Meiryo", "MS Gothic",
+                 "Noto Sans CJK JP", "IPAexGothic", "IPAGothic", "TakaoGothic"):
         if any(f.name == name for f in font_manager.fontManager.ttflist):
             plt.rcParams["font.family"] = name
             break
