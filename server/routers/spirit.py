@@ -1401,7 +1401,17 @@ async def get_m(boot: str | None = None, joy: int | None = None):
                     round(now - st.get("face_at", 0))))
     del _served[:-12]
     n = _calc_n(st, now)
-    return "%.3f %.3f %d %d\n" % (st["score"], n, 1 if st["empty"] else 0, stage)
+    # 5つめ＝いま名前を聞いているか（2026-09-23）。C3 は考えている顔と「？」を出す。
+    # 速さは橋渡しからの無線の合図に任せる（0.2〜1秒）。ここは合図が届かなかったときの直し
+    # なので、10秒遅れても構わない。名前を聞く側（研究トークC）が st["listen_until"] に
+    # 「いつまで聞いているか」を入れる。入っていなければ 0 を返す。
+    # ここで落ちると /m ごと落ち、C3 が値を受け取れず見張りの再起動を繰り返す（9/22 と同じ轍）。
+    # 形が思っていたのと違っても、必ず 0（＝聞いていない）に倒す。
+    try:
+        listen = 1 if float(st.get("listen_until") or 0) > now else 0
+    except Exception:
+        listen = 0
+    return "%.3f %.3f %d %d %d\n" % (st["score"], n, 1 if st["empty"] else 0, stage, listen)
 
 
 # 直近の問い合わせで C3 に渡したもの（時刻, 人, 段階, 顔で確かめてからの秒）。
