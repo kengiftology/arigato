@@ -98,7 +98,7 @@ def maybe_ask(st: dict, pid: str, doc: dict, now: float, alone: bool = True) -> 
 # 相手の顔の下（体のあたり）を切り出して Claude に服の特徴をひらがな10字以内で言わせ、
 # 「あかい ふくの ひと、なんて よんだらいい？」をその場で声にする。1人のときは今までどおり。
 # 顔の位置は照合（研究トークA）が返す boxes（回した後の写真の画素）。
-ASK_BY_LOOK = False              # 何人か居るとき服で呼びかけるか。本人が見本（/spirit/look_preview）を見てから True
+ASK_BY_LOOK = True               # 何人か居るとき服で呼びかけるか。本人が見本を見て「よい」と言ったので 9/23 09:2x に入にした
 ASK_LINE_SEC = 3.1               # 作り置きの問いかけの長さ（ask_name_0/1：3.0・3.08秒）
 
 _LOOK_SYSTEM = """写真には1人の人の体（首から下のあたり）が写っています。
