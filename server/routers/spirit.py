@@ -2528,8 +2528,16 @@ async def merge_people(keep: str, drop: str, key: str = "", vecs: str = "drop_fi
     except Exception as e:
         logger.warning("merge lines cleanup failed: %s", e)
     try:
+        # 2026-09-23：戻せるようにする。夜のまとめ直しを自動で走らせる前提なので、
+        # 間違ってまとめたときに元へ返せないと、その人の積み重ねが失われる。
+        # drop の覚え・世話・なつき度・呼び名を、まるごと控えておく（/spirit/unmerge で戻す）。
         db.collection("spirit_meta").document("aliases").set(
-            {drop: {"to": keep, "at": time.time(), "why": why[:120]}}, merge=True)
+            {drop: {"to": keep, "at": time.time(), "why": why[:120], "name_moved": moved_name,
+                    # まとめる前の keep の値も控える（戻すときに、なつき度まで元へ返せる）
+                    "keep_before": {k: da.get(k) for k in ("cares", "uses", "bond", "bond_at")},
+                    "saved": {k: dbb.get(k) for k in
+                              ("vecs", "cares", "uses", "bond", "bond_at", "name", "name_at",
+                               "born", "persona", "state", "lines", "last_at")}}}, merge=True)
     except Exception as e:
         logger.warning("merge alias save failed: %s", e)
     st = _load()
@@ -2549,6 +2557,54 @@ async def merge_people(keep: str, drop: str, key: str = "", vecs: str = "drop_fi
                          "lines_deleted": lines, "why": why[:120]})
     return {"ok": True, "keep": keep, "dropped": drop, "shots": shots, "vecs": vecs,
             "name_moved": moved_name, "lines_deleted": lines}
+
+
+@router.post("/unmerge")
+async def unmerge_people(drop: str, key: str = "", why: str = ""):
+    """まとめたのを元に戻す（2026-09-23）。
+
+    `spirit_meta/aliases` に控えてある drop の中身（覚え・世話・なつき度・呼び名）で
+    drop を作り直し、まとめ先（keep）からは足し算した世話の数を引く。
+    覚えは keep のものを触らない（`vecs=keep` でまとめた前提。`drop_first` で
+    まとめていた場合は、keep の覚えに drop の顔が混ざったままになる）。"""
+    if not key_ok(key):
+        raise HTTPException(status_code=401, detail="bad key")
+    db = get_db()
+    ref = db.collection("spirit_meta").document("aliases")
+    al = (ref.get().to_dict() or {}).get(drop)
+    if not al or not al.get("saved"):
+        return {"ok": False, "error": "控えがありません（まとめる前の中身が残っていない）"}
+    keep = al.get("to")
+    saved = {k: v for k, v in (al.get("saved") or {}).items() if v is not None}
+    if db.collection("faces").document(drop).get().exists:
+        return {"ok": False, "error": "%s はもう居ます" % drop}
+    db.collection("faces").document(drop).create(saved)
+    k = db.collection("faces").document(keep)
+    dk = k.get().to_dict() or {}
+    if dk:
+        before = al.get("keep_before") or {}
+        if before:                               # まとめる前の値が控えてあれば、そのまま戻す
+            upd = {k: v for k, v in before.items() if v is not None}
+        else:                                    # 古い控え（値が無い）なら、足した分を引くだけ
+            upd = {"cares": max(0, (dk.get("cares") or 0) - (saved.get("cares") or 0)),
+                   "uses": max(0, (dk.get("uses") or 0) - (saved.get("uses") or 0))}
+        if al.get("name_moved") and dk.get("name") == al["name_moved"]:
+            # まとめたとき drop から移した呼び名。戻すなら keep からは外す（両方に残さない）
+            try:
+                from google.cloud import firestore as _fs
+                upd["name"] = _fs.DELETE_FIELD
+                upd["name_at"] = _fs.DELETE_FIELD
+            except Exception as e:
+                logger.warning("name restore failed: %s", e)
+        k.update(upd)
+    try:
+        from google.cloud import firestore as _fs
+        ref.update({drop: _fs.DELETE_FIELD})
+    except Exception as e:                       # 控えを消せなくても、戻す作業そのものは終わっている
+        logger.warning("alias delete failed: %s", e)
+    _log_event("unmerge", {"keep": keep, "drop": drop, "why": why[:120],
+                           "shots": len(saved.get("vecs") or [])})
+    return {"ok": True, "restored": drop, "from": keep, "shots": len(saved.get("vecs") or [])}
 
 
 @router.post("/bond")
