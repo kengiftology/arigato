@@ -9,6 +9,13 @@ on:
       - 'requirements.txt'
   workflow_dispatch:
 
+# 入れ替えは1本ずつ。2本が同時に走ると、あとに終わった方が本番になり、
+# どちらが動いているか分からなくなる（9/23、2つのトークの入れ替えが重なった）。
+# 走っている分は止めず、順番待ちにする。
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
