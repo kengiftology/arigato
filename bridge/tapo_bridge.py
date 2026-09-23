@@ -718,10 +718,11 @@ CHUNK_SEC = 0.1          # 大きさを見る単位
 SPEECH_LEVEL = 60        # これより大きければ声（9/19：静か7〜10・1mの声200〜300）
 SILENCE_LEVEL = 40       # これより小さければ静か
 END_SILENCE = 1.2        # 答えのあと、これだけ静かなら締める
-NO_ANSWER_SEC = 7.0      # 問いかけが鳴り終わってから、これだけ声が無ければ締める（答えなし）
+NO_ANSWER_SEC = 10.0     # 問いかけが鳴り終わってから、これだけ声が無ければ締める（答えなし）。9/23：7→10秒
 C3_FETCH_SEC = 2.0       # mur を送ってから C3 が鳴らし始めるまでの見込み（9/21〜22 の実測 1〜3秒）
 OWN_VOICE_WAIT = 6.0     # キャラの声がこれだけ経っても聞こえなければ、鳴らなかったとみなす
-OWN_END_SILENCE = 0.6    # キャラの声が終わったとみなす静けさ（人の答えの 1.2 秒より短く）
+OWN_END_SILENCE = 1.0    # キャラの声が終わったとみなす静けさ。9/23 23:03、質問の途中の息継ぎで
+                         # 「鳴り終わった」とみなし、答える時間が2〜3秒しか残らなかった
 
 
 def _wav(pcm: bytes) -> bytes:
@@ -840,6 +841,10 @@ def ask_name(pid: str, ask_sec: float = 0.0) -> None:
             done = threading.Event()
 
             def hmm_loop():
+                # 相手の声が入っていないときは鳴らさない（9/23 23:03：黙っている人に
+                # 「んー……」だけ鳴っていた）。
+                if not _heard[0]:
+                    return
                 for _ in range(HMM_MAX):
                     try:
                         if _post("/spirit/name/hmm" + q).get("say"):

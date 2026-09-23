@@ -1252,7 +1252,10 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 # 来訪ごとに1回、こちらから話しかける（2026-09-23）。
                 # 迎えの一言が鳴り終わってから（speak_line が空になってから）始める。
                 # 呼び名を聞いている最中も、まだ鳴らしていない一言があるときも、始めない。
-                if not st.get("speak_line") and not spirit_name.asking(st, now):
+                # 通りすがりには話しかけない。迎えと同じ線（30秒以上その場に居る人）を使う。
+                # 9/23 23:03、7秒しか居なかった人（passing_by）に話しかけてしまった。
+                if (not st.get("speak_line") and not spirit_name.asking(st, now)
+                        and _person_stay(st, res["person"], now) >= MIN_PRESENCE):
                     await spirit_name.maybe_talk(st, res["person"], None, now)
                 _save(st)
                 _lap("save")
