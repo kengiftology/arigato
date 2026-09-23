@@ -2332,12 +2332,14 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
                 # 9/22 の見本が全部「あ、◯◯ちゃんだ。」で始まり単調だった
                 "入り方は毎回変える。『あ、◯◯ちゃんだ』で始めない。名前は文の途中や終わりに置いてもよい"
                 "（例の形：『あのね、◯◯ちゃん……』『……おかえり、◯◯ちゃん』『きょうもきたね、◯◯ちゃん』）。"
-                "ただし例をそのまま使わない。" % name)
+                "ただし例をそのまま使わない。呼び名には必ず『ちゃん』を付ける（呼び捨てにしない）。" % name)
     if avoid:
         # 1本ずつ別々に作ると、毎回いちばんありそうな入りになる（9/23 の見本：4本中3本が同じ入り）。
         # すでに持っている文を見せて、入り方と言い回しを変えさせる。
         ask += ("\n【もう持っている一言】" + "／".join(avoid[:6]) +
-                "\nこれらと、最初のことば（入り方）も言い回しも変える。同じ始まり方にしない。")
+                "\nこれらと、最初のことば（入り方）も言い回しも変える。同じ始まり方にしない。"
+                # 9/23 の見本で「これは、もう持っている一言ですね。」と返事が混ざった
+                "\n返すのは声に出す一言だけ。こちらへの説明・感想・ことわりは一切書かない。")
     # その人のしゃべり方を少しだけ写す（2026-09-23・本人「人ごとに個性を出したい」）。
     # 声も性格の型も変えず、実際に聞こえた言葉から言い方のくせだけを借りる。
     # このまえの思い出を1つ混ぜる（2026-09-23）。回数や「ひさしぶり」は言わない（負い目になる）。
@@ -3080,7 +3082,8 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
     if not name:
         return []
     manner = _bond_stage(_bond_now(doc))[1]
-    mem = _recent_memory(pid) if (MEMORY_ON if memory_on is None else memory_on) else None
+    mem = (_recent_memory(pid, 7 * 86400.0 if memory_on else 0.0)
+           if (MEMORY_ON if memory_on is None else memory_on) else None)
     texts = []
     for _ in range(n * 2):                     # 同じ文が出たら数に入れない
         t = await _greet_line(st.get("persona", ""), manner, False, False, name,
@@ -3107,7 +3110,9 @@ async def greet_preview(person: str, n: int = 4, save: int = 0,
     texts = await remake_lines(person, max(1, min(n, 8)), save=bool(save), memory_on=True)
     doc = get_db().collection("faces").document(person).get().to_dict() or {}
     return {"person": person, "name": doc.get("name"), "said": doc.get("said") or [],
-            "memory": _recent_memory(person), "lines": texts, "saved": bool(save and texts)}
+            # 見本では7日ぶんまで遡る（24時間に変化が無くても、言い方を見てもらえるように）
+            "memory": _recent_memory(person, 7 * 86400.0),
+            "lines": texts, "saved": bool(save and texts)}
 
 
 @router.get("/todo")
@@ -4041,7 +4046,7 @@ def _manner(doc: dict, alone: bool) -> str:
     return _bond_stage(_bond_now(doc))[1]
 
 
-def _recent_memory(pid: str) -> dict | None:
+def _recent_memory(pid: str, window: float = 0.0) -> dict | None:
     """その人に話せる「このまえの思い出」（2026-09-23・本人「思い出を混ぜたい」）。
 
     直近24時間の記録から、場所に起きた変化を1つ拾う。返すのは
@@ -4055,7 +4060,7 @@ def _recent_memory(pid: str) -> dict | None:
         for d in docs:
             e = d.to_dict() or {}
             t = e.get("t") or 0
-            if now - t > NEWS_WINDOW:
+            if now - t > (window or NEWS_WINDOW):
                 break
             who = e.get("who") or []
             what = ""
