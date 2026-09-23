@@ -240,17 +240,38 @@ def _gcp_token() -> str:
     return creds.token
 
 
-async def _to_text(pcm: bytes) -> str:
-    """音 → 文字（Google Speech-to-Text・日本語）。聞き取れなければ空。"""
-    body = {"config": {"encoding": "LINEAR16", "sampleRateHertz": 16000,
-                       "languageCode": "ja-JP", "model": "latest_short"},
-            "audio": {"content": base64.b64encode(pcm).decode()}}
+# 聞き返しへの答えに出てくることば。あらかじめ渡しておくと拾いやすくなる（2026-09-23）。
+# 「うん」のような短い返事は、カメラの粗いマイク（8kHz）だと空で返ることが多かった。
+_YES_NO_WORDS = ["うん", "はい", "そう", "そうそう", "あってる", "あってるよ", "おっけー",
+                 "ちがう", "ちがうよ", "ううん", "いいえ", "ちょっとちがう"]
+
+
+async def _stt(pcm: bytes, model: str, hints: list | None = None) -> str:
+    cfg = {"encoding": "LINEAR16", "sampleRateHertz": 16000,
+           "languageCode": "ja-JP", "model": model}
+    if hints:
+        cfg["speechContexts"] = [{"phrases": hints, "boost": 15.0}]
     async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.post("https://speech.googleapis.com/v1/speech:recognize", json=body,
+        r = await c.post("https://speech.googleapis.com/v1/speech:recognize",
+                         json={"config": cfg, "audio": {"content": base64.b64encode(pcm).decode()}},
                          headers={"Authorization": "Bearer " + _gcp_token()})
     r.raise_for_status()
     res = r.json().get("results") or []
     return "".join((x.get("alternatives") or [{}])[0].get("transcript", "") for x in res).strip()
+
+
+async def _to_text(pcm: bytes, phase: str = "ask") -> tuple:
+    """音 → (文字, どの設定で取れたか)。聞き取れなければ ("", "")。
+
+    短い発話向け（latest_short）で空のときは、長め向け（latest_long）でもう一度試す。
+    9/22〜23 の実機では、音の大きさが100〜700あるのに0字で返る回が続いた。
+    聞き返しの場面では「うん」「ちがう」などを先に渡して拾いやすくする。"""
+    hints = _YES_NO_WORDS if phase == "confirm" else None
+    text = await _stt(pcm, "latest_short", hints)
+    if text:
+        return text, "short"
+    text = await _stt(pcm, "latest_long", hints)
+    return (text, "long") if text else ("", "")
 
 
 _PICK_SYSTEM = """共有キッチンに住む小さな精霊が、そこに来た人に「なんてよんだらいい？」と聞きました。
@@ -451,11 +472,11 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
 
     # 音の大きさを先に見る（9/19 の実測）。無音は文字にしない。
     level = _level(pcm)
-    text = ""
+    text, stt = "", ""
     t0 = time.time()
     if level >= SILENT_LEVEL:
         try:
-            text = await _to_text(pcm)
+            text, stt = await _to_text(pcm, phase)
         except Exception as e:
             _err(person, "to_text", e)
     del pcm                                  # 音はここで捨てる
@@ -533,6 +554,7 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
     sp._log_event("name_heard", {"person": person, "phase": phase, "round": rnd,
                                  "level": level, "chars": len(text), "result": result,
                                  "text": text, "cand": cand, "picked": picked, "answer": answer,
+                                 "stt": stt,
                                  "ms": {"to_text": round((t1 - t0) * 1000),
                                         "rest": round((time.time() - t1) * 1000)}})
     _keep_said(person, text)
