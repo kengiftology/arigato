@@ -50,7 +50,9 @@ ASK_KIND = "ask_name"            # 作り置きの問いかけ（ask_name_0 な�
 # 何人か居るときに聞かないか。9/22 22:0x 本人「ほかの人が居ても聞いてよい。どの服装の人に聞いているかを
 # 言ってほしい」→ 既定は聞く。服で呼びかける作りが入るまでは、何人か居ても区別せずに聞く。
 ASK_ONLY_ALONE = False
-ASK_GAP = 6 * 3600.0             # 聞けなかった人に、もう一度聞くまでの間
+# 聞き直しの時機は「その人が来たとき」。時計では決めない（2026-09-23 本人・催促にしないため）。
+# 6時間の時計で聞き直していた頃は、**装置の時計が時機を決めていた**。来訪ごとにすれば、
+# 来ていない人には何も起きず、来た人にだけ1回たずねる（同じ滞在のうちに二度は聞かない）。
 ASK_TTL = 90.0                   # 問いかけから、これより後に届いた答えは受け取らない
 NAME_MAX = 12                    # 呼び名の長さの上限（字）
 SILENT_LEVEL = 25                # これより静かなら、声は入っていないとみなす（9/19の実測）
@@ -61,13 +63,16 @@ VOICEVOX_SPEAKER = 3             # ずんだもん（作り置きと同じ声）
 
 # ---- 1. 迎えの場面で、聞くかどうか ----
 
-def _may_ask(pid: str, doc: dict, now: float, alone: bool) -> bool:
+def _may_ask(st: dict, pid: str, doc: dict, now: float, alone: bool) -> bool:
     if not ASK_ON or (ASK_ONLY_ALONE and not alone) or not pid or pid == "unknown" or doc.get("name"):
         return False
-    return now - float(doc.get("name_asked_at") or 0) >= ASK_GAP
+    visit = float((st.get("visit_of") or {}).get(pid) or st.get("visit_start") or 0)
+    return not (visit and float((st.get("asked") or {}).get(pid) or 0) >= visit)
 
 
 def _mark_asked(st: dict, pid: str, now: float, line: str, sec: float, desc: str = "") -> None:
+    visit = float((st.get("visit_of") or {}).get(pid) or st.get("visit_start") or 0)
+    st["asked"] = dict(st.get("asked") or {}, **{pid: visit or now})   # この来訪ではもう聞いた
     st["name_ask"] = {"person": pid, "at": now, "sec": sec}
     # いつまで聞いているか。C3 が「聞いている顔」になる元（2026-09-23・研究トークD）
     st["listen_until"] = now + ASK_TTL
@@ -84,7 +89,7 @@ def maybe_ask(st: dict, pid: str, doc: dict, now: float, alone: bool = True) -> 
     spirit.py の迎えから呼ぶ。たまに黙る（SILENT_CHANCE）は通さない。
     問いかけが鳴らないのに、ラズパイが聞きに行くことになるため。
     何人か居るときに服で呼びかけるのは maybe_ask_async（こちらは作り置きの問いかけだけ）。"""
-    if not _may_ask(pid, doc, now, alone):
+    if not _may_ask(st, pid, doc, now, alone):
         return False
     line = sp._pick_line(ASK_KIND)
     if not line:
@@ -170,7 +175,7 @@ async def maybe_ask_async(st: dict, pid: str, doc: dict, now: float, alone: bool
                           boxes: list, data: bytes) -> bool:
     """何人か居て、その人の顔の位置が分かるときは、服で呼びかけて聞く。
     それ以外（1人・位置が無い・服が分からない・声が作れない）は作り置きの問いかけ（maybe_ask）。"""
-    if not _may_ask(pid, doc, now, alone):
+    if not _may_ask(st, pid, doc, now, alone):
         return False
     box = next((b for b in (boxes or []) if b.get("person") == pid and b.get("box_cx") is not None), None)
     if alone or not ASK_BY_LOOK or not box:
