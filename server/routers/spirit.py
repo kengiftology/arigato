@@ -123,7 +123,14 @@ _identify_err = [""]   # 顔検出の失敗理由（/spirit/facesで確認する
 # 起動し直すと0に戻るが、そのぶん「起動から◯秒はまだ分からない」として扱う。
 _BOOT_AT = time.time()
 _ALIVE = {"camera": 0.0, "c3": 0.0, "voice": 0.0}
-ALIVE_LIMIT = {"camera": 900, "c3": 120, "voice": 180}   # 来る間隔の3〜12倍。これを超えたら止まっている
+ALIVE_LIMIT = {"camera": 900, "c3": 120, "voice": 600}   # 来る間隔の3〜12倍。これを超えたら止まっている
+# 声の係の 180 は、9/23 19:45 に空振りを出した。作り置きの音を11本まとめて作っていた
+# 5分間、覗きに来なかっただけだった（19:41:37 prepared → 19:46:39 まで）。
+# 直しは2つ。**音を1本置くたびに生きていると記す**（作業中と停止を取り違えない）のと、
+# 上限そのものを 600 に。9/23 の作り置き11回を測ると、音と音の間は最長 422 秒あり、
+# 180 のままでは「置くたびに記す」だけでは足りなかった（11回中4回が180秒超）。
+# 空振りのメールが続くと本人が見張りを読まなくなり、本当の停止に気づけなくなる。
+# カメラの 900（15分）と並べても、声の 600（10分）は釣り合う。
 BUSY_CAMERA_LIMIT = 60   # 在室中はこの秒数来なければ異常（人が居る間は1.5秒おきに来る）
 ASKING_QUIET = 180       # 呼び名を聞き始めてからこの秒数は、上の見張りを休む
 ALIVE_NAME = {"camera": "カメラ（ラズパイの橋渡し役）", "c3": "キャラ（C3）",
@@ -3032,6 +3039,7 @@ async def put_say(text: str = "", request: Request = None,
     古い音を鳴らすくらいなら、場面に合った作り置きを鳴らすほうがよい。"""
     if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
+    _ALIVE["voice"] = time.time()          # 音を作っている間も生きている（2026-09-23）
     data = await request.body()
     if not data:
         raise HTTPException(status_code=400, detail="empty body")
@@ -3223,6 +3231,7 @@ async def todo_done(name: str, request: Request, text: str = "",
     data = await request.body()
     if not data:
         raise HTTPException(status_code=400, detail="empty body")
+    _ALIVE["voice"] = time.time()          # 音を作っている間も生きている（2026-09-23）
     upload_to(LINES_PREFIX + name + ".pcm", data, "application/octet-stream")
     _line_cache["at"] = 0.0
     pid, i = name[len("for_"):-2], int(name[-1])
