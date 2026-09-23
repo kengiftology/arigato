@@ -394,6 +394,120 @@ async def _say(st: dict, person: str, text: str) -> bool:
 FILLER_KIND = "filler"
 
 
+# ---- 1c. ひとこと交わす（2026-09-23・本人「もう少し対話できるようにしたい」）----
+# 本人の決め：**キッチンに来るたび1回**、キャラから話しかける。そのあとは相手しだい。
+#   「しゃべりたい人はしゃべりたい」ので、返事があるかぎり続け、黙ったら終わる。追いかけない。
+# 呼び名を聞く仕組み（聞く→録る→文字→考える→声）をそのまま使い回すので、橋渡しは変えない。
+TALK_ON = True
+TALK_MAX_ROUNDS = 6              # 1回の来訪で交わすのはここまで
+TALK_MAX_SEC = 180.0             # 話しはじめてからの上限
+TALK_QUESTIONS = [
+    "きょうは なに するの？",
+    "なに つくるの？",
+    "きょう、どうだった？",
+    "いま、なに かんがえてた？",
+    "ここ、きょうも つかうの？",
+    "おなか すいてる？",
+]
+
+_REPLY_SYSTEM = """あなたは『きっちんちゃん』。共有キッチンに棲みついている、小さな子どものような地霊です。
+いま目の前の人と、ひとこと交わしています。相手の返事が文字で届きます（聞き間違いが混ざります）。
+【返し方】ちいさな子どもが、ひとりごとのように。ひらがな多め。20字以内。
+『あのね』『えーとね』『〜なあ』『〜だね』のような言い方。ていねい語（です・ます）は使わない。
+相づちと、思ったことを短く。質問で返さない（相手が話したければ勝手に続ける）。
+命令しない・お願いしない・評価しない（えらい・すごい・だめ は言わない）。数や回数も言わない。
+聞き取れていない・関係のない言葉のときは、分からないなりに短く受ける（聞き返さない）。
+返すのは声に出す一言だけ。説明もかぎかっこも要らない。"""
+
+
+async def _reply_line(persona: str, said_text: str, name: str = "") -> str:
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return ""
+    from anthropic import AsyncAnthropic
+    ask = "相手が言ったこと：『%s』" % said_text
+    if name:
+        ask += "\n相手の呼び名は『%s』。呼ぶなら『ちゃん』を付ける（毎回は呼ばない）。" % name
+    msg = await AsyncAnthropic(timeout=20.0, max_retries=1).messages.create(
+        model=sp.MODEL, max_tokens=80,
+        system=(persona or sp._DEFAULT_PERSONA) + "\n" + _REPLY_SYSTEM,
+        messages=[{"role": "user", "content": ask}])
+    return sp._sanitize("".join(b.text for b in msg.content if b.type == "text").strip(), 30)
+
+
+async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
+    """来訪ごとに1回、こちらから話しかける。始めたら True。"""
+    if not TALK_ON or not pid or pid == "unknown":
+        return False
+    if doc is None:
+        try:
+            doc = get_db().collection("faces").document(pid).get().to_dict() or {}
+        except Exception as e:
+            _err(pid, "doc", e)
+            doc = {}
+    visit = float((st.get("visit_of") or {}).get(pid) or st.get("visit_start") or 0)
+    if visit and float((st.get("talked") or {}).get(pid) or 0) >= visit:
+        return False                         # この来訪ではもう話しかけた
+    import random
+    q = random.choice([x for x in TALK_QUESTIONS if x != doc.get("last_q")] or TALK_QUESTIONS)
+    line = "talk_%s_0" % pid
+    try:
+        pcm = await _voice(q)
+        upload_to(sp.LINES_PREFIX + line + ".pcm", pcm, "application/octet-stream")
+    except Exception as e:
+        _err(pid, "voice", e)
+        return False
+    now2 = time.time()
+    st["speak_line"] = line
+    st["speak_at"] = now2 + sp.SPEAK_MIN
+    st["talked"] = dict(st.get("talked") or {}, **{pid: visit or now2})
+    st["name_ask"] = {"person": pid, "at": now2, "sec": len(pcm) / 32000.0,
+                      "phase": "talk", "round": 1, "start": now2}
+    st["listen_until"] = now2 + ASK_TTL
+    try:
+        get_db().collection("faces").document(pid).update({"last_q": q})
+    except Exception as e:
+        logger.warning("last_q save failed: %s", e)
+    sp._log_event("talk", {"person": pid, "say": q, "round": 1})
+    return True
+
+
+async def _talk_turn(st: dict, person: str, text: str, stt: str, level: int,
+                     rnd: int, a: dict, t0: float, t1: float) -> dict:
+    """相手の返事を受けて、一言返す。黙っていたら終わり（追いかけない）。"""
+    _keep_said(person, text)
+    start = float(a.get("start") or t0)
+    reply, why = "", ""
+    if not text:
+        why = "だまった"                      # 返事なし＝ここで終わり
+    elif rnd >= TALK_MAX_ROUNDS or time.time() - start > TALK_MAX_SEC:
+        why = "上限"
+    else:
+        doc = {}
+        try:
+            doc = get_db().collection("faces").document(person).get().to_dict() or {}
+        except Exception as e:
+            _err(person, "doc", e)
+        try:
+            reply = await _reply_line(st.get("persona", ""), text, doc.get("name") or "")
+        except Exception as e:
+            _err(person, "reply", e)
+    say = False
+    if reply:
+        say = await _say(st, person, reply)
+        if say:
+            st["name_ask"] = {"person": person, "at": time.time(), "phase": "talk",
+                              "round": rnd + 1, "start": start}
+            st["listen_until"] = time.time() + ASK_TTL
+    sp._save(st)
+    sp._log_event("talk_heard", {"person": person, "round": rnd, "level": level,
+                                 "chars": len(text), "text": text, "reply": reply,
+                                 "why": why, "stt": stt,
+                                 "ms": {"to_text": round((t1 - t0) * 1000),
+                                        "rest": round((time.time() - t1) * 1000)}})
+    return {"ok": True, "name": None, "say": say, "listen": bool(say),
+            "speak_sec": round(_said_sec[0], 2) if say else 0.0}
+
+
 @router.post("/name/hmm")
 async def hmm(person: str, x_upload_key: str = Header(None)):
     """つなぎ（相づち）を1つ置く。橋渡しは答えを送っている間、2.5秒おきにここを叩く（9/23）。"""
@@ -489,6 +603,8 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
 
     say, listen, learned, result = False, False, None, ""
     picked, answer = None, None               # 記録用：取り出した候補／聞き返しへの答え
+    if phase == "talk":                      # ひとこと交わす（2026-09-23）
+        return await _talk_turn(st, person, text, stt, level, rnd, a, t0, t1)
     if phase == "ask":
         name = None
         if text:
