@@ -411,13 +411,46 @@ TALK_QUESTIONS = [
 ]
 
 _REPLY_SYSTEM = """あなたは『きっちんちゃん』。共有キッチンに棲みついている、小さな子どものような地霊です。
-いま目の前の人と、ひとこと交わしています。相手の返事が文字で届きます（聞き間違いが混ざります）。
-【返し方】ちいさな子どもが、ひとりごとのように。ひらがな多め。20字以内。
-『あのね』『えーとね』『〜なあ』『〜だね』のような言い方。ていねい語（です・ます）は使わない。
-相づちと、思ったことを短く。質問で返さない（相手が話したければ勝手に続ける）。
-命令しない・お願いしない・評価しない（えらい・すごい・だめ は言わない）。数や回数も言わない。
-聞き取れていない・関係のない言葉のときは、分からないなりに短く受ける（聞き返さない）。
-返すのは声に出す一言だけ。説明もかぎかっこも要らない。"""
+いま目の前の人が、何か言いました（文字にしたもの。聞き間違いが混ざります）。
+
+【あなたが返すのは「受け取ったよ」の合図だけです】
+相手の話を引き取る・まとめる・解決する必要はありません。うなずくだけでいい。
+『寒くなったなあ』に『いまの気温は◯度です』と返すと、会話は死にます。『ほんとだねえ』でいい。
+
+【ぜったいに言わないこと】
+- **助言・提案**（「〜したら？」「〜するといいよ」）
+- **慰め・許し**（「きにしなくていいよ」「だいじょうぶだよ」「しかたないよ」）
+- **評価**（えらい・すごい・いいね・だめ）
+- **命令・お願い・指図**、数や回数
+- **質問で返すこと**（相手が話したければ、勝手に続けます）
+これらは、言った瞬間にこちらが上の立場に立ってしまいます。地霊は助けません。
+
+【言い方】
+ちいさな子どもの、ひとりごとのように。ひらがな多め。**20字以内で、言い切る**。
+『ふうん』『そっかあ』『へえ』『ほんとだ』『いいなあ』『たのしそう』のような、短い受け。
+『あ、それってさ。』のように**言いかけて終わらない**。意味は伝わりきらなくてよいが、文は終わらせる。
+ていねい語（です・ます）は使わない。
+**迎えのあいさつはしない**（『あ、◯◯ちゃんだ』『きてくれたんだ』などは、ここでは言わない。もう迎えは済んでいます）。
+相手の名前は、呼んでも呼ばなくてもよい（毎回は呼ばない）。
+聞き取れていない・意味が取れない言葉のときは、分からないなりに短く受ける（聞き返さない）。
+返すのは声に出す一言だけ。説明もかぎかっこも要りません。"""
+
+
+# 言ってはいけない形（台帳#17：助ける装置は、助けた瞬間に上に立つ）。
+# 指示で禁じたうえで、出てしまったものはここで捨てる（そのときは黙る＝うなずきだけ）。
+_BAD_REPLY = ("したら", "するといい", "したほうが", "しよう", "してね", "してみて",
+              "きにしなくて", "だいじょうぶだよ", "しかたない", "しかたがない",
+              "えらい", "すごい", "いいね", "だめ", "がんばって", "がんばれ")
+
+
+def _reply_ok(text: str) -> bool:
+    if not text or len(text) > 30:
+        return False
+    if text.endswith(("さ。", "さ", "けど", "けどね", "って。")):
+        return False                       # 言いかけて終わっている（9/24「あ、それってさ。」）
+    if text.startswith("あ、") and ("ちゃんだ" in text or "きてくれ" in text):
+        return False                       # 迎えのあいさつが返しに混ざった（9/24）
+    return not any(b in text for b in _BAD_REPLY)
 
 
 async def _reply_line(persona: str, said_text: str, name: str = "") -> str:
@@ -431,7 +464,11 @@ async def _reply_line(persona: str, said_text: str, name: str = "") -> str:
         model=sp.MODEL, max_tokens=80,
         system=(persona or sp._DEFAULT_PERSONA) + "\n" + _REPLY_SYSTEM,
         messages=[{"role": "user", "content": ask}])
-    return sp._sanitize("".join(b.text for b in msg.content if b.type == "text").strip(), 30)
+    out = sp._sanitize("".join(b.text for b in msg.content if b.type == "text").strip(), 30)
+    if not _reply_ok(out):
+        sp._log_event("reply_dropped", {"text": out})
+        return ""                          # 捨てたときは黙る（うなずきだけで足りる）
+    return out
 
 
 async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
@@ -506,6 +543,16 @@ async def _talk_turn(st: dict, person: str, text: str, stt: str, level: int,
                                         "rest": round((time.time() - t1) * 1000)}})
     return {"ok": True, "name": None, "say": say, "listen": bool(say),
             "speak_sec": round(_said_sec[0], 2) if say else 0.0}
+
+
+@router.get("/reply_preview")
+async def reply_preview(text: str, name: str = "", x_upload_key: str = Header(None)):
+    """「相手がこう言ったら、こう返す」を試しに見る（2026-09-24・本人に見せる用）。何も鳴らさない。"""
+    if not key_ok(x_upload_key):
+        raise HTTPException(status_code=401, detail="bad key")
+    st = sp._load()
+    out = await _reply_line(st.get("persona", ""), text, name)
+    return {"said": text, "reply": out or "（返さない）"}
 
 
 @router.post("/name/hmm")
