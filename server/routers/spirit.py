@@ -2307,6 +2307,7 @@ _GREET_SYSTEM = (
 CALL_NAME = True
 
 
+MEMORY_ON = False        # 思い出を一言に混ぜるか（2026-09-23。本人が見本を見てから True）
 SAID_MIN_LINES = 2       # その人の言葉が何件たまったら、しゃべり方を写すか（2026-09-23）
 SAID_MIN_CHARS = 10      # 合計でこれだけの字数がたまってから
 
@@ -3047,7 +3048,8 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             text = await _greet_line(persona, manner, thanks, news and not thanks,
                                      (doc.get("name") or "") if CALL_NAME else "",
                                      avoid=[x.get("t") for x in _slots(doc) if x.get("t")],
-                                     said=doc.get("said"), memory=_recent_memory(d.id))
+                                     said=doc.get("said"),
+                                     memory=_recent_memory(d.id) if MEMORY_ON else None)
             if text:
                 ls = _put_line(_slots(doc), text, now)
                 if ls is not None:
@@ -3064,7 +3066,8 @@ async def _prepare_greetings(st: dict, now: float) -> int:
     return n
 
 
-async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True) -> list:
+async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
+                       memory_on: bool | None = None) -> list:
     """その人向けの一言を、呼び名入りで作り直す（2026-09-22）。
 
     呼び名を覚えた瞬間に呼ぶ。それまでの4本には名前が入っていないので、全部入れ替える。
@@ -3077,7 +3080,7 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True) -
     if not name:
         return []
     manner = _bond_stage(_bond_now(doc))[1]
-    mem = _recent_memory(pid)
+    mem = _recent_memory(pid) if (MEMORY_ON if memory_on is None else memory_on) else None
     texts = []
     for _ in range(n * 2):                     # 同じ文が出たら数に入れない
         t = await _greet_line(st.get("persona", ""), manner, False, False, name,
@@ -3101,7 +3104,7 @@ async def greet_preview(person: str, n: int = 4, save: int = 0,
     本人が文面を見て決めるための口。save=1 のときだけ、その人の一言を入れ替える。"""
     if not key_ok(x_upload_key):
         raise HTTPException(status_code=401, detail="bad key")
-    texts = await remake_lines(person, max(1, min(n, 8)), save=bool(save))
+    texts = await remake_lines(person, max(1, min(n, 8)), save=bool(save), memory_on=True)
     doc = get_db().collection("faces").document(person).get().to_dict() or {}
     return {"person": person, "name": doc.get("name"), "said": doc.get("said") or [],
             "memory": _recent_memory(person), "lines": texts, "saved": bool(save and texts)}
