@@ -19,6 +19,29 @@ sys.stdout.reconfigure(encoding="utf-8")
 BASE = "https://arigato-3ipecjbnha-an.a.run.app"
 OUT = "C:/Users/kengk/.arigato/watch"
 JUDGE_GAP_H = 3.0          # 見回りの判定がこれだけ空いたらおかしい
+AIM_WARN_PX = 100.0        # 1日の「ずれ」の真ん中がこれを超えたら知らせる
+# なぜ「判定が0件」を待たないか（9/24 の実例）：カメラの向きの補正が古くなると、
+# ずれは一気に壊れるのではなく**じわじわ大きくなり**、ある日いきなり全部弾かれて
+# 判定が止まる。丸1日気づけなかった（20時間50分）。実測では正しい向きで 0〜106px、
+# 壊れたときで 274px。100px は「まだ通るが、近づいている」位置なので、
+# **止まる前に直せる**。ずれは研究トークBが判定の記録に毎回残す。
+
+
+def aim_len(sh):
+    """ずれの大きさ（縦横をまとめた長さ）。数でなければ None。"""
+    try:
+        dx, dy = float(sh[0]), float(sh[1])
+        return (dx * dx + dy * dy) ** 0.5
+    except Exception:
+        return None
+
+
+def median(xs):
+    xs = sorted(xs)
+    n = len(xs)
+    if not n:
+        return None
+    return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2.0
 
 
 def fetch(since: float, until: float) -> list:
@@ -80,7 +103,18 @@ def main():
         if b - a > JUDGE_GAP_H * 3600:
             gaps.append((a, b))
 
+    # カメラの向きのずれ（判定の記録に入っていれば見る）
+    # 判定には `aim_shift`、飛ばした記録には前から `shift` が入っている。どちらも同じ「ずれ」
+    aims = [v for v in (aim_len(r.get("aim_shift") or r.get("shift")) for r in judges + skips)
+            if v is not None]
+    aim_mid = median(aims)
+    aim_max = max(aims) if aims else None
+
     bad = []
+    if aim_mid is not None and aim_mid > AIM_WARN_PX:
+        bad.append("カメラの向きのずれが大きい（真ん中 %.0fpx・いちばん大きいとき %.0fpx）。"
+                   "%.0fpx を超えると判定が全部弾かれて止まる。**止まる前に直せる段階**"
+                   % (aim_mid, aim_max, 150))
     if stops:  bad.append("段階の受け渡しを止めた記録が %d件（守りは切ってあるので、出るのはおかしい）" % len(stops))
     if skips:  bad.append("判定を飛ばした記録が %d件" % len(skips))
     if wrong:  bad.append("違う相手に喜んだ疑いが %d件" % len(wrong))
@@ -101,7 +135,13 @@ def main():
     L.append("| 段階の受け渡しを止めた | %d |" % len(stops))
     L.append("| 世話 | %d（やった人が空 %d）|" % (len(cares), len(noone)))
     L.append("| C3 の起動 | %d（うち見張りによる %d）|" % (len(boots), len(wd)))
+    if aim_mid is not None:
+        L.append("| カメラの向きのずれ | 真ん中 %.0fpx ／ いちばん大きいとき %.0fpx（%d回ぶん）|"
+                 % (aim_mid, aim_max, len(aims)))
     L.append("")
+    if aim_mid is not None:
+        L.append("※ ずれは日ごとに並べて見ること。**じわじわ大きくなって、ある日いきなり止まる。**")
+        L.append("")
     if joys:
         L.append("喜びの中身（時刻・相手・段階・顔を確かめてからの秒数）：")
         for r in joys:
