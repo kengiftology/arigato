@@ -334,7 +334,14 @@ def _save(st: dict):
     # 覚えを頭の中だけに置くと、そのたびに「まだ一度も来ていない」に戻る。
     # そのあいだ _health() は「起動したばかりだから」で無事と答え、**止まっている装置が隠れる**。
     # 9/24、橋渡しが1時間51分止まったのに、途中の見張りが「無事」と答えた時間があった。
-    st["alive"] = {k: v for k, v in _ALIVE.items() if v}
+    # クラウドは同時に何台も動く。台ごとに知っていることが違うので、
+    # 自分の知っている分だけで書くと**他の台が知っている分を消してしまう**
+    # （9/24 実測：C3 しか受けていない台が保存し、カメラと声の覚えが消えた）。
+    # 保存されている分と突き合わせて、新しいほうを残す。
+    prev = _alive_saved()
+    st["alive"] = {k: max(float(prev.get(k) or 0), float(_ALIVE.get(k) or 0))
+                   for k in set(prev) | set(_ALIVE)
+                   if max(float(prev.get(k) or 0), float(_ALIVE.get(k) or 0))}
     _state_cache = st
     try:
         _doc().set(st)
