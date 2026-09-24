@@ -1449,10 +1449,12 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
             _log_event("hold", {"person": held,
                                 "since": round(now - st.get("face_at", 0))})
     if sc is not None:
+        aim_shift, aim_conf = _aim_now(data)
         _log_event("judge", {"raw": sc, "score": round(st["score"], 3), "pose": pose, "scope": scope,
                              "N": round(_calc_n(st, now), 3), "comment": st.get("comment", ""),
                              "objects": st.get("objects", []), "people": npeople,
-                             "who": st.get("seen_people") or []})
+                             "who": st.get("seen_people") or [],
+                             "aim_shift": aim_shift, "aim_conf": aim_conf})
     st["seen_people"] = []                # ここまでを1区間として締める
     _save(st)
     # 人が去って落ち着いてから突き合わせる。居る間の1枚を「後」にすると
@@ -3872,6 +3874,29 @@ def _frame_match(a: bytes, b: bytes, band: tuple = None) -> tuple:
 
 
 _last_good = {"jpg": None, "ref_at": 0.0}   # 「見本そのものと合った」最後の1枚（錨）
+
+
+_ref_cache = [0.0, None]     # 見本の読み置き（時刻, 中身）
+REF_CACHE_GAP = 600.0        # 見本はめったに変わらないので10分に一度でよい
+
+
+def _aim_now(jpg: bytes) -> tuple:
+    """いまの1枚が見本からどれだけずれているか (shift, conf)。測れなければ (None, None)。
+
+    2026-09-24：カメラの向きの補正が古くなって、写真が274pxずれたまま21時間
+    「違う景色」で弾かれ続けた。**ずれを記録に残していなかったので、
+    いつから何pxずつずれたのかを後から追えなかった。**毎回の判定に残す。
+    この数字は D の毎日の見張りが読み、1日の中央値が 100px を超えたら知らせる
+    （弾かれる線は150px。越える前に気づくための位置）。"""
+    t = time.time()
+    if t - _ref_cache[0] > REF_CACHE_GAP:
+        _ref_cache[1] = read_object(AIM_REF_OBJ)
+        _ref_cache[0] = t
+    ref = _ref_cache[1]
+    if ref is None:
+        return None, None
+    dx, dy, resp = _frame_match(ref, jpg, VIEW_BAND)
+    return ([dx, dy], round(resp, 3)) if resp is not None else (None, None)
 
 
 def _view_ok(now: bytes) -> tuple:
