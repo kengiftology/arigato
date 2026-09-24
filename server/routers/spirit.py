@@ -1777,6 +1777,35 @@ async def home_set(key: str = "", pause: int = -1, pose: str = ""):
             "note": "区画は次に人が去ったときに立て直します"}
 
 
+@router.post("/hide")
+async def hide_set(key: str = "", level: int = -1, by: str = ""):
+    """撤去期（12/7〜12/20）に、顔と声を消す／戻す（2026-09-24）。
+
+    level 0＝ふつう　1＝画面だけ消す　2＝画面と声を消す。
+    level を付けずに呼べば、いまの値を見るだけ。
+
+    **C3 は抜かない。**人感も世話の判定も C3 の中にあるので、抜くと
+    「人が来た」「片づけられた」が両方とも記録されなくなり、比べる相手そのものが消える。
+    ここで印を立て、`/spirit/m` の6つめで C3 に渡す。手元の命令ではなくここに置くのは、
+    C3 が通信の絶えで起き直しても10秒で戻すため（2週間のあいだに必ず何度か起き直す）。
+
+    切り替えた時刻は face_state として残す。あとで期間を分けて数えるときの境目になる。"""
+    if not key_ok(key):
+        raise HTTPException(status_code=401, detail="bad key")
+    st = _load()
+    now = int(st.get("hide") or 0)
+    if level < 0:
+        return {"ok": True, "hide": now, "note": "level を付けると変えます（0/1/2）"}
+    if level not in (0, 1, 2):
+        raise HTTPException(status_code=400, detail="level は 0・1・2 のどれか")
+    st["hide"] = level
+    _save(st)
+    if level != now:
+        _log_event("face_state", {"hide": level, "was": now, "by": by or "unknown"})
+    return {"ok": True, "hide": level, "was": now,
+            "note": ["ふつう", "画面だけ消す", "画面と声を消す"][level]}
+
+
 @router.get("/hint", response_class=PlainTextResponse)
 async def hint():
     """目が数秒おきに覗きにくる札。探すべきなら sweep、でなければ空。
