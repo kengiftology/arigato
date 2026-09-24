@@ -708,6 +708,10 @@ static String processCmd(String cmd) {
         out += "NET ok " + String((millis() - lastHttpOk) / 1000) + "s ago wd " + String(wdBoots) + "\n";
         out += "CARE " + String(careCount) + "\n";
         out += String("QUIET ") + (QUIET ? "on" : "off") + "\n";
+        // 声の半端な1バイトを持ち越した回数（2026-09-24・研究トークC の直し）。
+        // **0より大きく出れば、砂嵐が実際に起きていた証拠**になる。0は証拠にならない
+        // （その再生でたまたま半端が来なかっただけ）。電源を入れ直すと0に戻る。
+        out += String("ODD ") + String(oddCarries) + "\n";
         out += String("HIDE ") + String(g_hide)
              + (g_hide == 0 ? " （ふつう）" : g_hide == 1 ? " （画面だけ消す）" : " （画面と声を消す）")
              + String("  MOOD ") + (faceSad ? "しょんぼり" : "ふだん") + "\n";
