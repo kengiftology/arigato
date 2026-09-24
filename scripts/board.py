@@ -60,7 +60,7 @@ def main():
                 c=cls_of(t) + (" key" if t["must"] and t["state"] != "済" else ""),
                 w=html.escape(short(t["who"])),
                 chk='<span class="check">✓</span> ' if t["state"] == "済" else "",
-                num=html.escape(t["num"]), name=html.escape(t["name"].split(" ", 1)[-1]))
+                num=html.escape(t["num"]), name=html.escape(t["name"].lstrip("✓— ").split(" ", 1)[-1]))
             for t in items)
         peak = PEAKS.get(d)
         cols.append(
