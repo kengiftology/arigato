@@ -1,0 +1,142 @@
+<title>地霊プロジェクト 締切盤</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#EFF2F1; --panel:#FFFFFF; --ink:#141C1A; --ink-2:#4B5754; --ink-3:#7E8A86;
+    --line:#D6DDDA; --line-2:#E8EDEB;
+    --matsu:#356B57;      /* 本人 */
+    --ai:#2F5D77;         /* 各トーク */
+    --amber:#9A6B1F;      /* 進行役 */
+    --alert:#A8412E;      /* 山場 */
+    --done:#8FA39C;
+    --today:#356B57;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#101614; --panel:#18201E; --ink:#E8EDEB; --ink-2:#AAB6B2; --ink-3:#7E8A86;
+      --line:#2A3431; --line-2:#212B28;
+      --matsu:#6FBF9B; --ai:#7FB4D2; --amber:#E0B063; --alert:#E08A76; --done:#5C6B66; --today:#6FBF9B;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#101614; --panel:#18201E; --ink:#E8EDEB; --ink-2:#AAB6B2; --ink-3:#7E8A86;
+    --line:#2A3431; --line-2:#212B28;
+    --matsu:#6FBF9B; --ai:#7FB4D2; --amber:#E0B063; --alert:#E08A76; --done:#5C6B66; --today:#6FBF9B;
+  }
+  body{
+    background:var(--paper); color:var(--ink);
+    font-family:"Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+    margin:0;
+  }
+  .wrap{ padding-inline:20px; padding-block:22px 40px; max-width:1680px; margin:0 auto; }
+
+  header.top{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:18px 28px; border-bottom:2px solid var(--ink); padding-bottom:14px; }
+  h1{ font-size:1.45rem; font-weight:700; letter-spacing:.04em; margin:0; text-wrap:balance; }
+  .sub{ color:var(--ink-2); font-size:.82rem; margin-top:4px; }
+  .counters{ display:flex; gap:22px; margin-left:auto; }
+  .counter{ text-align:right; }
+  .counter .n{ font-family:"Roboto Mono", ui-monospace, monospace; font-size:1.9rem; font-weight:500; line-height:1; font-variant-numeric:tabular-nums; }
+  .counter .n.alert{ color:var(--alert); }
+  .counter .l{ font-size:.7rem; color:var(--ink-3); letter-spacing:.12em; margin-top:5px; }
+
+  .legend{ display:flex; flex-wrap:wrap; gap:6px 16px; margin:14px 0 18px; font-size:.75rem; color:var(--ink-2); align-items:center; }
+  .key{ display:inline-flex; align-items:center; gap:6px; }
+  .dot{ width:9px; height:9px; border-radius:2px; }
+  .dot.me{background:var(--matsu)} .dot.talk{background:var(--ai)} .dot.lead{background:var(--amber)} .dot.done{background:var(--done)}
+
+  .days{ display:grid; grid-template-columns:repeat(12, minmax(168px,1fr)); gap:10px; overflow-x:auto; padding-bottom:10px; }
+  .day{ background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:10px 10px 12px; display:flex; flex-direction:column; gap:8px; min-height:230px; }
+  .day.is-today{ border-color:var(--today); box-shadow:inset 0 3px 0 var(--today); }
+  .day.is-peak .date{ color:var(--alert); }
+  .day.is-after{ background:transparent; border-style:dashed; }
+  .date{ display:flex; align-items:baseline; gap:7px; font-family:"Roboto Mono", monospace; font-variant-numeric:tabular-nums; }
+  .date .d{ font-size:1.05rem; font-weight:500; }
+  .date .w{ font-size:.72rem; color:var(--ink-3); }
+  .hours{ font-size:.68rem; color:var(--ink-3); letter-spacing:.06em; }
+  .peak{ font-size:.68rem; color:var(--alert); font-weight:700; letter-spacing:.08em; }
+
+  ul.tasks{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:5px; }
+  li.t{ display:grid; grid-template-columns:auto 1fr; gap:6px; align-items:start; font-size:.76rem; line-height:1.35; padding-left:7px; border-left:2px solid var(--line-2); }
+  li.t.me{ border-left-color:var(--matsu); }
+  li.t.talk{ border-left-color:var(--ai); }
+  li.t.lead{ border-left-color:var(--amber); }
+  li.t.done{ border-left-color:var(--done); color:var(--ink-3); }
+  li.t.key{ font-weight:700; }
+  .who{ font-family:"Roboto Mono", monospace; font-size:.66rem; color:var(--ink-3); padding-top:1px; letter-spacing:.04em; }
+  li.t.me .who{ color:var(--matsu); }
+  li.t.talk .who{ color:var(--ai); }
+  li.t.lead .who{ color:var(--amber); }
+  .num{ font-family:"Roboto Mono", monospace; font-size:.68rem; color:var(--ink-3); }
+  .check{ color:var(--done); }
+
+  .bands{ display:grid; grid-template-columns:repeat(auto-fit, minmax(280px,1fr)); gap:14px; margin-top:26px; }
+  .band{ background:var(--panel); border:1px solid var(--line); border-radius:3px; padding:14px 16px; }
+  .band h2{ font-size:.74rem; letter-spacing:.14em; color:var(--ink-3); margin:0 0 10px; font-weight:500; }
+  .band ul{ margin:0; padding-left:1.1em; font-size:.82rem; line-height:1.6; color:var(--ink-2); }
+  .band ul li::marker{ color:var(--line); }
+  .band strong{ color:var(--ink); }
+  .band.warn{ border-left:3px solid var(--alert); }
+
+  @media (max-width:760px){
+    .days{ grid-template-columns:repeat(12, 78vw); }
+    .counters{ margin-left:0; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>地霊プロジェクト 締切盤</h1>
+      <div class="sub">手を動かせるのは 10/4（日）まで。10/5（月）から観察期間（〜12/6・9週間）。Notion のタスクDBから自動で作っている（{{UPDATED}} 時点）。</div>
+    </div>
+    <div class="counters">
+      <div class="counter"><div class="n">{{LEFT}}</div><div class="l">凍結まで</div></div>
+      <div class="counter"><div class="n alert">{{MUST}}</div><div class="l">凍結前に要るもの</div></div>
+      <div class="counter"><div class="n">{{DONE}}</div><div class="l">済んだ仕事</div></div>
+    </div>
+  </header>
+
+  <div class="legend">
+    <span class="key"><span class="dot me"></span>本人</span>
+    <span class="key"><span class="dot talk"></span>各トーク（A 精度／B 実機と数字／C 声と対話／D C3と見張り／E 盤面）</span>
+    <span class="key"><span class="dot lead"></span>進行役</span>
+    <span class="key"><span class="dot done"></span>済み</span>
+    <span class="key" style="margin-left:auto"><strong>太字</strong>＝凍結前に要るもの</span>
+  </div>
+
+  <div class="days">
+{{DAYS}}
+  </div>
+
+  <div class="bands">
+    <div class="band warn">
+      <h2>外れたら計画を組み直す前提</h2>
+      <ul>
+        <li><strong>10/4 を過ぎたら設定を変えない。</strong>変えると前後で比べられなくなる</li>
+        <li><strong>撤去期（12/7〜12/20）が唯一の対照。</strong>だから何があっても動かさない</li>
+        <li><strong>撤去の仕組みは 9/30 までに C3 へ焼く。</strong>過ぎると12月に焼けない</li>
+        <li>精度は 9/29 に見切る。それ以上は追わない</li>
+      </ul>
+    </div>
+    <div class="band">
+      <h2>いま動いている一番大きな仕事</h2>
+      <ul>
+        <li><strong>場所を育てる（2.7）</strong>：区画はシンク＋2で確定。4つ目は 9/30 の予備枠</li>
+        <li><strong>本人の手が要るのは 9/26 だけ</strong>：区画の候補を4か所ぶん選び、見本をまとめて撮る</li>
+        <li><strong>9/28 夜の関門</strong>：積もりが本番で見えたか。見えなければ広げず固める</li>
+        <li>落とす順番：4区画目 → 3区画目 → 機嫌の合成 →（ここから下は落とさない）履歴・佇まい</li>
+      </ul>
+    </div>
+    <div class="band">
+      <h2>いま空いている穴</h2>
+      <ul>
+        <li><strong>ベースラインが無い。</strong>装置なしの共有空間のデータは事実上ゼロ</li>
+        <li><strong>主張#6（人ごとに関係が積もる）が未検証。</strong>研究はここに全部乗っている</li>
+        <li>誰か分かるのが4回に1回（9/23：53回来て13回）</li>
+        <li>最初の一歩を何が起こすか、先行事例に支えが無い</li>
+      </ul>
+    </div>
+  </div>
+</div>
