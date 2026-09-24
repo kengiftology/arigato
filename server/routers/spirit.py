@@ -2082,12 +2082,36 @@ def _memory() -> dict:
     return out
 
 
+_alive_read = [0.0, {}]     # 保存された「最後に来た時刻」の読み置き（時刻, 中身）
+ALIVE_READ_GAP = 30.0       # これより新しければ 読み直さない
+
+
+def _alive_saved() -> dict:
+    """保存された「最後に来た時刻」を、そのつど読み直す（2026-09-24）。
+
+    `_load()` は起動時に一度読んだきりを返し続けるので、ここには使えない。
+    クラウドは同時に何台も動くことがあり、**写真を受け取っていない台**は
+    自分の頭の中に camera の覚えを持たない。その台が起動時の値を握り続けると、
+    時間だけが過ぎて、やがて嘘の「止まっている」を出す。
+    30秒に一度だけ読み直して、どの台から見ても同じ答えになるようにする。"""
+    now = time.time()
+    if now - _alive_read[0] < ALIVE_READ_GAP:
+        return _alive_read[1]
+    try:
+        snap = _doc().get()
+        _alive_read[1] = ((snap.to_dict() or {}).get("alive") or {}) if snap.exists else {}
+    except Exception as e:
+        logger.warning("alive read failed: %s", e)
+    _alive_read[0] = now
+    return _alive_read[1]
+
+
 def _health() -> dict:
     """機械ごとに、最後に来てから何秒たったか・止まっていそうか。"""
     now = time.time()
     up = now - _BOOT_AT
     items, bad = [], []
-    saved = (_load().get("alive") or {})       # 起動し直す前の「最後に来た時刻」
+    saved = _alive_saved()                     # 起動し直す前・別のインスタンスの「最後に来た時刻」
     for k, limit in ALIVE_LIMIT.items():
         t = max(_ALIVE[k], float(saved.get(k) or 0))
         ago = round(now - t) if t else None
