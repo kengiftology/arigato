@@ -795,10 +795,16 @@ def _identify(st: dict, data: bytes):
     # それぞれの顔が別々にまとまる（2026-09-12 夜）。
     people = []
     taken = set()        # 同じ写真に写っている2人は別人（2026-09-17）。先に決まったIDは他の顔に付けない
+    usable = named = 0   # 照合に使えた顔と、名前が付いた顔（2026-09-24）
     for f in found:
+        was = (st.get("last_face") or {}).get("t")
         r = _identify_one(st, f["crop"], f["px"], f.get("edge"), f.get("pos"),
                           f.get("up"), f.get("ratio"), f.get("pts"), f.get("front"),
                           taken=taken)
+        # last_face は「照合に使える顔（物ではない）」のときだけ書き換わる。
+        # 書き換わったのに名前が付かなかった顔＝未登録の人か、見分けられなかった人。
+        if (st.get("last_face") or {}).get("t") != was:
+            usable += 1
         _collect_face(f, (r or {}).get("person", ""))
         if r:
             # 確定した顔の枠（2026-09-22）。複数人のとき、服装で相手を指して
@@ -807,6 +813,12 @@ def _identify(st: dict, data: bytes):
             r = dict(r, box_cx=cx, box_cy=cy, box_w=f["px"])
             people.append(r)
             taken.add(r["person"])
+    named = len(people)
+    if usable > named:
+        # 名前のつかない顔が写った時刻をためる（2026-09-24）。世話の記録に unknown_recent を添える。
+        now_ = time.time()
+        buf = [t for t in (st.get("unknown_at") or []) if now_ - float(t) <= 900]
+        st["unknown_at"] = (buf + [now_] * (usable - named))[-40:]
     if not people:
         return {"person": None, "px": px}
     # 先頭＝一番大きく写っている人。いま目の前に居る相手として扱う。
@@ -1280,6 +1292,11 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                     if pid not in vis:
                         vis.append(pid)
                 st["seen_people"], st["visit_people"] = seen[-8:], vis[-8:]
+                # 人ごとの「最後に見た時刻」（2026-09-24）。世話の記録に seen_ago を添えるのに使う。
+                sa = dict(st.get("seen_at") or {})
+                for pid in res.get("all") or [res["person"]]:
+                    sa[pid] = now
+                st["seen_at"] = {k: v for k, v in sa.items() if now - float(v) <= 86400}
                 _keep_shot(st, now, data, res["person"])
                 _lap("shot")
                 from server.routers import spirit_name
@@ -1828,8 +1845,21 @@ async def hint_clear():
 
 @router.get("/care", response_class=PlainTextResponse)
 async def care(n: int = 0):
-    """C3が世話イベント検出時に報告してくる。研究の主要指標なので必ず時刻つきで残す。"""
-    _log_event("care", {"count": n})
+    """C3が世話イベント検出時に報告してくる。研究の主要指標なので必ず時刻つきで残す。
+
+    2026-09-24：そのとき誰が居たかも一緒に残す。それまでは件数と時刻だけだったので、
+    9/16〜9/23 の世話76件のうち51件が誰にも結びつかなかった。
+    **1人に決め打ちしない。**居た人を複数のまま、何秒前に見たかと、
+    直近10分の「名前のつかない顔」の数を並べて残す。後から数え方を変えられるように。"""
+    st = _load()
+    now = time.time()
+    seen = list(st.get("visit_people") or [])
+    sa = st.get("seen_at") or {}
+    _log_event("care", {"count": n,
+                        "seen": seen,
+                        "seen_ago": {p: round(now - float(sa[p])) for p in seen if p in sa},
+                        "unknown_recent": len([t for t in (st.get("unknown_at") or [])
+                                               if now - float(t) <= 600])})
     return "ok\n"
 
 
