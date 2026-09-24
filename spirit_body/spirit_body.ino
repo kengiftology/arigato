@@ -733,6 +733,10 @@ static String processCmd(String cmd) {
                 char hx[3] = {vh[i], vh[i + 1], 0};
                 vb[vn++] = (uint8_t)strtol(hx, NULL, 16);
             }
+            if (hideVoice()) {                 // 撤去期（画面と声を消す）は試験用の口からも鳴らさない
+                out += "HIDE 2 のため鳴らしません\n";
+                return out;
+            }
             out += "OK say\n";
             speak(vb, vn, (uint32_t)mask);
             return out;
@@ -993,6 +997,10 @@ void loop() {
             voiceUsed++;
         } else if (voiceOnce) {                // murコマンドの強制発声（テスト用・上限外）
             voiceOnce = false;
+            // 撤去期に「画面と声を消す」を選んでいる間は、試験用の口からも音を出さない。
+            // ここを開けておくと、12月に誰かが試したひと声が対照期間に混ざり、
+            // しかも記録に残らない（2026-09-24）。
+            if (hideVoice()) return;
             speakCloud();
         }
         // 何を・いつ鳴らすかはクラウドが決める（1分に1回・滞在の最初の5分）。
