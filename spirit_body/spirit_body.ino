@@ -944,26 +944,32 @@ void loop() {
     }
     uint32_t now = millis();
 
-    // 撤去期（2026-09-24）：出す場面は全部のみ込む。**数えるのは止めない**（喜びの回数・
-    // 世話の数え・在室の報告はそのまま）。見え方と聞こえ方だけを消す。
-    if (hideFace()) pendingScene = 0;
-
+    // 撤去期（2026-09-24）：**絵と音を別々に止める。**
+    //   1＝画面だけ消す → 音はふだんどおり（喜びの短い曲も鳴る）
+    //   2＝画面と声を消す → どちらも出ない
+    // 12月にどちらを選んでも、そのとおりに動くようにしておく（あとで焼き直せないため）。
+    // 数えるのは止めない（喜びの回数・世話の数え・在室の報告はそのまま）。
     if (pendingScene == 1) {                   // 人が来た → 「!」の絵だけ（音なし・通過でうるさくしない）
         pendingScene = 0;
         sleeping = false;
-        playAnim(anim_notice, 1);
+        if (!hideFace()) playAnim(anim_notice, 1);
         return;
     }
     if (pendingScene == 2) {                   // 喜び
         pendingScene = 0;
         sleeping = false;
-        melodyHappy();
-        playAnim(anim_happy, 1);
+        if (!hideVoice()) melodyHappy();       // 画面だけ消すときは、喜びの曲は鳴らす
+        if (!hideFace())  playAnim(anim_happy, 1);
         return;
     }
-    if (pendingScene == 3) { pendingScene = 0; playAnim(anim_sad, 1); return; }
-    if (pendingScene == 4) { pendingScene = 0; playAnim(anim_sleep, 2); return; }
-    if (pendingScene == 5) { pendingScene = 0; playAnim(anim_hatch, 1); if (!QUIET) melodyHatch(); return; }
+    if (pendingScene == 3) { pendingScene = 0; if (!hideFace()) playAnim(anim_sad, 1); return; }
+    if (pendingScene == 4) { pendingScene = 0; if (!hideFace()) playAnim(anim_sleep, 2); return; }
+    if (pendingScene == 5) {
+        pendingScene = 0;
+        if (!hideFace()) playAnim(anim_hatch, 1);
+        if (!QUIET && !hideVoice()) melodyHatch();
+        return;
+    }
 
     if (!sleeping && now - lastMotion > SLEEP_AFTER_MS) sleeping = true;
     // 2026-09-19：眠りの絵は、クラウドとのやりとりの「あと」で出す（下）。

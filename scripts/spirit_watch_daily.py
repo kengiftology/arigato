@@ -20,6 +20,7 @@ BASE = "https://arigato-3ipecjbnha-an.a.run.app"
 OUT = "C:/Users/kengk/.arigato/watch"
 JUDGE_GAP_H = 3.0          # 見回りの判定がこれだけ空いたらおかしい
 AIM_WARN_PX = 100.0        # 1日の「ずれ」の真ん中がこれを超えたら知らせる
+AIM_MIN_CONF = 0.08        # これ未満の回は、ずれの数字が当てにならないので数に入れない
 # なぜ「判定が0件」を待たないか（9/24 の実例）：カメラの向きの補正が古くなると、
 # ずれは一気に壊れるのではなく**じわじわ大きくなり**、ある日いきなり全部弾かれて
 # 判定が止まる。丸1日気づけなかった（20時間50分）。実測では正しい向きで 0〜106px、
@@ -104,9 +105,25 @@ def main():
             gaps.append((a, b))
 
     # カメラの向きのずれ（判定の記録に入っていれば見る）
-    # 判定には `aim_shift`、飛ばした記録には前から `shift` が入っている。どちらも同じ「ずれ」
-    aims = [v for v in (aim_len(r.get("aim_shift") or r.get("shift")) for r in judges + skips)
-            if v is not None]
+    # **確かさが低い回のずれは当てにならないので、数に入れない**（9/24 研究トークB の実測）。
+    #   正しい向き　　　… ずれ -139px・確かさ 0.187
+    #   まったく別方向　… ずれ  -32px・確かさ 0.010
+    # 別方向のほうがずれが小さく出る。ずれだけ見ると、**本当にずれた日を見逃して、
+    # 正常な日に鳴る**。だから確かさで先にふるいにかける。
+    # 飛ばした記録はそもそも確かさが足りなくて弾かれた回なので、ここには入れない。
+    aims, low = [], 0
+    for r in judges:
+        v = aim_len(r.get("aim_shift"))
+        if v is None:
+            continue
+        try:
+            conf = float(r.get("aim_conf"))
+        except Exception:
+            conf = None
+        if conf is None or conf < AIM_MIN_CONF:
+            low += 1              # 当てにならない回。数えるだけ
+        else:
+            aims.append(v)
     aim_mid = median(aims)
     aim_max = max(aims) if aims else None
 
@@ -135,9 +152,10 @@ def main():
     L.append("| 段階の受け渡しを止めた | %d |" % len(stops))
     L.append("| 世話 | %d（やった人が空 %d）|" % (len(cares), len(noone)))
     L.append("| C3 の起動 | %d（うち見張りによる %d）|" % (len(boots), len(wd)))
-    if aim_mid is not None:
-        L.append("| カメラの向きのずれ | 真ん中 %.0fpx ／ いちばん大きいとき %.0fpx（%d回ぶん）|"
-                 % (aim_mid, aim_max, len(aims)))
+    if aim_mid is not None or low:
+        L.append("| カメラの向きのずれ | %s（確かさが足りず数えなかった回 %d）|"
+                 % ("真ん中 %.0fpx ／ いちばん大きいとき %.0fpx（%d回ぶん）"
+                    % (aim_mid, aim_max, len(aims)) if aim_mid is not None else "数えられる回なし", low))
     L.append("")
     if aim_mid is not None:
         L.append("※ ずれは日ごとに並べて見ること。**じわじわ大きくなって、ある日いきなり止まる。**")
