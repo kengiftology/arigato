@@ -468,6 +468,11 @@ static bool httpGet(const char *path, char *body, int bodysz) {
 }
 // クラウドで作った日本語の声を取りに行って、そのまま流す（2026-08-31）。
 // 一言そのものを喋らせる。母音の合成音とは別系統で、字幕と同じ言葉が耳で届く。
+// 半端な1バイトを持ち越した回数（2026-09-24）。stat に出せば「砂嵐がほんとうに
+// 起きていたか」の証拠になる。0でも直った証拠にはならない（たまたま奇数が
+// 来なかっただけのことがある）。0より大きい値が出たときだけが証拠。
+static uint32_t oddCarries = 0;
+
 static bool speakCloud() {
     if (srcPort != 443 || WiFi.status() != WL_CONNECTED) return false;
     WiFiClientSecure tls;
@@ -490,24 +495,38 @@ static bool speakCloud() {
         } else if (ch != '\r') line += ch;
     }
     if (!body) { tls.stop(); return false; }
-    uint8_t buf[512];
+    uint8_t buf[514];                              // +2＝前回の半端な1バイトを頭に置く余地
     size_t total = 0;
     t0 = millis();
     // 声の大きさで口を動かす（2026-09-23）。512バイト＝16ミリ秒ぶんなので、
     // 6回ためして（約100ミリ秒）から動かす。人の口の速さに近く、絵の描き直しも減る。
     long acc = 0; int accN = 0;
+    // 2026-09-24：本人「砂嵐がすごくて何を言っているか分からなかった」。
+    // 音の部品（ESP_I2S.cpp 1227〜1231行）は、渡された長さが2バイトに満たないと
+    // 黙って捨てて0を返す。声は2バイトで1つの数（16ビット）なので、通信から
+    // 1バイトだけ届いた瞬間にその1バイトが消え、**以後ずっと上の桁と下の桁が
+    // 入れ替わったまま鳴る＝砂嵐**になる。その再生が終わるまで直らない。
+    // （2バイト以上なら部品の中で書き切るので、奇数でもずれない。捨てられるのは
+    //   ちょうど1バイトのときだけ。）
+    // 机の上で真似た結果：10回中7回が壊れ（食い違い1.0〜94.6%）、
+    // 余りを持ち越す形にすると10回とも0%。
+    int odd = 0;                                   // 持ち越した半端な1バイト（0 か 1）
     mouthBegin();
     while (millis() - t0 < 20000) {
         int avail = tls.available();
         if (avail > 0) {
-            int n = tls.read(buf, min(avail, (int)sizeof(buf)));
+            int n = tls.read(buf + odd, min(avail, 512));
             if (n > 0) {
-                for (int i = 0; i + 1 < n; i += 2) {
+                n += odd;                          // 持ち越しを頭に足した長さ
+                int even = n & ~1;                 // 流すのは偶数ぶんだけ
+                for (int i = 0; i + 1 < even; i += 2) {
                     int16_t s = (int16_t)((uint16_t)buf[i] | ((uint16_t)buf[i + 1] << 8));
                     acc += (s < 0) ? -(long)s : (long)s;
                 }
-                accN += n / 2;
-                i2s.write(buf, n);                 // 音を送ったあとの合間に描く（途切れさせない）
+                accN += even / 2;
+                if (even) i2s.write(buf, even);    // 音を送ったあとの合間に描く（途切れさせない）
+                odd = n - even;                    // 余りは次へ
+                if (odd) { buf[0] = buf[even]; oddCarries++; }
                 if (accN >= 256 * 6) {
                     mouthSet(mouthLevelOf(acc / accN));
                     acc = 0; accN = 0;
