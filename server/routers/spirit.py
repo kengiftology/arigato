@@ -865,12 +865,18 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
         # 「顔は見えた」ことだけ残して、呼ぶ側に撮り直しを任せる。
         _log_small("too_small_to_match", px)
         return None
-    if not up:
-        # 大きく傾いた顔（起き具合1.70超）。誰かを決めるのにも、覚えるのにも使わない。
-        # 記憶に混ぜると、そのIDが誰でも吸い込む網になる（2026-09-05の実測）。
-        # 「人が居る」の合図としては、このあとも変わらず使われる。
-        _log_small("looking_down", px, ratio=round(ratio, 2) if ratio else None)
-        return None
+    dn = not up
+    if dn:
+        # 大きく傾いた顔（起き具合1.70超）＝洗い物や食事でうつむいた顔。
+        # 2026-09-24 まではここで捨てていた。いちばん見たい場面がまるごと落ちるので、
+        # **照合にだけ使う**ことにした。ただし次の3つを守る（2026-09-05 に「誰でも吸い込む網」に
+        # なったのと同じ轍を踏まないため）：
+        #   ・この1枚だけで決める（数コマの平均に混ぜない。混ぜると正面のコマの点数まで下がり、
+        #     決まらなかった顔が後で新しい人になって割れが増える。実測：ID 7個→10個）
+        #   ・ここから新しい人は作らない（うつむきは体系的に「知らない人」の側へ寄る）
+        #   ・覚えない（_learn_memory は正面だけなので、そのままで満たされる）
+        # 9/12〜15 の2,306枚：名前が付いた顔 860→1078枚・別人 0枚のまま・ID 7個のまま。
+        front = False
     if _is_furniture(pos, px):
         # 同じ場所から動かない「顔」。置いてある物なので、
         # 誰かを決めるのにも、新しいIDを出すのにも使わない。
@@ -895,7 +901,13 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
                            "scores": {k: round(v, 3) for k, v in face.score_frames([one], known).items()}}
     except Exception as e:
         logger.warning("last_face failed: %s", e)
-    frames, n, best_px, spread = _remember_face(st, one, px, pos)
+    if dn:
+        # うつむきは束ねないので「何コマ揃ったか」は数えない。下の枚数の条件は通す
+        # （小さい顔の3コマ条件も含めて。9/12〜15 の2,306枚では、通しても別人は0枚のまま
+        #  名前が付く顔が 977→1078枚に増えた）。
+        frames, n, best_px, spread = [one], FACE_MIN_FRAMES_SMALL, px, 0.0
+    else:
+        frames, n, best_px, spread = _remember_face(st, one, px, pos)
     need = FACE_MIN_FRAMES_SMALL if best_px < FACE_SMALL_PX else FACE_MIN_FRAMES
     if n < need and known:
         # まだ1コマしか無い。人が居ることは確かなので、そう伝えるだけにして、
@@ -916,6 +928,13 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
     note = {"sim": round(sim, 3), "sim1": round(sim1, 3), "n": n, "px": best_px}
     db = get_db()
     if pid is None:                                  # 初めて見る顔
+        if dn:
+            # うつむきの顔からは新しいIDを出さない（2026-09-24）。うつむきは体系的に
+            # 「知らない人」の側へ寄るので、ここから登録すると同じ人が何度も生まれる。
+            # 下の not_front でも同じく弾かれるが、理由が「傾きすぎ」だと数えるときに
+            # 紛れるので、先にうつむきとして記録する。
+            _log_small("dn_no_new", best_px, sim=round(sim, 3), n=n)
+            return None
         if not front:
             # 照合には使えるが、新しいIDを出すには傾きすぎ（1.30〜1.70）。
             # 傾いた顔から卵を作ると、そのIDが誰でも吸い込む網になる。
@@ -2135,12 +2154,17 @@ async def state_dump(key: str = ""):
 
 
 @router.get("/export")
-async def export_all():
-    """論文分析用：機械ログと観察メモをまとめてJSONで返す。"""
-    out = {"spirit_log": [], "fieldnotes": []}
+async def export_all(since: float = 0.0, limit: int = 20000):
+    """論文分析用：機械ログと観察メモをまとめてJSONで返す。
+
+    since（UNIX秒）から後だけを返す（2026-09-24）。古い順に2万件で打ち止めだったため、
+    8/30〜9/15 しか取り出せず、9/16以降が読めなかった。#6 の時間差の分析はここを読む。"""
+    out = {"spirit_log": [], "fieldnotes": [], "since": since}
     try:
-        out["spirit_log"] = [d.to_dict() for d in get_db().collection(
-            "spirit_log").order_by("t").limit(20000).stream()]
+        q = get_db().collection("spirit_log")
+        if since:
+            q = q.where("t", ">=", float(since))
+        out["spirit_log"] = [d.to_dict() for d in q.order_by("t").limit(min(limit, 20000)).stream()]
         out["fieldnotes"] = [d.to_dict() for d in get_db().collection(
             "fieldnotes").order_by("t").limit(5000).stream()]
     except Exception as e:
@@ -4554,9 +4578,14 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
         # 真ん中の案（本人決定 2026-09-09）：去った後にシンクが空なら、来る前がどうであれ
         # 居た人ぜんぶに +1。自分の分を片づけて帰った人も、他人の分を片づけた人もなつく。
         # 使って散らかしたままは 0（下げない）。一度の滞在で +1 は1回だけ（_bond_up）。
+        # 2026-09-24：誰も見分けられなかった滞在も残す。以前は `if who:` の中だけで
+        # 書いていたので、分からなかった滞在が1件も残らず、「世話が起きた滞在のうち
+        # 誰がやったか分かった割合」の分母が作れなかった（9/10〜15 は滞在26件すべてが
+        # 「分かった」に見えるが、分からなかった滞在が記録されていないだけ）。
+        _log_event("visit", {"who": who, "sink_empty": empty,
+                             "stay": {k: round(stays[k]) for k in who},
+                             "seen": bool(st.get("visit_seen"))})
         if who:
-            _log_event("visit", {"who": who, "sink_empty": empty,
-                                 "stay": {k: round(stays[k]) for k in who}})
             if empty:
                 st["sink_level"] = 0                      # 空＝一番きれい（Aは戻す合図）
                 st["score"] = st["raw_score"] = 0.0
