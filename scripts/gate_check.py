@@ -72,17 +72,34 @@ def main():
     else:
         print("   確定していない相手への挨拶 %d件 → 判定：%s" % (len(wrong), "○" if not wrong else "×"))
 
-    # ③ 履歴が貯まっているか（A が出す。ここでは記録から見える範囲）
+    # ③ 履歴が貯まっているか（A の /spirit/history を先に見る。無ければ記録から数える）
+    try:
+        with urllib.request.urlopen(BASE + "/spirit/history?days=1", timeout=20) as r:
+            h = json.loads(r.read().decode())
+        print("\n③ 履歴が貯まっているか（A の /spirit/history）")
+        print("   人 %s・区画 %s・人×区画の組 %s（%s 以降・更新 %s）"
+              % (h.get("people"), h.get("zones"), h.get("pairs"),
+                 h.get("since"), h.get("updated", "?")))
+        print("   判定：%s（2人以上・2区画以上で合格）"
+              % ("○" if (h.get("people", 0) >= 2 and h.get("zones", 0) >= 2) else "×"))
+        for who, z in (h.get("table") or {}).items():
+            print("     %s → %s" % (who, z))
+        return_after_three = True
+    except Exception:
+        return_after_three = False
+
+    # ③の控え：記録から見える範囲で数える
     cares = [e for e in ev if e.get("kind") == "care" and e.get("zone")]
     by_person = collections.defaultdict(set)
     for c in cares:
         by_person[c.get("person")].add(c["zone"])
     n_people = len([p for p in by_person if p])
     n_zones = len({z for s in by_person.values() for z in s})
-    print("\n③ 履歴が貯まっているか")
-    print("   世話の記録 %d件／人 %d人／区画 %d か所 → 判定：%s（2人以上・2区画以上で合格）"
-          % (len(cares), n_people, n_zones, "○" if n_people >= 2 and n_zones >= 2 else "×"))
-    print("   ※ 本体は A の cares_by_zone。ここは記録から見える範囲の目安")
+    if not return_after_three:
+        print("\n③ 履歴が貯まっているか（控え：記録から数えた目安）")
+        print("   世話の記録 %d件／人 %d人／区画 %d か所 → 判定：%s（2人以上・2区画以上で合格）"
+              % (len(cares), n_people, n_zones, "○" if n_people >= 2 and n_zones >= 2 else "×"))
+        print("   ※ /spirit/history がまだ無い。本体は A のこの口")
 
     # ④ 1周の実測（合否には使わない）
     judges = [e for e in ev if e.get("kind") == "judge"]
