@@ -330,6 +330,11 @@ def _load() -> dict:
 
 def _save(st: dict):
     global _state_cache
+    # 「最後に来た時刻」も一緒に残す（2026-09-24）。クラウドは1日に何度も起動し直すので、
+    # 覚えを頭の中だけに置くと、そのたびに「まだ一度も来ていない」に戻る。
+    # そのあいだ _health() は「起動したばかりだから」で無事と答え、**止まっている装置が隠れる**。
+    # 9/24、橋渡しが1時間51分止まったのに、途中の見張りが「無事」と答えた時間があった。
+    st["alive"] = {k: v for k, v in _ALIVE.items() if v}
     _state_cache = st
     try:
         _doc().set(st)
@@ -2063,13 +2068,14 @@ def _health() -> dict:
     now = time.time()
     up = now - _BOOT_AT
     items, bad = [], []
+    saved = (_load().get("alive") or {})       # 起動し直す前の「最後に来た時刻」
     for k, limit in ALIVE_LIMIT.items():
-        t = _ALIVE[k]
+        t = max(_ALIVE[k], float(saved.get(k) or 0))
         ago = round(now - t) if t else None
         if t:
             ok = ago <= limit
         else:
-            ok = up <= limit          # 起動したばかりで、まだ来ていないだけかもしれない
+            ok = up <= limit          # 一度も来ておらず、保存された覚えも無い（本当の初回）
         items.append({"id": k, "name": ALIVE_NAME[k], "ago": ago, "limit": limit,
                       "ok": ok, "unknown": not t})
         if not ok:
