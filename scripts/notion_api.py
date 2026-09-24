@@ -62,7 +62,10 @@ def tasks() -> list:
                 "state": sel(p["状態"]),
                 "who": sel(p["担当"]),
                 "must": p["凍結前必須"]["checkbox"],
+                "site": (p.get("現場が要る") or {}).get("checkbox", False),
                 "due": (p["期限"].get("date") or {}).get("start"),
+                "due_end": ((p["期限"].get("date") or {}).get("end")
+                            or (p["期限"].get("date") or {}).get("start")),
             })
         cur = d.get("next_cursor")
         if not d.get("has_more"):
