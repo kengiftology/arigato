@@ -1528,7 +1528,20 @@ async def get_m(boot: str | None = None, joy: int | None = None):
         listen = 1 if float(st.get("listen_until") or 0) > now else 0
     except Exception:
         listen = 0
-    return "%.3f %.3f %d %d %d\n" % (st["score"], n, 1 if st["empty"] else 0, stage, listen)
+    # 6つめ＝撤去期に何を消すか（2026-09-24 本人の決定）。12/7〜12/20 は主張#5 の唯一の対照。
+    #   0＝ふつう　1＝画面だけ消す　2＝画面と声を消す
+    # 「声も消すかどうか」は12月に決めることになったので、両方作って**選ぶだけ**にしてある。
+    # C3 を抜くわけにはいかない（人感も世話の判定も C3 の中にある）ので、
+    # 置いたまま見え方・聞こえ方だけを止める。記録する側は何も変えない。
+    # 手元の命令ではなくここに置くのは、C3 が起動し直しても10秒で戻すため
+    # （C3 は通信が5分絶えると自分で起動し直す。2週間のあいだに必ず何度か起きる）。
+    try:
+        hide = int(st.get("hide") or 0)
+        hide = hide if hide in (0, 1, 2) else 0
+    except Exception:
+        hide = 0
+    return "%.3f %.3f %d %d %d %d\n" % (
+        st["score"], n, 1 if st["empty"] else 0, stage, listen, hide)
 
 
 # 直近の問い合わせで C3 に渡したもの（時刻, 人, 段階, 顔で確かめてからの秒）。

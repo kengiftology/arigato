@@ -614,6 +614,24 @@ static inline bool listening() {
     return listenUntil != 0 && (int32_t)(millis() - listenUntil) < 0;
 }
 
+// ---- 撤去期に消す（2026-09-24 本人の決定・12/7〜12/20）----
+// 0＝ふつう　1＝画面だけ消す　2＝画面と声を消す。`/spirit/m` の6つめで受け取る。
+// 「声も消すかどうか」は12月に決めるので、両方作って選ぶだけにしてある。
+// **C3 は抜かない。**人感も世話の判定もこの中にあるので、抜くと比べる相手そのものが消える。
+// 記憶に残すのは、起動し直してから最初の問い合わせまでの数秒に顔が出ないようにするため。
+static int g_hide = 0;
+static inline bool hideFace()  { return g_hide >= 1; }
+static inline bool hideVoice() { return g_hide >= 2; }
+
+// ---- しょんぼり顔は「場所の状態」で決める（2026-09-24 本人の決定・(c)）----
+// 前は「散らかったまま5分たつと」しょんぼりになる作りで、**同じ散らかり具合でも
+// 時間がたっただけで顔が悪くなっていた**。それは不足の表示ではなく催促に近い。
+// いまは散らかり具合そのものだけを見る。さらに**人が居る間は変えない**（料理の最中に
+// 顔が曇ると、その人を責めることになるため）。人が居なくなってから次の値で塗り替える。
+static const float M_MESSY = 0.30f;     // クラウドの M_HI と同じ
+static bool faceSad = false;            // いま出している気分（人が居る間は固定）
+static bool blanked = false;            // 撤去期に画面をもう黒く塗ったか
+
 // 1行コマンドを処理して返事を返す（シリアル・無線UDPの共通部）。
 // pcmストリーミングだけはシリアル専用（serialPcm側で処理）。
 static String processCmd(String cmd) {
@@ -632,6 +650,13 @@ static String processCmd(String cmd) {
         sscanf(cmd.c_str(), "listen %d", &v);
         listenUntil = v ? millis() + LISTEN_MAX_MS : 0;
         // 返事はこの関数の最後で「OK <命令>」が付く。ここで足すと二重になる
+    }
+    else if (cmd.startsWith("hide")) {                      // hide 0|1|2（試験用）
+        // 本番の持ち主はクラウド（`/m` の6つめ）。ここは手元で見え方を確かめるための口で、
+        // 次の問い合わせ（10秒以内）でクラウドの値に戻される。
+        int v = 0;
+        sscanf(cmd.c_str(), "hide %d", &v);
+        if (v >= 0 && v <= 2) { g_hide = v; havePrev = false; }
     }
     else if (cmd.startsWith("m ")) {                        // m 0.8 … M値を手で注入（テスト）
         float mv;
@@ -683,6 +708,9 @@ static String processCmd(String cmd) {
         out += "NET ok " + String((millis() - lastHttpOk) / 1000) + "s ago wd " + String(wdBoots) + "\n";
         out += "CARE " + String(careCount) + "\n";
         out += String("QUIET ") + (QUIET ? "on" : "off") + "\n";
+        out += String("HIDE ") + String(g_hide)
+             + (g_hide == 0 ? " （ふつう）" : g_hide == 1 ? " （画面だけ消す）" : " （画面と声を消す）")
+             + String("  MOOD ") + (faceSad ? "しょんぼり" : "ふだん") + "\n";
         out += String("LISTEN ") + (listening() ? "on" : "off")
              + (listening() ? " " + String((listenUntil - millis()) / 1000) + "s left" : "") + "\n";
         // 人感の生死を無線から見る（2026-09-10：手を振っても「!」が出ないと報告あり）
@@ -845,10 +873,21 @@ void setup() {
     audioInit();
     prefs.begin("spirit", false);
     wdBoots = prefs.getUChar("wd", 0);         // 見張りが起こし直した起動なら1以上
-    bool hush = QUIET || wdBoots > 0;          // 見張りの起動し直しでは音を出さない（夜中に鳴らさない）
+    // 撤去期かどうかは、誕生の絵と音より**先に**読む。あとで読むと、起き直すたびに
+    // 撤去中のキッチンで顔と音が一度だけ出てしまう（2週間のあいだ必ず何度か起き直す）。
+    g_hide = prefs.getUChar("hide", 0);
+    if (g_hide > 2) g_hide = 0;
+    bool hush = QUIET || wdBoots > 0 || hideVoice();  // 見張りの起動し直しでは音を出さない（夜中に鳴らさない）
     if (!hush) chimeBoot();
-    playAnim(anim_hatch, 1);                   // 誕生（絵はいつも通り）
-    if (!hush) melodyHatch();
+    if (hideFace()) {                          // 撤去期：誕生の絵も出さず、真っ黒のまま始める
+        static const uint8_t BLACK0[2] = {0x00, 0x00};
+        fillRect(0, 240, BLACK0);
+        havePrev = false;
+        blanked = true;
+    } else {
+        playAnim(anim_hatch, 1);               // 誕生（絵はいつも通り）
+        if (!hush) melodyHatch();
+    }
     lastMotion = millis();
     nextMurmur = millis() + 3000;
     careCount = prefs.getUInt("care", 0);
@@ -905,6 +944,10 @@ void loop() {
     }
     uint32_t now = millis();
 
+    // 撤去期（2026-09-24）：出す場面は全部のみ込む。**数えるのは止めない**（喜びの回数・
+    // 世話の数え・在室の報告はそのまま）。見え方と聞こえ方だけを消す。
+    if (hideFace()) pendingScene = 0;
+
     if (pendingScene == 1) {                   // 人が来た → 「!」の絵だけ（音なし・通過でうるさくしない）
         pendingScene = 0;
         sleeping = false;
@@ -932,7 +975,7 @@ void loop() {
         // 読ませると相手は画面を見にいく。地霊は見るものではなく、居るもの。
         winIdx = (winIdx + 1) % N_WINS;        // 声の抑揚の選択に今も使っている
         bool staying = inEpisode && (now - episodeStart >= STAY_MS);   // 通過でなく居続けている
-        if (!QUIET && staying && voiceUsed < VOICE_BUDGET) {
+        if (!QUIET && !hideVoice() && staying && voiceUsed < VOICE_BUDGET) {
             // クラウドの日本語だけで喋る。届かなければ黙る。
             // 以前は届かないとあつ森語で鳴いていたが、クラウドが「いまは黙る」と
             // 返すたびに鳴いてしまい、意味のない音になっていた（2026-09-10 本人「いらない」）。
@@ -979,9 +1022,17 @@ void loop() {
             if (bootTold) joyToTell = -1;          // 届いた → 喜んだ知らせは済んだ（起動の知らせと同時には送らない）
             bootTold = true;
             if (wdBoots) { wdBoots = 0; prefs.putUChar("wd", 0); }   // 通った → 見張りの回数を戻す
-            float m, n; int f, s = 0, li = -1;
-            int got = sscanf(body, "%f %f %d %d %d", &m, &n, &f, &s, &li);
+            float m, n; int f, s = 0, li = -1, hd = -1;
+            int got = sscanf(body, "%f %f %d %d %d %d", &m, &n, &f, &s, &li, &hd);
             if (got >= 2) onMN(m, n);
+            // 6つめ＝撤去期に何を消すか（2026-09-24）。0=ふつう 1=画面だけ 2=画面と声。
+            // ここは入りにも切りにも使う。手元の命令ではなくクラウドが持ち主なので、
+            // 起動し直しても10秒で正しい状態に戻る（2週間のあいだ必ず何度か起き直すため）。
+            if (got >= 6 && hd >= 0 && hd <= 2 && hd != g_hide) {
+                g_hide = hd;
+                prefs.putUChar("hide", (uint8_t)hd);   // 起動直後の数秒も顔を出さないため
+                havePrev = false;                       // 戻したときに画面ぜんぶを描き直す
+            }
             // 5つめ＝いま名前を聞いているか（2026-09-23）。速さは無線の合図に任せ、
             // ここは「入りの合図が届かなかったとき」の直し。最大10秒遅れるが、出遅れは埋まる。
             //
@@ -1009,6 +1060,17 @@ void loop() {
         delay(100);
         ESP.restart();
     }
+
+    // 撤去期（2026-09-24）：画面を真っ黒にして、絵は一切出さない。
+    // ここより上（見回りの報告・在室・世話の数え・顔の問い合わせ）は**そのまま動いている**。
+    // 眠りや考えている顔より先に見るので、撤去中はどの顔も出ない。
+    if (hideFace()) {
+        static const uint8_t BLACK[2] = {0x00, 0x00};
+        if (havePrev || !blanked) { fillRect(0, 240, BLACK); havePrev = false; blanked = true; }
+        delay(20);
+        return;
+    }
+    blanked = false;
 
     // 名前を聞いている間（2026-09-23）：絵を1コマで止めて、考えている顔と「？」を出す。
     // 絵を止めるのは、コマが動くと目の位置も動いて、描き替える場所が決まらないため。
@@ -1038,7 +1100,9 @@ void loop() {
         playAnim(anim_sleep, 1, checkInterrupt);
         return;
     }
-    // 気分: 放置(N>=0.5)ならしょんぼり。散らかっていても使用中(N低)は責めずふだんの呼吸
-    if (g_N >= 0.5f) playAnim(anim_sad, 1, checkInterrupt);
-    else             playAnim(anim_idle, 1, checkInterrupt);
+    // 気分（2026-09-24 本人の決定）：**いまの散らかり具合だけ**で決める。時計は見ない。
+    // 人が居る間は塗り替えない（料理の最中に顔が曇ると、その人を責めることになる）。
+    if (!inEpisode) faceSad = (g_M >= M_MESSY);
+    if (faceSad) playAnim(anim_sad, 1, checkInterrupt);
+    else         playAnim(anim_idle, 1, checkInterrupt);
 }
