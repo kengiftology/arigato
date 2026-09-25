@@ -721,7 +721,12 @@ END_SILENCE = 1.2        # 答えのあと、これだけ静かなら締める
 NO_ANSWER_SEC = 10.0     # 問いかけが鳴り終わってから、これだけ声が無ければ締める（答えなし）。9/23：7→10秒
 C3_FETCH_SEC = 2.0       # mur を送ってから C3 が鳴らし始めるまでの見込み（9/21〜22 の実測 1〜3秒）
 OWN_VOICE_WAIT = 6.0     # キャラの声がこれだけ経っても聞こえなければ、鳴らなかったとみなす
-OWN_END_SILENCE = 1.0    # キャラの声が終わったとみなす静けさ。9/23 23:03、質問の途中の息継ぎで
+OWN_TAIL = 0.25          # キャラの声の長さに足す余白（鳴り終わりの検出のぶれを吸う）
+# 直前の録音で、相手の声が入っていたか（2026-09-25）。相づちを鳴らすかの判断に使う。
+# 9/24 01:30 にこれを見る行だけ入れ、**置き場所を作り忘れていた**。そのまま入れ替えて
+# いたら、相づちの糸が毎回 NameError で落ちていた（入れ替え前に気づいた）。
+_heard = [False]
+OWN_END_SILENCE = 1.0    # （もう使わない：2026-09-25 に長さで区切る形にした）キャラの声が終わったとみなす静けさ。9/23 23:03、質問の途中の息継ぎで
                          # 「鳴り終わった」とみなし、答える時間が2〜3秒しか残らなかった
 
 
@@ -744,11 +749,18 @@ def _rms(chunk: bytes) -> int:
     return int(math.sqrt(sum(x * x for x in d) / len(d))) if d else 0
 
 
-def listen(sec: float, speak_end: float = 0.0) -> bytes | None:
+def listen(sec: float, speak_end: float = 0.0, own_sec: float = 0.0) -> bytes | None:
     """Tapo のマイクから、答えが終わるまで（最長 sec 秒）の WAV を取る。メモリの中だけ。
 
-    speak_end＝キャラの声が鳴り終わる見込みの時刻。それまでの音は数えない（自分の声で締めないため）。
-    そのあと声が始まり、END_SILENCE 秒静かになったら締める。声が NO_ANSWER_SEC 来なければ締める。"""
+    speak_end＝キャラの声が鳴り終わる見込みの時刻（鳴らなかったときの見切りにだけ使う）。
+    own_sec＝キャラの声そのものの長さ（クラウドが知らせる）。
+
+    2026-09-25 本人「返事するのはみんなすぐだと思うので、聞いたあとすぐに録音するように」。
+    これまでは、キャラの声のあと **1秒の静けさ** を待ってから相手の番にしていた。
+    すぐ答える人はその静けさを作らないので、答えている間ずっと「まだキャラが喋っている」と
+    見なされ、**答え終わってから相手の番が始まっていた**。答えは丸ごと捨てられていた。
+    いまは、キャラの声が始まった時刻に長さを足して、そこで区切る。静けさを待たない。
+    区切りより前の音（キャラ自身の声）は送らない。聞き取りに渡すのは相手のぶんだけ。"""
     step = int(16000 * 2 * CHUNK_SEC)
     try:
         p = subprocess.Popen(
@@ -764,33 +776,33 @@ def listen(sec: float, speak_end: float = 0.0) -> bytes | None:
     # から録音が始まることがあった（9/23 09:13 の p13、9/23 02:03 の p08 はこれで空振り）。
     # 1つ目の声＝キャラ → 静かになる → 2つ目の声＝相手の答え → 静かになったら締める。
     buf, why = bytearray(), "上限"
+    _heard[0] = False                             # この録音での「相手の声が入ったか」
     own_done = False                              # キャラの声が終わったか
-    spoke, quiet, own_quiet = False, 0.0, 0.0
+    own_until = 0.0                               # 鳴り始め＋長さ。ここで区切る
+    spoke, quiet = False, 0.0
     t0 = time.time()
     t_end = t0 + sec + 15
     late = max(speak_end, t0) + OWN_VOICE_WAIT    # ここまでに声が無ければ、鳴らなかったとみなす
+    own_len = (own_sec or ASK_SPEAK_SEC) + OWN_TAIL
     try:
         while time.time() < t_end:
             chunk = p.stdout.read(step)
             if not chunk:
                 break
-            buf += chunk
             now = time.time()
             lv = _rms(chunk)
             if not own_done:                      # 1つ目の声（キャラ）を待つ
-                if lv >= SPEECH_LEVEL:
-                    own_quiet = 0.0
-                    late = 0.0                    # 鳴り始めた。時間切れの見込みはもう使わない
-                elif late == 0.0:
-                    own_quiet += CHUNK_SEC
-                    if own_quiet >= OWN_END_SILENCE:
-                        own_done = True           # 鳴り終わった。ここから相手の番
-                        t_ans = now
-                if late and now >= late:
+                if own_until == 0.0 and lv >= SPEECH_LEVEL:
+                    own_until = now + own_len     # 鳴り始めた。長さぶんで区切る
+                if own_until and now >= own_until:
+                    own_done, t_ans = True, now   # ここから相手の番。静けさは待たない
+                elif own_until == 0.0 and now >= late:
                     own_done, t_ans = True, now   # 声が聞こえなかった（届かなかった）
-                continue
+                continue                          # キャラ自身の声は送らない
+            buf += chunk                          # ここから先だけが相手のぶん
             if lv >= SPEECH_LEVEL:
                 spoke, quiet = True, 0.0
+                _heard[0] = True              # 相手の声が入った（相づちを鳴らしてよい）
             elif lv < SILENCE_LEVEL:
                 quiet += CHUNK_SEC
             if spoke and quiet >= END_SILENCE:
@@ -827,12 +839,13 @@ def ask_name(pid: str, ask_sec: float = 0.0) -> None:
     try:
         time.sleep(ASK_SPEAK_WAIT)          # 早く取りに行くと「まだ」で無音が返る
         c3("mur")
-        speak_end = time.time() + C3_FETCH_SEC + (ask_sec or ASK_SPEAK_SEC)   # 服で呼びかけると長くなる（クラウドが ask_sec で知らせる）
+        own_sec = ask_sec or ASK_SPEAK_SEC      # 服で呼びかけると長くなる（クラウドが ask_sec で知らせる）
+        speak_end = time.time() + C3_FETCH_SEC + own_sec
         q = "?person=" + urllib.parse.quote(pid)
         # クラウドが聞き返す（「◯◯……で、あってる？」「もういっかい、いって？」）あいだは、
         # 鳴らして → 聞いて → 送る、をくり返す（2026-09-21）。回数はクラウドが打ち切る。
         for _ in range(ASK_ROUNDS):
-            wav = listen(LISTEN_TOTAL, speak_end)
+            wav = listen(LISTEN_TOTAL, speak_end, own_sec)
             if wav is None:
                 print("呼び名：音が取れなかった", flush=True)
                 return
@@ -869,7 +882,8 @@ def ask_name(pid: str, ask_sec: float = 0.0) -> None:
                 return
             time.sleep(1.2)                  # クラウドは0.8秒ためてから渡す。飛んでいる相づちが鳴り終わるのも待つ（9/23）
             c3("mur")
-            speak_end = time.time() + C3_FETCH_SEC + float(res.get("speak_sec") or 3.0)
+            own_sec = float(res.get("speak_sec") or 3.0)
+            speak_end = time.time() + C3_FETCH_SEC + own_sec
             if not res.get("listen"):
                 return
 

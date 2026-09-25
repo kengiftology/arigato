@@ -27,6 +27,7 @@ import io
 import json
 import logging
 import os
+import random
 import time
 import wave
 
@@ -251,6 +252,33 @@ _YES_NO_WORDS = ["うん", "はい", "そう", "そうそう", "あってる", "
                  "ちがう", "ちがうよ", "ううん", "いいえ", "ちょっとちがう"]
 
 
+# 聞き取りにかける前に、音の大きさを揃える（2026-09-25・本人の決定）。
+# 9/22〜25 の実測：聞き取り53回のうち、ことばが取れたのは9回（17%）。
+# 34回（64%）は「小さな音だけ」（大きさ60〜200）だった。1mでの話し声は200〜300なので、
+# 相手は答えているのに、粗いマイク（カメラの8kHz）を通ると小さすぎて届いていない。
+# いちばん大きいところを 12,000 に合わせる。割れないよう上限を決め、
+# もともと十分に大きい音は触らない（触ると雑音まで持ち上がる）。
+STT_PEAK = 12000                 # 目標のいちばん大きいところ
+STT_GAIN_MAX = 12.0              # これ以上は持ち上げない（雑音ばかり大きくなる）
+STT_PEAK_MIN = 300               # これより小さい音は、そもそも声ではないとみなす
+
+
+def _boost(pcm: bytes) -> tuple:
+    """小さな声を持ち上げる。返すのは（持ち上げた音, かけた倍率）。"""
+    import array
+    d = array.array("h")
+    d.frombytes(pcm[:len(pcm) // 2 * 2])
+    if not d:
+        return pcm, 1.0
+    peak = max(abs(x) for x in d)
+    if peak < STT_PEAK_MIN or peak >= STT_PEAK:
+        return pcm, 1.0
+    g = min(STT_PEAK / peak, STT_GAIN_MAX)
+    for i in range(len(d)):
+        d[i] = max(-32768, min(32767, int(d[i] * g)))
+    return d.tobytes(), round(g, 2)
+
+
 async def _stt(pcm: bytes, model: str, hints: list | None = None) -> str:
     cfg = {"encoding": "LINEAR16", "sampleRateHertz": 16000,
            "languageCode": "ja-JP", "model": model}
@@ -272,11 +300,13 @@ async def _to_text(pcm: bytes, phase: str = "ask") -> tuple:
     9/22〜23 の実機では、音の大きさが100〜700あるのに0字で返る回が続いた。
     聞き返しの場面では「うん」「ちがう」などを先に渡して拾いやすくする。"""
     hints = _YES_NO_WORDS if phase == "confirm" else None
+    pcm, g = _boost(pcm)                     # 小さい声は持ち上げてから渡す（2026-09-25）
+    tag = ("x%g " % g) if g > 1.0 else ""
     text = await _stt(pcm, "latest_short", hints)
     if text:
-        return text, "short"
+        return text, tag + "short"
     text = await _stt(pcm, "latest_long", hints)
-    return (text, "long") if text else ("", "")
+    return (text, tag + "long") if text else ("", tag.strip())
 
 
 _PICK_SYSTEM = """共有キッチンに住む小さな精霊が、そこに来た人に「なんてよんだらいい？」と聞きました。
@@ -406,6 +436,12 @@ FILLER_KIND = "filler"
 TALK_ON = True
 TALK_MAX_ROUNDS = 6              # 1回の来訪で交わすのはここまで
 TALK_MAX_SEC = 180.0             # 話しはじめてからの上限
+# 声はしたのに、ことばにならなかったときの聞き返し（2026-09-25）。
+# 短く1回だけ。「もう一度言って」と頼む形にはしない（掟：お願いしない）。
+HEARD_LEVEL = 60                 # これ以上なら「声はした」とみなす（静かな部屋は10以下）
+AGAIN_MAX = 1                    # 聞き返すのは1回の来訪につき1度まで
+TALK_AGAIN = ["ん？", "え、なあに？", "ん、いま なんて？"]
+
 TALK_QUESTIONS = [
     "きょうは なに するの？",
     "なに つくるの？",
@@ -518,8 +554,14 @@ async def _talk_turn(st: dict, person: str, text: str, stt: str, level: int,
     """相手の返事を受けて、一言返す。黙っていたら終わり（追いかけない）。"""
     _keep_said(person, text)
     start = float(a.get("start") or t0)
+    again = int(a.get("again") or 0)
     reply, why = "", ""
-    if not text:
+    if not text and level >= HEARD_LEVEL and again < AGAIN_MAX:
+        # 声はしたのに、ことばにならなかった（2026-09-25・本人の決定）。
+        # 9/22〜25 の53回のうち6回がこれ。黙ったとみなして終わっていたが、
+        # 子どもなら一度は聞き返す。失敗が1往復になる。
+        reply, why = random.choice(TALK_AGAIN), "きこえなかった"
+    elif not text:
         why = "だまった"                      # 返事なし＝ここで終わり
     elif rnd >= TALK_MAX_ROUNDS or time.time() - start > TALK_MAX_SEC:
         why = "上限"
@@ -537,8 +579,12 @@ async def _talk_turn(st: dict, person: str, text: str, stt: str, level: int,
     if reply:
         say = await _say(st, person, reply)
         if say:
+            # 聞き返しは往復に数えない（2026-09-25）。中身のやりとりは進んでいないので、
+            # 数えると上限（6往復）が聞き返しで埋まる。代わりに聞き返した回数を持つ。
+            back = (why == "きこえなかった")
             st["name_ask"] = {"person": person, "at": time.time(), "phase": "talk",
-                              "round": rnd + 1, "start": start}
+                              "round": rnd if back else rnd + 1, "start": start,
+                              "again": again + 1 if back else again}
             st["listen_until"] = time.time() + ASK_TTL
     sp._save(st)
     sp._log_event("talk_heard", {"person": person, "round": rnd, "level": level,
