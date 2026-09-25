@@ -2591,9 +2591,10 @@ GREET_OPENINGS = [
     "呼び名を最後に置く。文の頭に呼び名を出さない。",
     "自分の気持ちから始める（『うれしいなあ。……』）。",
     "いまの場所の様子から始める（『ここ、しずかだったんだよ。……』）。",
-    "思い出から始める（『このまえ、……』）。思い出が無ければ、自分の気持ちから始める。",
     "ふいに気づいたように、短い声から始める（『あ、』『きゃあ、』）。",
 ]
+# 思い出を話す本の入り方。思い出があるときだけ使う
+MEMORY_OPENING = "思い出から始める（『このまえ、……』）。"
 
 
 def _pick_openings(name: str, k: int = 1) -> list:
@@ -2674,7 +2675,10 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
         h = int(memory.get("hours") or 0)
         when = "さっき" if h < 6 else ("きのう" if h < 36 else "このまえ")
         ask += ("\n【思い出】" + str(memory["what"]) +
-                "（%d時間くらい前のこと。言うときは『%s』と言う）。" % (h, when) +
+                # 2026-09-25：39時間前のことを「さっき」と言った見本が4本中2本あった。
+                # ほんとうでないことを言っている。ほかの時のことばは使わせない。
+                "（%d時間くらい前のこと。言うときは**『%s』とだけ言う**。"
+                "『さっき』『きのう』『このまえ』のうち、**『%s』以外は使わない**）。" % (h, when, when) +
                 ("この人が居たときの変化なので、『◯◯ちゃんが やってくれたやつ』のように"
                  "この人のしたこととして言ってよい。ありがとうの気持ちで。"
                  if memory.get("mine") else
@@ -2717,8 +2721,13 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
         # 2026-09-25 の見本に「こんにちは」が混ざった。使わない約束は _GREET_SYSTEM に
         # 書いてあるのに、すり抜けた。出てしまったものは捨てる。捨てても作り直しは
         # もう一度まわるので、足りなくなるだけで、おかしな一言は残らない。
-        if any(w in text for w in _GREET_BAD):
-            _log_event("greet_dropped", {"text": text[:40]})
+        bad = [w for w in _GREET_BAD if w in text]
+        # いつのことかを言い違えた一言も捨てる（2026-09-25）。39時間前を「さっき」と
+        # 言った見本が4本中2本あった。頼むだけでは直らないので、出たものは捨てる。
+        if memory and memory.get("what"):
+            bad += [w for w in ("さっき", "きのう", "このまえ") if w != when and w in text]
+        if bad:
+            _log_event("greet_dropped", {"text": text[:40], "why": "／".join(bad)})
             return ""
         # 呼び名が入るぶん、上限も広げる（読みのひらがな＋「ちゃん」。途中で切れないように）
         return _sanitize(text, MAX_COMMENT + (len(name) * 3 + 3 if name else 0))
@@ -3451,12 +3460,14 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             # この人にはどこまで話したか（2026-09-25）。同じ出来事を7日ぶんむし返さない。
             mem = (_recent_memory(d.id, after=float(doc.get("told_change") or 0))
                    if MEMORY_ON else None)
-            text = await _greet_line(persona, manner, thanks, news and not thanks,
-                                     (doc.get("name") or "") if CALL_NAME else "",
+            nm = (doc.get("name") or "") if CALL_NAME else ""
+            # 思い出を出すのは4本に1本くらい（2026-09-25）。毎回出すと、どの迎えも同じ話になる。
+            if mem and random.random() >= 0.25:
+                mem = None
+            text = await _greet_line(persona, manner, thanks, news and not thanks, nm,
                                      avoid=[x.get("t") for x in _slots(doc) if x.get("t")],
                                      said=doc.get("said"), memory=mem,
-                                     opening=_pick_openings(
-                                         (doc.get("name") or "") if CALL_NAME else "")[0])
+                                     opening=MEMORY_OPENING if mem else _pick_openings(nm)[0])
             if text:
                 ls = _put_line(_slots(doc), text, now)
                 if ls is not None:
@@ -3497,11 +3508,18 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
            if (MEMORY_ON if memory_on is None else memory_on) else None)
     # 入り方は本ごとに変える（2026-09-25）。作り直すのは4本なので、型は重ならない。
     kinds = _pick_openings(name, n)
+    # 思い出は4本のうち1本だけに入れる（2026-09-25）。全部に渡すと、どの迎えも
+    # 同じ話になる（見本で p01 は4本中3本、p02 は4本中3本がシンクの話になった）。
+    mem_at = random.randrange(len(kinds)) if mem else -1
+    if mem:
+        kinds[mem_at] = MEMORY_OPENING
     texts = []
     for i in range(n * 2):                     # 同じ文が出たら数に入れない
+        at = len(texts) % len(kinds)
         t = await _greet_line(st.get("persona", ""), manner, False, False, name,
-                              avoid=texts, said=doc.get("said"), memory=mem,
-                              opening=kinds[len(texts) % len(kinds)])
+                              avoid=texts, said=doc.get("said"),
+                              memory=mem if at == mem_at else None,
+                              opening=kinds[at])
         if t and t not in texts:
             texts.append(t)
         if len(texts) >= n:
