@@ -17,7 +17,25 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 押す前に試験を通す（2026-09-25）。落ちたら本番には入らない。
+  # 入れ替えは13〜15分かかるので、間違いはここで止めたほうが速い。
+  # 9/25、区画の設定をコードから外に出したとき「動きが変わっていないこと」を手で確かめた。
+  # 同じ確認を毎回手でやるのは続かないので、機械にやらせる。
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install what the tests need
+        run: python -m pip install --quiet pytest opencv-python-headless numpy pillow
+      - name: Run the tests
+        run: python -m pytest tests/ -q
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

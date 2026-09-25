@@ -3964,6 +3964,22 @@ ZONE_CFG_DEFAULT = {
         "rule": {"kind": "change"},
         "decided": "2026-09-09 本人。線と帯は 9/22〜23 の実測",
     },
+    "水切り": {
+        "id": "rack", "active": False, "app_zone": "", "pose": "-1.00_-1.00",
+        "aim": {"ref": "spirit/zoneref/rack.jpg", "band": [0.0, 1.0], "min_conf": 0.30},
+        "crop": {"rotate": 180, "hide_from": None},
+        "ask": {"scene": "写真は共有キッチンの食器の水切りかごを天井近くから見下ろしたものです。",
+                "fixtures": "かごそのもの（ステンレスの枠と受け皿）は備え付けです。物ではありません。",
+                "empty_q": None},
+        # シンクと同じ問い（物があるか）を使う。ただし**増えたことは悪くない**。
+        # 水切りに食器が増えるのは「誰かが洗った」という良い行いで、
+        # シンクと同じ符号で扱うと、洗った人が「散らかした」ことになってしまう。
+        # 悪いのは置きっぱなしのほうなので、猶予が切れてから初めて「片づいていない」とする。
+        # 猶予＝**日付が変わり、かつそのあと誰かがキッチンを使うまで**（2026-09-25 本人）。
+        # 時計ではなく使われ方を基準にするのは、場所が人の生活のリズムで動くという考え方に合わせたもの。
+        "rule": {"kind": "grace_next_day"},
+        "decided": "2026-09-25 本人。向きは9/24の一覧から本人が指名。線0.30は9/24の実測（同じ向き1.005／違う向き最大0.050）",
+    },
 }
 
 
@@ -4435,6 +4451,40 @@ async def sink_check(request: Request, key: str = "", model: str = "",
         out["error"] = "%s: %s" % (type(e).__name__, e)
     out["answer"] = "空" if out["empty"] is True else ("物あり" if out["empty"] is False else "分からない")
     return out
+
+
+def _grace_over(st: dict, name: str, now: float, has_stuff: bool, used: bool) -> bool:
+    """猶予が切れたか（`grace_next_day` の区画・2026-09-25 本人の指示）。
+
+    水切りは、普段から食器が入っているのが正常な場所である。
+    シンクと同じ「物があるか」を聞くが、**増えたことは悪くない**。
+    水切りに食器が増えるのは「誰かが洗った」という良い行いで、
+    シンクと同じ符号で扱うと、洗った人が「散らかした」ことになる。
+
+    悪いのは置きっぱなしのほう。猶予は時計ではなく**使われ方**で計る：
+    **日付が変わり、そのあと誰かがキッチンを使うまでは、そのままでよい。**
+    夜に洗って寝て、翌朝までは何も言わない。翌日に誰かが来て、
+    それでもまだ入っているなら、そこで初めて「片づいていない」になる。
+
+    `used`＝この見回りの区間に人が居た。誰も来ない日は猶予が続く（本人と決めた形）。"""
+    zs = st.setdefault("zone_state", {})
+    cur = zs.get(name) or {}
+    day = _jst_day(now)                    # 日本時間の日付（既存の数え方に合わせる）
+    if not has_stuff:
+        if cur:
+            zs[name] = {}                      # 空になった＝猶予も消える
+        return False
+    if not cur.get("since"):
+        zs[name] = {"since": now, "day": day}  # 入った日を覚える
+        return False
+    if day == cur.get("day"):
+        return False                           # まだ同じ日
+    if not cur.get("used_after"):
+        if used:
+            cur["used_after"] = now            # 日付が変わったあと、はじめて使われた
+            zs[name] = cur
+        return False
+    return True                                # 日付が変わり、そのあと使われ、まだ入っている
 
 
 async def _zone_pass(st: dict, before: bytes, after: bytes,
