@@ -25,6 +25,7 @@ import re
 import time
 import asyncio
 import base64
+import random
 import logging
 
 from fastapi import APIRouter, Request, Header, HTTPException, UploadFile, File
@@ -389,7 +390,8 @@ def _calc_n(st: dict, now: float) -> float:
 def _sanitize(c, limit: int = MAX_COMMENT) -> str:
     if not isinstance(c, str):
         return ""
-    c = re.sub(r"[{}\"\\\n]", " ", c).strip()
+    # 改行を空白に直したあと、空白が2つ並ぶと読み上げの間が不自然になる（9/25 の見本）
+    c = re.sub(r"\s+", " ", re.sub(r"[{}\"\\\n]", " ", c)).strip()
     if any(b in c for b in _BAD):
         return "きょうもおつかれさま"
     return c[:limit]
@@ -2576,6 +2578,31 @@ async def who():
 
 # 2026-09-09: 「いらっしゃいませ」のような店員の言葉が出て本人に「キモい」と言われた。
 # 作り置きの持ち歌（voice/make_lines.py）と同じ子どもの声に揃える。
+# 入り方の型（2026-09-25・本人「単調さを直す」）。
+# 「入り方は毎回変える」と頼む形では変わらなかった。9/22 に頼んだのに、9/25 の見本でも
+# 4本中3本が「あ、◯◯ちゃんだ」で始まった。頼むのをやめ、作るたびに型を1つ渡して、
+# 構えのほうから変える。1本ずつ別々に作るかぎり、毎回いちばんありそうな入りに寄る。
+# 迎えの一言に混ざってはいけないあいさつ言葉（2026-09-25）。
+# 店員の口調になり、子どものひとりごとでなくなる。
+_GREET_BAD = ("こんにちは", "こんばんは", "おはよう", "いらっしゃい", "ようこそ", "おじゃま")
+
+GREET_OPENINGS = [
+    "呼び名から始める（『◯◯ちゃん、……』）。",
+    "呼び名を最後に置く。文の頭に呼び名を出さない。",
+    "自分の気持ちから始める（『うれしいなあ。……』）。",
+    "いまの場所の様子から始める（『ここ、しずかだったんだよ。……』）。",
+    "思い出から始める（『このまえ、……』）。思い出が無ければ、自分の気持ちから始める。",
+    "ふいに気づいたように、短い声から始める（『あ、』『きゃあ、』）。",
+]
+
+
+def _pick_openings(name: str, k: int = 1) -> list:
+    """入り方の型をk個えらぶ。重ならないように選ぶ。
+
+    呼び名を知らない相手には、呼び名を使う型を渡さない（渡すと書けない）。"""
+    pool = GREET_OPENINGS if name else [o for o in GREET_OPENINGS if "呼び名" not in o]
+    return random.sample(pool, min(max(1, k), len(pool)))
+
 _GREET_SYSTEM = (
     "あなたは『きっちんちゃん』。共有キッチンに棲みついている、小さな子どものような地霊です。"
     "いま目の前に人が来ました。"
@@ -2583,8 +2610,9 @@ _GREET_SYSTEM = (
     "『あのね』『えーとね』『〜なあ』『〜かなあ』『〜だね』のような言い方。"
     "ていねい語（です・ます・いらっしゃいませ・こんにちは）は使わない。店員のようには絶対に言わない。"
     "点々（……）でためらってよい。15字以内。"
-    "【手本】『あ、きた。』『あのね、まってたんだよ。』『あれ。えーと……どなたかなあ。』"
-    "『あ、きてくれたね。うれしいなあ。』"
+    # 2026-09-25：手本が4つのうち2つ「あ、」で始まっていて、作るものもそこへ寄っていた
+    "【手本】『あのね、まってたんだよ。』『あれ。えーと……どなたかなあ。』"
+    "『きてくれたね。うれしいなあ。』『ここ、しずかだったんだよ。』"
     "【いちばん大事な掟】命令しない・お願いしない・提案しない・責めない。"
     "『片付けて』『〜してね』の類は絶対に言わない。数や回数も口にしない。"
     "相手を評価する言葉（えらい・すごい・だめ）も言わない。"
@@ -2606,8 +2634,11 @@ SAID_MIN_CHARS = 10      # 合計でこれだけの字数がたまってから
 
 async def _greet_line(persona: str, manner: str, thanks: bool = False,
                       news: bool = False, name: str = "", avoid: list | None = None,
-                      said: list | None = None, memory: dict | None = None) -> str:
+                      said: list | None = None, memory: dict | None = None,
+                      opening: str = "") -> str:
     """その人へ向けた一言をつくる。
+
+    opening＝入り方の型（2026-09-25）。GREET_OPENINGS から1つ渡す。
 
     thanks＝この人が前に片づけていた（ありがとうを言う）。
     news＝最近シンクがきれいになっていた（場所の様子として伝える。誰がやったかは言わない）。
@@ -2618,13 +2649,16 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return ""
     ask = "【この相手への接し方】" + manner
+    if opening:
+        ask += ("\n【入り方】" + opening +
+                "\n**この入り方で書く。ほかの入り方にしない。**"
+                "とくに、指示されていないのに『あ、』『あっ』で始めない。")
     if name:
         ask += ("\n【呼び名】この人の呼び名は『%s』。文の中で1回だけ、自然に『（呼び名の読みをひらがなで）ちゃん』と呼ぶ。"
                 "呼び名は漢字やカタカナで書かず、読みをひらがなで書く。呼び名のぶんだけ字数を増やしてよい。"
-                # 9/22 の見本が全部「あ、◯◯ちゃんだ。」で始まり単調だった
-                "入り方は毎回変える。『あ、◯◯ちゃんだ』で始めない。名前は文の途中や終わりに置いてもよい"
-                "（例の形：『あのね、◯◯ちゃん……』『……おかえり、◯◯ちゃん』『きょうもきたね、◯◯ちゃん』）。"
-                "ただし例をそのまま使わない。呼び名には必ず『ちゃん』を付ける（呼び捨てにしない）。" % name)
+                # 入り方は【入り方】で型を渡して決める（2026-09-25）。ここでは置き場所だけ言う。
+                "名前は文の頭・途中・終わりのどこに置いてもよい。"
+                "呼び名には必ず『ちゃん』を付ける（呼び捨てにしない）。" % name)
     if avoid:
         # 1本ずつ別々に作ると、毎回いちばんありそうな入りになる（9/23 の見本：4本中3本が同じ入り）。
         # すでに持っている文を見せて、入り方と言い回しを変えさせる。
@@ -2680,6 +2714,12 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
             system=(persona or _DEFAULT_PERSONA) + "\n" + _GREET_SYSTEM,
             messages=[{"role": "user", "content": ask}])
         text = "".join(b.text for b in msg.content if b.type == "text").strip()
+        # 2026-09-25 の見本に「こんにちは」が混ざった。使わない約束は _GREET_SYSTEM に
+        # 書いてあるのに、すり抜けた。出てしまったものは捨てる。捨てても作り直しは
+        # もう一度まわるので、足りなくなるだけで、おかしな一言は残らない。
+        if any(w in text for w in _GREET_BAD):
+            _log_event("greet_dropped", {"text": text[:40]})
+            return ""
         # 呼び名が入るぶん、上限も広げる（読みのひらがな＋「ちゃん」。途中で切れないように）
         return _sanitize(text, MAX_COMMENT + (len(name) * 3 + 3 if name else 0))
     except Exception as e:
@@ -3414,7 +3454,9 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             text = await _greet_line(persona, manner, thanks, news and not thanks,
                                      (doc.get("name") or "") if CALL_NAME else "",
                                      avoid=[x.get("t") for x in _slots(doc) if x.get("t")],
-                                     said=doc.get("said"), memory=mem)
+                                     said=doc.get("said"), memory=mem,
+                                     opening=_pick_openings(
+                                         (doc.get("name") or "") if CALL_NAME else "")[0])
             if text:
                 ls = _put_line(_slots(doc), text, now)
                 if ls is not None:
@@ -3423,7 +3465,8 @@ async def _prepare_greetings(st: dict, now: float) -> int:
                         upd["told_change"] = mem["t"]
                     d.reference.update(upd)
                     n += 1
-        text = await _greet_line(persona, BOND_STAGES[0][2], False, news)
+        text = await _greet_line(persona, BOND_STAGES[0][2], False, news,
+                                 opening=_pick_openings("")[0])
         if text and text != st.get("next_new_text"):
             st["next_new_text"], st["next_new_at"] = text, now
             n += 1
@@ -3452,10 +3495,13 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
     # 見せたことは「話した」に入らない。本番に入れるときだけ、話した印を見て・立てる。
     mem = (_recent_memory(pid, after=float(doc.get("told_change") or 0) if save else 0.0)
            if (MEMORY_ON if memory_on is None else memory_on) else None)
+    # 入り方は本ごとに変える（2026-09-25）。作り直すのは4本なので、型は重ならない。
+    kinds = _pick_openings(name, n)
     texts = []
-    for _ in range(n * 2):                     # 同じ文が出たら数に入れない
+    for i in range(n * 2):                     # 同じ文が出たら数に入れない
         t = await _greet_line(st.get("persona", ""), manner, False, False, name,
-                              avoid=texts, said=doc.get("said"), memory=mem)
+                              avoid=texts, said=doc.get("said"), memory=mem,
+                              opening=kinds[len(texts) % len(kinds)])
         if t and t not in texts:
             texts.append(t)
         if len(texts) >= n:
