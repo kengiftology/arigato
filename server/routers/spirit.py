@@ -4276,7 +4276,12 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
         r = await _compare_zone(before, after, z["name"],     # 見方C（両方向ルール）
                                 sink if z["name"] == "シンク" else None)
         if r.get("error"):
+            # 記録にも残す（2026-09-25）。サーバーのログにしか出していなかったので、
+            # 「区画の記録が0件」のとき、止まっているのか何も変わらなかったのかを
+            # 外から見分けられなかった。9/25、まさにそれで半日を費やした。
             logger.warning("zone compare failed (%s): %s", z["name"], r["error"])
+            _log_event("zone_error", {"zone": z["name"], "err": str(r["error"])[:160]})
+            st["patrol_zone"] = z["name"] + " 比べられず"
             continue
         if r.get("skip"):
             _log_event("zone_skip", {"zone": z["name"], "why": r["skip"],
@@ -4305,6 +4310,9 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
         _log_event("zone_all", {"changed": n_changed, "of": len(results),
                                 "quiet": quiet, "who": who})
         return
+    if not results:
+        # ここまで来て1件も残らなかった＝全部エラーか飛ばし。黙って終わらない
+        _log_event("zone_none", {"zones": [z["name"] for z in zones], "quiet": quiet})
     for z, r in results:
         changed = not r.get("same")
         z["trials"] = z.get("trials", 0) + 1
@@ -4314,6 +4322,11 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
         elif changed:
             z["hits"] = z.get("hits", 0) + 1
         _score_zone(z)
+        if not changed:
+            # 変化なしも残す（2026-09-25）。これが無いと「区画の記録0件」が
+            # 「何も変わらなかった」なのか「一度も見ていない」なのか分からない。
+            _log_event("zone_same", {"zone": z["name"], "quiet": quiet,
+                                     "rule": r.get("rule", "AI")})
         if changed:
             _log_event("zone", {"zone": z["name"], "who": who,
                                 "quiet": quiet, "better": r.get("better"),
