@@ -2310,6 +2310,12 @@ def _health() -> dict:
                       "ok": False, "unknown": False})
         bad = bad + ["人が居るのに写真が来ない"]
     return {"ok": not bad, "stopped": bad, "items": items,
+            # いま本番で動いているのはどの版か（2026-09-25）。
+            # 9/25、入れ替えが5時間止まっていたのに誰も気づかなかった。
+            # 橋渡しが 9/23 の写しのまま2日ぶら下がっていたのも同じ形。
+            # **外から見えないものは、次も同じだけ気づけない。**
+            "version": (os.environ.get("GIT_SHA") or "?")[:7],
+            "deployed": os.environ.get("DEPLOYED_AT") or "?",
             "boot_ago": round(up), "now": now, "mem": _memory()}
 
 
