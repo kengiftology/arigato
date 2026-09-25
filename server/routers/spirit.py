@@ -2622,9 +2622,15 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
     said = [s for s in (said or []) if isinstance(s, str) and s.strip()]
     if len(said) >= SAID_MIN_LINES and sum(len(s) for s in said) >= SAID_MIN_CHARS:
         ask += ("\n【この人が実際に言った言葉】" + "／".join("『%s』" % s for s in said[:6]) +
-                "\nこの人の言い方のくせ（短く答える・砕けた語尾・ていねい・よく出ることば）を、"
-                "キッチンちゃんの子どもの口調のまま、ほんの少しだけ写す。まねすぎない。"
-                "相手の言葉をそのまま繰り返さない。ていねい語は使わない。")
+                "\nこの言葉から、この人のくせを**1つだけ選んで、読んで分かるくらいはっきり写す**。"
+                "選ぶのは次のどれか：①一言の長さ（短く言い切る／だらだら続ける）"
+                "②語尾（『〜した』『〜だね』『〜みたいな』『〜かな』）"
+                "③よく出ることば ④入り方（『だから』のような切り出し）。"
+                "\n写すときの線："
+                "相手の言葉をそのまま繰り返さない。ていねい語は使わない。"
+                "キッチンちゃんは子どもなので、大人の言い回しは子どものことばに直してから写す。"
+                "**からかっている・ふざけて真似しているように聞こえてはいけない。**"
+                "その人の癖や訛りを笑いものにしない。言いよどみ・つっかえは写さない。")
     if thanks:
         ask += ("\n【伝えたいこと】このまえ、この人が帰ったあと、シンクがきれいになっていた。"
                 "ありがとう・うれしかった、という気持ちをこの人に伝えたい。"
@@ -4419,6 +4425,9 @@ def _bond_stage(level: int) -> tuple:
             name, manner = n, m
     return name, manner
 NEWS_WINDOW = 86400.0  # 「さっき誰かが」と伝えられる範囲
+# 思い出をさがすとき、いちどに見る記録の上限（2026-09-25）。
+# 記録は1日約1,800件。24時間ぶんが収まり、見本の7日さかのぼりでも50時間ほど届く。
+MEMORY_SCAN = 2000
 
 
 def _bond_now(doc: dict) -> float:
@@ -4448,25 +4457,37 @@ def _manner(doc: dict, alone: bool) -> str:
     return _bond_stage(_bond_now(doc))[1]
 
 
-def _recent_memory(pid: str, window: float = 0.0, limit: int = 300) -> dict | None:
-    """その人に話せる「このまえの思い出」（2026-09-23・本人「思い出を混ぜたい」）。
+_LAST_CHANGE: dict = {}          # 直近の変化の控え（窓ごと）。{window: (いつ調べたか, 結果)}
+CHANGE_CACHE = 60.0              # 控えを使い回す長さ（秒）
 
-    直近24時間の記録から、場所に起きた変化を1つ拾う。返すのは
-    {"what": 変化の文, "hours": 何時間前か, "mine": その人の手柄として言ってよいか}。
-    mine は「その変化のときに居たのがその人ひとり」のときだけ True。
-    2人以上居たときは、実際にやったのが別の人かもしれないので、場所の様子として言う。"""
+
+def _recent_change(window: float) -> dict | None:
+    """場所に起きたいちばん新しい変化を1つ。{"what","hours","who","t"}。
+
+    2026-09-25：一言を作り置きするときは知っている人ぜんぶ（13人）を回すので、
+    人ごとに探すと同じものを13回探すことになる。探すのは1回にして、
+    誰の手柄として言えるかだけを人ごとに決める。"""
+    got = _LAST_CHANGE.get(window)
+    if got and time.time() - got[0] < CHANGE_CACHE:
+        return got[1]
+    out = None
     try:
         # 60件だけ見ていた頃は、混んだ時間帯だと数分ぶんしか遡れず、
         # さっきの片づけを見落としていた（9/23 12:33 の見本が「なし」になった）。
-        docs = get_db().collection("spirit_log").order_by(
-            "t", direction="DESCENDING").limit(limit).stream()
+        # 2026-09-25：300件でも足りていなかった。記録は1日約1,800件（大半は写真と人の出入り）で、
+        # 300件では18時間しか遡れない。思い出になる記録は7日で93件しかないので、
+        # いちばん新しいものが「新しい方から1,289件目」に沈み、**一度も見つかっていなかった**。
+        # 件数で区切るのをやめ、時刻で区切る（同じ `t` の並べ替えなので、索引は足さずに済む）。
         now = time.time()
+        cutoff = now - (window or NEWS_WINDOW)
+        docs = get_db().collection("spirit_log").where(
+            "t", ">=", cutoff).order_by(
+            "t", direction="DESCENDING").limit(MEMORY_SCAN).stream()
         for d in docs:
             e = d.to_dict() or {}
             t = e.get("t") or 0
             if now - t > (window or NEWS_WINDOW):
                 break
-            who = e.get("who") or []
             what = ""
             if e.get("kind") == "zone" and e.get("better"):
                 what = "、".join((c.get("what") or "") for c in (e.get("changes") or []) if c.get("what"))
@@ -4474,11 +4495,27 @@ def _recent_memory(pid: str, window: float = 0.0, limit: int = 300) -> dict | No
                 what = "シンクが きれいに なっていた"
             if not what:
                 continue
-            return {"what": what[:60], "hours": int((now - t) // 3600),
-                    "mine": who == [pid]}
+            out = {"what": what[:60], "hours": int((now - t) // 3600),
+                   "who": [w for w in (e.get("who") or []) if w], "t": t}
+            break
     except Exception as e:
-        logger.warning("recent memory lookup failed: %s", e)
-    return None
+        logger.warning("recent change lookup failed: %s", e)
+        return None                              # 調べ損ねたときは控えを作らない
+    _LAST_CHANGE[window] = (time.time(), out)
+    return out
+
+
+def _recent_memory(pid: str, window: float = 0.0) -> dict | None:
+    """その人に話せる「このまえの思い出」（2026-09-23・本人「思い出を混ぜたい」）。
+
+    場所に起きた変化を1つ拾って返す。{"what": 変化の文, "hours": 何時間前か,
+    "mine": その人の手柄として言ってよいか}。
+    mine は「その変化のときに居たのがその人ひとり」のときだけ True。
+    2人以上居たときは、実際にやったのが別の人かもしれないので、場所の様子として言う。"""
+    got = _recent_change(window or NEWS_WINDOW)
+    if not got:
+        return None
+    return {"what": got["what"], "hours": got["hours"], "mine": got["who"] == [pid]}
 
 
 def _recent_care() -> bool:
