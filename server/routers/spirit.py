@@ -3824,6 +3824,43 @@ ZONE_FIXTURES = {
 }
 _ZONE_SCENE = "写真は共有キッチンのシンク周りを天井近くから見下ろしたものです。"
 
+# 区画ごとの設定（2026-09-25）。それまでコードに直に書いていたものを、ここに集めた。
+# 区画を増やすと、向き・帯・線・問いが区画の数だけ要る。**測らずに使い回すと静かに全部飛ばされる**
+# （9/24 実測：テーブル・コンロは全体で測ると違う向きとの差が7倍しか開かないが、上半分なら86倍）。
+# `decided` は必須。手で決めた数字は古くなる（9/22 に手で決めた向きの補正が古くなり、
+# 9/23〜24 に 20時間50分 の停止を招いた）。いつ・どうやって決めたかを数字と一緒に置く。
+ZONE_CFG_DEFAULT = {
+    "シンク": {
+        "id": "sink", "active": True, "app_zone": "", "pose": "-0.70_-1.00",
+        "aim": {"ref": None, "band": None, "min_conf": None},   # None＝いままでの共通の値
+        "crop": {"rotate": 180, "hide_from": 0.70},
+        "ask": {"scene": _ZONE_SCENE,
+                "fixtures": ZONE_FIXTURES["シンク"],
+                "empty_q": None},                               # None＝_SINK_EMPTY_Q
+        "rule": {"kind": "change"},
+        "decided": "2026-09-09 本人。線と帯は 9/22〜23 の実測",
+    },
+}
+
+
+def _zone_cfg(name: str) -> dict:
+    """区画の設定。状態に入っていればそれを使い、無ければ既定値。
+
+    既定値は「コードに直に書いてあった値」そのものなので、
+    状態に何も入れなければ**動きは1つも変わらない**。"""
+    base = ZONE_CFG_DEFAULT.get(name) or {}
+    try:
+        saved = ((_load().get("zone_cfg") or {}).get(name)) or {}
+    except Exception:
+        saved = {}
+    out = dict(base)
+    for k, v in saved.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            d = dict(out[k]); d.update(v); out[k] = d
+        else:
+            out[k] = v
+    return out
+
 
 async def _ask_json(content: list, max_tokens: int = 150) -> dict:
     """写真つきの問いをJSONで返してもらう共通口。失敗は {"error": ...}。"""
@@ -3909,7 +3946,7 @@ def _aim_now(jpg: bytes) -> tuple:
     return ([dx, dy], round(resp, 3)) if resp is not None else (None, None)
 
 
-def _view_ok(now: bytes) -> tuple:
+def _view_ok(now: bytes, zone: str = "") -> tuple:
     """今の1枚が見本と同じ景色か。(ok, resp, shift)。見本が無ければ ok（判断できないので止めない）。
 
     見分けは画面の下半分（VIEW_BAND）だけで測る。シンクの中は毎回変わるため。
@@ -3922,20 +3959,24 @@ def _view_ok(now: bytes) -> tuple:
     通した写真をその1枚に格上げはしない（2026-09-23・D の指摘）。
     格上げすると通った写真が次の基準になり、少しずつのずれが積み上がっても誰も気づけない
     （9/22、自動の向き直しがこの形で壁の方へ歩いていった）。錨は見本と合った時だけ打ち直す。"""
-    ref = read_object(AIM_REF_OBJ)
+    aim = (_zone_cfg(zone).get("aim") or {}) if zone else {}
+    ref_obj = aim.get("ref") or AIM_REF_OBJ           # 区画ごとの見本（無ければ共通）
+    band = tuple(aim.get("band") or VIEW_BAND)        # 区画ごとの帯
+    min_conf = aim.get("min_conf") or AIM_MIN_CONF    # 区画ごとの線
+    ref = read_object(ref_obj)
     if ref is None:
         return True, None, None
     now_t = time.time()
-    dx, dy, resp = _frame_match(ref, now, VIEW_BAND)
+    dx, dy, resp = _frame_match(ref, now, band)
     if resp is None:
         return True, None, [dx, dy]
-    if resp >= AIM_MIN_CONF:
+    if resp >= min_conf:
         _last_good["jpg"], _last_good["ref_at"] = now, now_t
         return True, round(resp, 3), [dx, dy]
     prev = _last_good["jpg"]
     if prev is not None and now_t - _last_good["ref_at"] < LAST_GOOD_TTL:
-        pdx, pdy, presp = _frame_match(prev, now, VIEW_BAND)
-        if (presp is not None and presp >= AIM_MIN_CONF
+        pdx, pdy, presp = _frame_match(prev, now, band)
+        if (presp is not None and presp >= min_conf
                 and abs(pdx) <= SHIFT_MAX_PX and abs(pdy) <= SHIFT_MAX_PX):
             return True, round(presp, 3), [pdx, pdy]   # 錨は打ち直さない
     return False, round(resp, 3), [dx, dy]
@@ -3962,10 +4003,11 @@ async def _compare_zone(before: bytes, after: bytes, name: str, sink=None) -> di
       空→空＝同じ（光が違っても比べない）／物あり→空＝片づいた／空→物あり＝散らかった。
       物あり→物あり（と、どちらか不明）のときだけ、くぼみ以外を塗りつぶしてAIに聞く。"""
     # 今の1枚が、見本と同じ景色か（確かさで見る）。違えば比べない（2026-09-22）
-    view_ok, resp, vshift = _view_ok(after)
+    view_ok, resp, vshift = _view_ok(after, name)
     if not view_ok:
         _log_event("aim_mismatch", {"zone": name, "resp": resp, "shift": vshift,
-                                    "min_resp": AIM_MIN_CONF})
+                                    "min_resp": (_zone_cfg(name).get("aim") or {}).get("min_conf")
+                                                or AIM_MIN_CONF})
         return {"skip": "view_mismatch", "same": True, "resp": resp, "shift": vshift}
     dx, dy = _frame_shift(before, after)
     if abs(dx) > SHIFT_MAX_PX or abs(dy) > SHIFT_MAX_PX:
@@ -3990,8 +4032,9 @@ async def _compare_zone(before: bytes, after: bytes, name: str, sink=None) -> di
             # 言う誤りを、ここで止める（実測：前が不明の空どうしで 3/3 誤り）。
             return dict(base, same=True, better=None, changes=[], rule="不明→空")
         before, after = _sink_mask(before), _sink_mask(after)   # 物あり→物あり か不明
-    fix = ZONE_FIXTURES.get(name, "")
-    q = (_ZONE_SCENE + fix + "2枚の写真は同じ場所で、1枚目が前、2枚目が今です。"
+    _ask = _zone_cfg(name).get("ask") or {}
+    fix = _ask.get("fixtures", ZONE_FIXTURES.get(name, ""))
+    q = (_ask.get("scene", _ZONE_SCENE) + fix + "2枚の写真は同じ場所で、1枚目が前、2枚目が今です。"
          "『" + name + "』の中の物は前と比べてどうなりましたか？ 何が変わったかも短く。"
          "JSONだけで答えてください："
          "{\"change\": \"none\" | \"more\" | \"less\", \"what\": [\"変わった物を短く\"]}")
