@@ -4820,6 +4820,11 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
         # 数えられ、区画の評判が下がりつづけていた。
         quiet = not st.get("visit_seen")
         if quiet and now - float(ats.get(pose) or 0) < IDLE_CHECK_GAP:
+            # 黙って返さない（2026-09-25）。ここは「静かなので今回は点検しない」という
+            # 正常な抜け道だが、何も残らないので、外からは「止まっている」と区別できない。
+            # 9/25、区画の記録が2日間0件だったのを、半日かけて切り分ける羽目になった。
+            _log_event("zone_wait", {"pose": pose, "since": round(now - float(ats.get(pose) or 0)),
+                                     "gap": IDLE_CHECK_GAP})
             return None                        # 静かな時は、そう何度も点検しない
         # 滞在の長さ。5分以下しか居なかった人には何も付けない（本人決定 2026-09-09）。
         # 滞在の長さは人ごとに見る（2026-09-13）。家に1つの滞在で見ていた頃は、
