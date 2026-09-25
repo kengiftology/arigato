@@ -556,6 +556,13 @@ FACE_MIN_FRAMES = 2
 # なお顔が小さいのは見下ろす角度のせいではない（本人の指摘 2026-09-13）。
 # 待つ向きは机のある部屋をほぼ真横に見ていて、顔は正面で写る。小さいのは
 # 単純に距離。だから「近づける／寄せる」か「コマを束ねる」かの二択になる。
+# 2026-09-25：大きく写った顔は、2コマ目を待たずに1枚で決める。
+# 人は数秒で通り過ぎるので、2コマ目が来ないまま終わる回がある（9/25 13:10、本人が
+# 149px・0.553 で写ったのに保留のまま通り過ぎた）。本人の分類2,461枚で測ると、
+# 140px以上・0.46以上の1枚判定は **95回中95回当たり・外れ0**。
+# 0.46 は確定線 0.40 より厳しいので、2コマで決めるより安全側になる。
+FACE_ONE_PX = 140         # この幅以上なら1コマで決めてよい
+FACE_ONE_SIM = 0.46       # ただし、その1枚の近さがこれ以上のときだけ
 FACE_SMALL_PX = 100       # これ未満は「小さい顔」
 FACE_MIN_FRAMES_SMALL = 3 # 小さい顔は3コマ揃うまで決めない
 # 覚えの8本は「違う見え方」で埋める（2026-09-12 夜）。
@@ -958,6 +965,17 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
     else:
         frames, n, best_px, spread = _remember_face(st, one, px, pos)
     need = FACE_MIN_FRAMES_SMALL if best_px < FACE_SMALL_PX else FACE_MIN_FRAMES
+    one_ok = False
+    if not dn and n < need and known and px >= FACE_ONE_PX:
+        # 大きく写った1枚。ここで決めないと、通り過ぎる人は永久に名前が付かない。
+        # 近さが FACE_ONE_SIM 以上のときだけ、この1枚で決める。
+        try:
+            sc = face.score_frames([one], known)
+            sc = {k: v for k, v in sc.items() if k not in (taken or ())}
+            if sc and max(sc.values()) >= FACE_ONE_SIM:
+                frames, n, one_ok = [one], need, True
+        except Exception as e:
+            logger.warning("one frame check failed: %s", e)
     if n < need and known:
         # まだ1コマしか無い。人が居ることは確かなので、そう伝えるだけにして、
         # 誰かは決めない（次のコマが届けば2枚揃って決まる・数秒後）。
@@ -966,7 +984,8 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
     scores = {k: v for k, v in face.score_frames(frames, known).items() if k not in (taken or ())}
     pid = max(scores, key=scores.get) if scores else None
     sim = scores[pid] if pid else 0.0
-    if pid is not None and sim < (FACE_CONFIRM_FRONT if front else FACE_CONFIRM_TILT):
+    line = FACE_ONE_SIM if one_ok else (FACE_CONFIRM_FRONT if front else FACE_CONFIRM_TILT)
+    if pid is not None and sim < line:
         if sim >= FACE_HOLD and not _distinct_enough_to_enroll(st, one, px, front):
             # 保留：誰かに似ているが、言い切れない。名前を付けず、新しい人も作らず、覚えも変えない。
             _log_small("hold", best_px, sim=round(sim, 3), who=pid, n=n,
