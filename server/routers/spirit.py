@@ -297,10 +297,38 @@ def _log_small(why: str, px: int, **extra):
 
 def _log_event(kind: str, data: dict):
     """研究用の時系列ログ（spirit_log）。失敗しても本体を止めない。"""
+    now = time.time()
     try:
-        get_db().collection("spirit_log").add({"t": time.time(), "kind": kind, **data})
+        get_db().collection("spirit_log").add({"t": now, "kind": kind, **data})
     except Exception as e:
         logger.warning("spirit log failed: %s", e)
+    _note_change(kind, data, now)
+
+
+def _note_change(kind: str, data: dict, t: float):
+    """片づいた方向の変化を、探さずに取り出せる所へ控える（2026-09-25）。
+
+    思い出をさがす範囲を7日に広げたが、記録は1日約1,800件（大半は写真と人の出入り）で、
+    7日ぶんを毎回めくるのは高くつく。起きた瞬間に1つだけ控えておけば、あとは読まずに済む。
+    控えが無い古い出来事のためだけに、さかのぼる道（MEMORY_SCAN）を残してある。"""
+    good = (kind == "care" or (kind == "zone" and data.get("better"))
+            or (kind == "visit" and data.get("sink_empty")))
+    # 状態がまだ読まれていないときは触らない（ここから _load を呼ぶと記録が入れ子になる）
+    if not good or _state_cache is None:
+        return
+    if kind == "zone":
+        what = "、".join((c.get("what") or "") for c in (data.get("changes") or []) if c.get("what"))
+    else:
+        what = "シンクが きれいに なっていた"
+    if not what:
+        return
+    try:
+        _state_cache["last_change"] = {
+            "what": what[:60], "t": t,
+            "who": [w for w in (data.get("who") or []) if w]}
+        _save(_state_cache)
+    except Exception as e:
+        logger.warning("last change note failed: %s", e)
 
 
 def _load() -> dict:
@@ -2618,7 +2646,10 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
                  if memory.get("mine") else
                  "誰がやったかは言わない。場所の様子として『%s、〜なってたなあ』と言う。" % when) +
                 "\n思い出は1つだけ、短く。**英語やかたい言い方は使わず、子どもの短いひらがなに言い直す**。"
-                "回数（◯回目）・『ひさしぶり』・『また来た』のような、来かたに触れることばは言わない。")
+                # 2026-09-25：さかのぼる範囲を7日にしたので、日数に触れる文が出やすくなる。
+                "回数（◯回目）・日数（なん日ぶり・3日まえ・先週）・『ひさしぶり』・『しばらく』・"
+                "『また来た』のような、**来かたや空いた時間に触れることばは一切言わない**。"
+                "いつのことかを言うのは『さっき』『きのう』『このまえ』の3つだけ。")
     said = [s for s in (said or []) if isinstance(s, str) and s.strip()]
     if len(said) >= SAID_MIN_LINES and sum(len(s) for s in said) >= SAID_MIN_CHARS:
         ask += ("\n【この人が実際に言った言葉】" + "／".join("『%s』" % s for s in said[:6]) +
@@ -3377,15 +3408,20 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             doc = d.to_dict() or {}
             manner = _bond_stage(_bond_now(doc))[1]
             thanks = _own_care(d.id)
+            # この人にはどこまで話したか（2026-09-25）。同じ出来事を7日ぶんむし返さない。
+            mem = (_recent_memory(d.id, after=float(doc.get("told_change") or 0))
+                   if MEMORY_ON else None)
             text = await _greet_line(persona, manner, thanks, news and not thanks,
                                      (doc.get("name") or "") if CALL_NAME else "",
                                      avoid=[x.get("t") for x in _slots(doc) if x.get("t")],
-                                     said=doc.get("said"),
-                                     memory=_recent_memory(d.id) if MEMORY_ON else None)
+                                     said=doc.get("said"), memory=mem)
             if text:
                 ls = _put_line(_slots(doc), text, now)
                 if ls is not None:
-                    d.reference.update({"lines": ls})
+                    upd = {"lines": ls}
+                    if mem:
+                        upd["told_change"] = mem["t"]
+                    d.reference.update(upd)
                     n += 1
         text = await _greet_line(persona, BOND_STAGES[0][2], False, news)
         if text and text != st.get("next_new_text"):
@@ -3412,7 +3448,9 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
     if not name:
         return []
     manner = _bond_stage(_bond_now(doc))[1]
-    mem = (_recent_memory(pid, 7 * 86400.0 if memory_on else 0.0)
+    # 見本（save=False）は、もう話した思い出でも見せる。本人が言い方を見るためのもので、
+    # 見せたことは「話した」に入らない。本番に入れるときだけ、話した印を見て・立てる。
+    mem = (_recent_memory(pid, after=float(doc.get("told_change") or 0) if save else 0.0)
            if (MEMORY_ON if memory_on is None else memory_on) else None)
     texts = []
     for _ in range(n * 2):                     # 同じ文が出たら数に入れない
@@ -3424,7 +3462,10 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
             break
     if save and texts:
         now = time.time()
-        ref.update({"lines": [{"t": t, "m": "", "at": now} for t in texts]})
+        upd = {"lines": [{"t": t, "m": "", "at": now} for t in texts]}
+        if mem:
+            upd["told_change"] = mem["t"]
+        ref.update(upd)
         _log_event("lines_remade", {"person": pid, "lines": len(texts)})
     return texts
 
@@ -3440,8 +3481,8 @@ async def greet_preview(person: str, n: int = 4, save: int = 0,
     texts = await remake_lines(person, max(1, min(n, 8)), save=bool(save), memory_on=True)
     doc = get_db().collection("faces").document(person).get().to_dict() or {}
     return {"person": person, "name": doc.get("name"), "said": doc.get("said") or [],
-            # 見本では7日ぶんまで遡る（24時間に変化が無くても、言い方を見てもらえるように）
-            "memory": _recent_memory(person, 7 * 86400.0),
+            # さかのぼる範囲は本番と同じ7日（2026-09-25 本人決定）
+            "memory": _recent_memory(person),
             "lines": texts, "saved": bool(save and texts)}
 
 
@@ -4468,9 +4509,14 @@ def _bond_stage(level: int) -> tuple:
             name, manner = n, m
     return name, manner
 NEWS_WINDOW = 86400.0  # 「さっき誰かが」と伝えられる範囲
-# 思い出をさがすとき、いちどに見る記録の上限（2026-09-25）。
-# 記録は1日約1,800件。24時間ぶんが収まり、見本の7日さかのぼりでも50時間ほど届く。
-MEMORY_SCAN = 2000
+# 思い出をさがす範囲（2026-09-25・本人決定）。24時間では届かない。
+# ここは人が毎日来る場所ではなく、2日空くのはふつう（この日も実際に空いた）。
+# 24時間のままだと「このまえ やってくれたよね」が、人出の少なさだけで
+# ほとんど起きなくなる。言い方は「このまえ」のまま、日数も回数も言わない。
+MEMORY_WINDOW = 7 * 86400.0
+# 思い出をさがすとき、いちどに見る記録の上限。記録は1日約1,800件なので、
+# 7日ぶん全部は見ない。新しい方から見ていって、最初に見つかった1つを使う。
+MEMORY_SCAN = 4000
 
 
 def _bond_now(doc: dict) -> float:
@@ -4513,6 +4559,14 @@ def _recent_change(window: float) -> dict | None:
     got = _LAST_CHANGE.get(window)
     if got and time.time() - got[0] < CHANGE_CACHE:
         return got[1]
+    now = time.time()
+    # まず控え（起きた瞬間に書いたもの）。これがあれば、記録をめくらずに済む。
+    note = (_load() or {}).get("last_change") or {}
+    if note.get("what") and 0 < now - float(note.get("t") or 0) <= window:
+        out = {"what": note["what"], "hours": int((now - float(note["t"])) // 3600),
+               "who": note.get("who") or [], "t": float(note["t"])}
+        _LAST_CHANGE[window] = (now, out)
+        return out
     out = None
     try:
         # 60件だけ見ていた頃は、混んだ時間帯だと数分ぶんしか遡れず、
@@ -4521,15 +4575,16 @@ def _recent_change(window: float) -> dict | None:
         # 300件では18時間しか遡れない。思い出になる記録は7日で93件しかないので、
         # いちばん新しいものが「新しい方から1,289件目」に沈み、**一度も見つかっていなかった**。
         # 件数で区切るのをやめ、時刻で区切る（同じ `t` の並べ替えなので、索引は足さずに済む）。
-        now = time.time()
-        cutoff = now - (window or NEWS_WINDOW)
+        # 控えができる前の出来事のための道。MEMORY_SCAN 件までしか遡らないので、
+        # それより古いものは拾えない。控えができた後は、ここまで来ない。
+        cutoff = now - window
         docs = get_db().collection("spirit_log").where(
             "t", ">=", cutoff).order_by(
             "t", direction="DESCENDING").limit(MEMORY_SCAN).stream()
         for d in docs:
             e = d.to_dict() or {}
             t = e.get("t") or 0
-            if now - t > (window or NEWS_WINDOW):
+            if now - t > window:
                 break
             what = ""
             if e.get("kind") == "zone" and e.get("better"):
@@ -4548,17 +4603,21 @@ def _recent_change(window: float) -> dict | None:
     return out
 
 
-def _recent_memory(pid: str, window: float = 0.0) -> dict | None:
+def _recent_memory(pid: str, window: float = 0.0, after: float = 0.0) -> dict | None:
     """その人に話せる「このまえの思い出」（2026-09-23・本人「思い出を混ぜたい」）。
 
     場所に起きた変化を1つ拾って返す。{"what": 変化の文, "hours": 何時間前か,
-    "mine": その人の手柄として言ってよいか}。
+    "t": いつのことか, "mine": その人の手柄として言ってよいか}。
     mine は「その変化のときに居たのがその人ひとり」のときだけ True。
-    2人以上居たときは、実際にやったのが別の人かもしれないので、場所の様子として言う。"""
-    got = _recent_change(window or NEWS_WINDOW)
-    if not got:
-        return None
-    return {"what": got["what"], "hours": got["hours"], "mine": got["who"] == [pid]}
+    2人以上居たときは、実際にやったのが別の人かもしれないので、場所の様子として言う。
+
+    after＝この人にはここまで話した、という印（2026-09-25）。範囲を7日に広げたので、
+    印が無いと、同じ出来事を一週間ぶん毎回むし返すことになる。"""
+    got = _recent_change(window or MEMORY_WINDOW)
+    if not got or got["t"] <= after:
+        return None                              # もうこの人に話した思い出は、持ち出さない
+    return {"what": got["what"], "hours": got["hours"], "t": got["t"],
+            "mine": got["who"] == [pid]}
 
 
 def _recent_care() -> bool:
