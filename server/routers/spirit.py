@@ -958,6 +958,12 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
     # 段階を渡している人とは明らかに違う顔が写ったら渡すのをやめる、の材料（研究トークD）。
     # 1枚ぶんの、各IDの覚えの重心との近さ。壊れても顔の判定は止めない。
     try:
+        # 2026-09-26：この滞在で顔を見はじめた時刻と、最後に見た時刻を持つ（記録だけ・判定には使わない）。
+        # 「通り過ぎただけの人」と「立ち寄った人」を後から分けるため（主張#25）。
+        # 誰か分からなかった人にも付くので、`visit` の `who` が空でも長さが残る。
+        if not st.get("visit_face_first"):
+            st["visit_face_first"] = time.time()
+        st["visit_face_last"] = time.time()
         st["last_face"] = {"t": time.time(), "px": int(px),
                            "scores": {k: round(v, 3) for k, v in face.score_frames([one], known).items()}}
     except Exception as e:
@@ -5051,6 +5057,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
             st["sink_empty_prev"] = prev if prev is not None else await _sink_empty(data)
             st["visit_people"] = []            # 比べられなかった来訪は数えない
             st["visit_seen"], st["seen_by"] = False, []
+            st["visit_face_first"] = st["visit_face_last"] = 0.0
             _save(st)
             _log_event("baseline", {"pose": pose, "sink_empty": st["sink_empty_prev"]})
             return None
@@ -5093,9 +5100,13 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
         # 書いていたので、分からなかった滞在が1件も残らず、「世話が起きた滞在のうち
         # 誰がやったか分かった割合」の分母が作れなかった（9/10〜15 は滞在26件すべてが
         # 「分かった」に見えるが、分からなかった滞在が記録されていないだけ）。
+        # 顔が写っていた長さ（秒）。MIN_PRESENCE(30秒)未満なら「通り過ぎた」と読める。
+        fspan = round(float(st.get("visit_face_last") or 0) - float(st.get("visit_face_first") or 0))
         _log_event("visit", {"who": who, "sink_empty": empty,
                              "stay": {k: round(stays[k]) for k in who},
-                             "seen": bool(st.get("visit_seen"))})
+                             "seen": bool(st.get("visit_seen")),
+                             "face_span": max(0, fspan),
+                             "passed_by": bool(st.get("visit_face_first")) and fspan < MIN_PRESENCE})
         if who:
             if empty:
                 st["sink_level"] = 0                      # 空＝一番きれい（Aは戻す合図）
@@ -5118,6 +5129,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
             st["sink_empty_prev"] = empty                        # 次の比較の「前」の答え
         st["visit_people"] = []
         st["visit_seen"], st["seen_by"] = False, []
+        st["visit_face_first"] = st["visit_face_last"] = 0.0
         _save(st)
         return tail
     except Exception as e:
