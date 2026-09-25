@@ -2593,8 +2593,11 @@ GREET_OPENINGS = [
     "いまの場所の様子から始める（『ここ、しずかだったんだよ。……』）。",
     "ふいに気づいたように、短い声から始める（『あ、』『きゃあ、』）。",
 ]
-# 思い出を話す本の入り方。思い出があるときだけ使う
-MEMORY_OPENING = "思い出から始める（『このまえ、……』）。"
+# 思い出を話す本の入り方。思い出があるときだけ使う。
+# 2026-09-25：ここに『このまえ、……』と例を書いたら、【思い出】が『さっき』と指示して
+# いるのに例のほうに引かれ、**正しい一言まで捨てられた**（14本全部）。
+# いつのことかは【思い出】だけが決める。ここでは言葉を指定しない。
+MEMORY_OPENING = "思い出から始める（いつのことかを言うことばから入る）。"
 
 
 def _pick_openings(name: str, k: int = 1) -> list:
@@ -2616,6 +2619,10 @@ _GREET_SYSTEM = (
     "『きてくれたね。うれしいなあ。』『ここ、しずかだったんだよ。』"
     "【いちばん大事な掟】命令しない・お願いしない・提案しない・責めない。"
     "『片付けて』『〜してね』の類は絶対に言わない。数や回数も口にしない。"
+    # 2026-09-10 本人決定。思い出のときだけ禁じていたが、9/25 に思い出の無い一言へ
+    # 「また来てくれたんだ」が出た。来かたに触れるのは、どの一言でも負い目になる。
+    "『また来た』『ひさしぶり』『しばらく』『なん日ぶり』のように、"
+    "その人が来なかった時間に触れることばも言わない。"
     "相手を評価する言葉（えらい・すごい・だめ）も言わない。"
     "【この相手への接し方】ここに書かれた気分のとおりに振る舞う。"
     "ただし、その理由（相手が何をした・しなかった）には決して触れない。"
@@ -3513,21 +3520,26 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
     mem_at = random.randrange(len(kinds)) if mem else -1
     if mem:
         kinds[mem_at] = MEMORY_OPENING
-    texts = []
+    texts, got_mem = [], False
+    # 型は「何本できたか」ではなく「何回ためしたか」で進める（2026-09-25）。
+    # できた数で進めていたら、捨てられた型を8回とも引き直し、**1本も作れなかった**。
+    # 1つの型がうまくいかなくても、ほかの型はためされる形にする。
     for i in range(n * 2):                     # 同じ文が出たら数に入れない
-        at = len(texts) % len(kinds)
+        at = i % len(kinds)
+        use_mem = bool(mem) and at == mem_at and not got_mem
         t = await _greet_line(st.get("persona", ""), manner, False, False, name,
                               avoid=texts, said=doc.get("said"),
-                              memory=mem if at == mem_at else None,
+                              memory=mem if use_mem else None,
                               opening=kinds[at])
         if t and t not in texts:
             texts.append(t)
+            got_mem = got_mem or use_mem
         if len(texts) >= n:
             break
     if save and texts:
         now = time.time()
         upd = {"lines": [{"t": t, "m": "", "at": now} for t in texts]}
-        if mem:
+        if got_mem:
             upd["told_change"] = mem["t"]
         ref.update(upd)
         _log_event("lines_remade", {"person": pid, "lines": len(texts)})
