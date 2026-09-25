@@ -394,7 +394,12 @@ def _sanitize(c, limit: int = MAX_COMMENT) -> str:
     c = re.sub(r"\s+", " ", re.sub(r"[{}\"\\\n]", " ", c)).strip()
     if any(b in c for b in _BAD):
         return "きょうもおつかれさま"
-    return c[:limit]
+    if len(c) <= limit:
+        return c
+    # 上限で機械的に切ると、文の途中で終わる（9/25：「……ゆいちゃんのこと、おもって」）。
+    # そのまま声になるので、言いかけのまま鳴る。切るなら文の終わりで切る。
+    cut = max(c.rfind(ch, 0, limit + 1) for ch in "。！？…")
+    return c[:cut + 1] if cut > 0 else c[:limit]
 
 
 def _shrink_for_judge(data: bytes, max_w: int = 1280) -> bytes:
