@@ -1935,7 +1935,11 @@ async def care(n: int = 0):
     now = time.time()
     seen = list(st.get("visit_people") or [])
     sa = st.get("seen_at") or {}
+    zl = st.get("zone_last") or {}
+    # 10分より古い区画は添えない。分からないものは空のままにする（推測で埋めると後から区別できない）。
+    zone = zl.get("name", "") if (now - float(zl.get("t") or 0)) <= 600 else ""
     _log_event("care", {"count": n,
+                        "zone": zone,
                         "seen": seen,
                         "seen_ago": {p: round(now - float(sa[p])) for p in seen if p in sa},
                         "unknown_recent": len([t for t in (st.get("unknown_at") or [])
@@ -4328,6 +4332,9 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
             _log_event("zone_same", {"zone": z["name"], "quiet": quiet,
                                      "rule": r.get("rule", "AI")})
         if changed:
+            # 区画の id をそのまま持つ（2026-09-24）。`patrol_zone` は「シンク 比べず（ずれ）」
+            # のような表示用の文なので、数える側からは使えない。
+            st["zone_last"] = {"name": z["name"], "t": time.time()}
             _log_event("zone", {"zone": z["name"], "who": who,
                                 "quiet": quiet, "better": r.get("better"),
                                 "seen_by": seen_by, "rule": r.get("rule", "AI"),
@@ -4841,6 +4848,54 @@ async def aim_ref(key: str = ""):
     upload_to(AIM_REF_OBJ, data, "image/jpeg")
     _log_event("aim_ref", {"bytes": len(data)})
     return {"ok": True, "bytes": len(data)}
+
+
+@router.get("/history")
+async def history(days: float = 1.0):
+    """誰が・どの区画を・何回世話したか（2026-09-24・9/28の関門③の材料）。
+
+    関門の夕方にその場で数えて返す。手作業を挟むと当日に間に合わない。
+    `pairs`（人×区画の組の数）だけで「2人以上・2区画以上」が判定できる。
+    **確定した相手だけを数える**（保留・不明は people に入れず no_person に出す)。"""
+    import collections
+    since = time.time() - max(0.04, days) * 86400
+    tbl = collections.defaultdict(lambda: collections.Counter())
+    cares = no_zone = no_person = 0
+    last = 0.0
+    try:
+        q = get_db().collection("spirit_log").where("t", ">=", since)
+        for d in q.order_by("t").limit(20000).stream():
+            x = d.to_dict() or {}
+            if x.get("kind") != "care":
+                continue
+            cares += 1
+            last = max(last, float(x.get("t") or 0))
+            who = x.get("who") or x.get("seen") or []
+            zone = (x.get("zone") or "").strip()
+            if not zone:
+                no_zone += 1
+            if not who:
+                no_person += 1
+                continue
+            for pid in who:                      # 1人に決め打ちしない。居た人ぜんぶに数える
+                tbl[pid][zone or "(区画なし)"] += 1
+    except Exception as e:
+        return {"error": str(e)}
+    names = {}
+    try:
+        for pid in tbl:
+            v = get_db().collection("faces").document(pid).get().to_dict() or {}
+            if v.get("name"):
+                names[pid] = v["name"]
+    except Exception as e:
+        logger.warning("history names failed: %s", e)
+    zones = {z for c in tbl.values() for z in c if z != "(区画なし)"}
+    pairs = sum(1 for pid in tbl for z in tbl[pid] if z != "(区画なし)")
+    return {"people": len(tbl), "zones": len(zones), "pairs": pairs,
+            "table": {k: dict(v) for k, v in tbl.items()}, "names": names,
+            "cares": cares, "no_zone": no_zone, "no_person": no_person,
+            "updated": time.strftime("%m/%d %H:%M", time.localtime(last)) if last else None,
+            "since": time.strftime("%m/%d %H:%M", time.localtime(since))}
 
 
 @router.get("/zones")
