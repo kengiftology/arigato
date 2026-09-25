@@ -5,13 +5,18 @@
 「動きが1つも変わっていないこと」を手で確かめた。同じ確認を毎回手でやるのは続かない。
 ここに置いておけば、押す前に機械が確かめる。
 """
-import sys, os, time
+import sys, os, calendar
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import server.routers.spirit as sp
 
 
 def _day(y, m, d, hh, mm=0):
-    return time.mktime((y, m, d, hh, mm, 0, 0, 0, -1))
+    """日本時間の壁時計から UNIX 秒。
+
+    `time.mktime` は**走らせた機械の時間帯**で解釈するので使えない。
+    2026-09-25、これで試験が私の PC（日本時間）では通り、CI（UTC）では
+    日付が1日ずれて落ちた。試験そのものが、走る場所で答えを変えてはいけない。"""
+    return calendar.timegm((y, m, d, hh, mm, 0, 0, 0, 0)) - sp.JST
 
 
 # --- 水切りの猶予（本人決定 2026-09-25）：日付が変わり、そのあと使われるまでは、そのままでよい ---
