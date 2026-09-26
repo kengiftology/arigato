@@ -375,7 +375,13 @@ async def _voice(text: str) -> bytes:
 #   cand  = 確かめている候補、round = 何回目か（ROUND_MAX で打ち切る）
 # 返事の listen=true は「もう一度しゃべるので、鳴り終わったらまた聞いて送って」という合図。
 
-ROUND_MAX = 3                    # 1回の来訪で、聞き直すのはここまで
+# 2026-09-26 本人「多分一度も正しく聞き取られなかった。連続で同じ質問を問いかけられた」。
+# 記録を見ると、1分47秒のあいだに10回鳴っていた（問いかけ1・同じ聞き直し2・つなぎ4・
+# 別の問いかけ1・「ん？」1）。決まりどおりでも、人には機械が繰り返しているように聞こえる。
+# 聞き直すのは2回まで。しかも**静かだったときは聞き直さない**（下の ASK_AGAIN_LEVEL）。
+# 黙っているのは答えたくないからで、聞き直すのは催促になる（3つの判断基準の①）。
+ROUND_MAX = 2                    # 1回の来訪で、聞き直すのはここまで
+ASK_AGAIN_LEVEL = 60             # これ以上の声が入っていたときだけ聞き直す（静かなら黙って終わる）
 
 _YESNO_SYSTEM = """共有キッチンに住む小さな精霊が、来た人に「◯◯……で、あってる？」と、呼び名が合っているかを聞きました。
 その人の返事を文字にしたものが届きます（聞き間違いが混ざることがあります。頭に精霊自身の問いかけが混ざることもあります。それは無視）。
@@ -525,6 +531,11 @@ async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
     visit = float((st.get("visit_of") or {}).get(pid) or st.get("visit_start") or 0)
     if visit and float((st.get("talked") or {}).get(pid) or 0) >= visit:
         return False                         # この来訪ではもう話しかけた
+    # 呼び名をたずねた来訪では、続けて話しかけない（2026-09-26）。
+    # 9/26 18:40、呼び名を3回たずねて諦めた7秒後に別の問いかけを始めていた。
+    # 聞かれ続ける形になり、本人が「連続で同じ質問」と感じた原因のひとつ。
+    if visit and float((st.get("asked") or {}).get(pid) or 0) >= visit:
+        return False
     import random
     q = random.choice([x for x in TALK_QUESTIONS if x != doc.get("last_q")] or TALK_QUESTIONS)
     line = "talk_%s_0" % pid
@@ -721,14 +732,16 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
             if say:
                 again("confirm", name)
                 listen = True
-        elif rnd < ROUND_MAX:                # 取れなかった → 聞き直す
+        elif rnd < ROUND_MAX and level >= ASK_AGAIN_LEVEL:
+            # 声は入っていたのに、ことばにならなかった → 一度だけ聞き直す（2026-09-26）
             result = "none_retry"
             say = await _say(st, person, "……もういっかい、いって？")
             if say:
                 again("ask")
                 listen = True
         else:
-            result = "none_giveup"
+            # 静かだった（level < ASK_AGAIN_LEVEL）／上限に達した → 黙って終わる
+            result = "none_giveup" if level >= ASK_AGAIN_LEVEL else "none_quiet"
     else:                                    # phase == "confirm"
         ans, fixed = "unclear", None
         if text:
