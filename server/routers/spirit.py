@@ -2868,6 +2868,30 @@ async def faces_summary():
     return {"faces": out, "enabled": FACE_ENABLED, "last_error": _identify_err[0]}
 
 
+@router.get("/lines_stored")
+async def lines_stored(x_upload_key: str = Header(None)):
+    """いま置いてある迎えの一言を、人ごとに全部見せる（2026-09-26）。
+
+    9/25 に「文の途中で切れた一言」が1本見つかった。1本だけ直しても、
+    ほかに切れたものが残っていたら意味がないので、まとめて見られる口を作る。
+    呼び名が入るので鍵つき。声そのものは返さない。"""
+    if not key_ok(x_upload_key):
+        raise HTTPException(status_code=401, detail="bad key")
+    out = []
+    try:
+        for d in get_db().collection("faces").stream():
+            v = d.to_dict() or {}
+            ls = [x.get("t") or "" for x in _slots(v)]
+            out.append({"id": d.id, "name": v.get("name") or "",
+                        # 言いかけのまま終わっていないか（声になると、そのまま途切れて鳴る）
+                        "unfinished": [t for t in ls if t and t[-1] not in "。！？…ー"],
+                        "lines": ls})
+    except Exception as e:
+        return {"people": [], "error": str(e)}
+    return {"people": out,
+            "unfinished_total": sum(len(p["unfinished"]) for p in out)}
+
+
 @router.get("/people")
 async def people():
     """人ごとの積み重ね（研究用の取り出し口）。
