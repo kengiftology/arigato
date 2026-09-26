@@ -164,3 +164,70 @@ def test_区画が無ければ何も見に行かない():
     assert pose == ""
     assert left == []
     assert rotate == 3
+
+
+# ── 見回りを出す係（/spirit/hint）を、そのまま走らせて確かめる ──
+#
+# なぜ要るか：組み立て（_sweep_plan）が正しくても、**それを呼ぶ側の条件**が
+# 間違っていれば何も起きない。9/26 の穴はまさにそこだった（設定は5区画ぶん
+# 書けていて、呼ぶ側が1つしか見ていなかった）。本番では人が来るまで見回りが
+# 出ないので、夜のうちに確かめる手立てが他にない。
+
+class _State(dict):
+    pass
+
+
+def _hint_once(monkeypatch, st, now):
+    """その時刻に /spirit/hint が何を返すかを、状態を持ち込んで確かめる。"""
+    import asyncio
+    monkeypatch.setattr(sp, "_load", lambda *a, **k: st)
+    monkeypatch.setattr(sp, "_save", lambda s, *a, **k: None)
+    monkeypatch.setattr(sp, "_log_event", lambda *a, **k: None)
+    monkeypatch.setattr(sp.time, "time", lambda: now)
+    return asyncio.run(sp.hint()).strip()
+
+
+def test_静かになったら1周ぜんぶ回る(monkeypatch):
+    poses = list(sp._check_poses())
+    t = 1_800_000_000.0
+    st = _State({"check_pose": poses[0], "last_seen": t, "last_motion": 0,
+                 "checked_at": t - sp.CHECK_GAP - 1, "zone_rotate": 0})
+    got = []
+    for i in range(len(poses)):
+        now = t + sp.CHECK_QUIET_SEC + 1 + i * 30
+        tag = _hint_once(monkeypatch, st, now)
+        assert tag.startswith("check "), tag
+        got.append(tag.split(None, 1)[1])
+        st["checked_at"] = now + 20        # 目が見に行って戻ってきた
+    assert sorted(got) == sorted(poses), got
+    # 1周し終えたら、人が来るまで出ない
+    assert _hint_once(monkeypatch, st, t + sp.CHECK_QUIET_SEC + 1 + 5 * 30) == ""
+
+
+def test_見回りの途中で何度覗かれても同じ向きを返す(monkeypatch):
+    poses = list(sp._check_poses())
+    t = 1_800_000_000.0
+    st = _State({"check_pose": poses[0], "last_seen": t, "last_motion": 0,
+                 "checked_at": t - sp.CHECK_GAP - 1, "zone_rotate": 0})
+    now = t + sp.CHECK_QUIET_SEC + 1
+    first = _hint_once(monkeypatch, st, now)
+    # 目は3秒おきに覗きにくる。往復20秒のあいだ、同じ向きでなければ
+    # 控えた向きと実際に撮った向きが食い違う。
+    for k in range(1, 6):
+        assert _hint_once(monkeypatch, st, now + k * 3) == first
+
+
+def test_人が来たら1周を打ち切る(monkeypatch):
+    poses = list(sp._check_poses())
+    if len(poses) < 2:
+        pytest.skip("区画が1つでは打ち切りを試せない")
+    t = 1_800_000_000.0
+    st = _State({"check_pose": poses[0], "last_seen": t, "last_motion": 0,
+                 "checked_at": t - sp.CHECK_GAP - 1, "zone_rotate": 0})
+    now = t + sp.CHECK_QUIET_SEC + 1
+    _hint_once(monkeypatch, st, now)                  # 1周の1つ目
+    assert st.get("sweep_left"), "1周の残りが立っていない"
+    st["checked_at"] = now + 20
+    st["last_seen"] = now + 25                        # 人が来た
+    assert _hint_once(monkeypatch, st, now + 30) == ""   # すぐには出さない
+    assert st.get("sweep_left") == [], "残りを捨てていない"
