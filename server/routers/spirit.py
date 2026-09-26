@@ -2722,7 +2722,8 @@ async def _greet_check(text: str) -> str:
 
 def _says_nothing(t: str) -> bool:
     """意味を持たないことばを取り去ると、ほとんど何も残らない一言か。"""
-    s = re.sub(r"[。、！？…・\s]", "", t or "")
+    # 半角の「.」も落とす（2026-09-26：「きゃあ、......あ。」がここを通り抜けた）
+    s = re.sub(r"[。、！？…・\s\.．]", "", t or "")
     for w in sorted(_GREET_FILLER, key=len, reverse=True):
         s = s.replace(w, "")
     return len(s.strip("あ")) < 4
@@ -2967,7 +2968,11 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
         # 2026-09-25 の見本に「こんにちは」が混ざった。使わない約束は _GREET_SYSTEM に
         # 書いてあるのに、すり抜けた。出てしまったものは捨てる。捨てても作り直しは
         # もう一度まわるので、足りなくなるだけで、おかしな一言は残らない。
-        bad = [w for w in _GREET_BAD + _GREET_BEG + _GREET_AGAIN if w in text]
+        # 点や読点をはさんで書かれると、語の一覧をすり抜ける（2026-09-26：
+        # 「また、きてくれた」が「またき」に当たらなかった）。句読点を抜いた形でも見る。
+        flat = re.sub(r"[。、！？…・\s\.．]", "", text)
+        bad = [w for w in _GREET_BAD + _GREET_BEG + _GREET_AGAIN
+               if w in text or re.sub(r"[。、！？…・\s\.．]", "", w) in flat]
         if _says_nothing(text):
             bad.append("何も言っていない")
         # いつのことかを言い違えた一言も捨てる（2026-09-25）。39時間前を「さっき」と
