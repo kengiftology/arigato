@@ -2641,6 +2641,8 @@ GREET_OPENINGS = [
 # いるのに例のほうに引かれ、**正しい一言まで捨てられた**（14本全部）。
 # いつのことかは【思い出】だけが決める。ここでは言葉を指定しない。
 MEMORY_OPENING = "思い出から始める（いつのことかを言うことばから入る）。"
+# 前に聞いたことを持ち出す本の入り方（2026-09-26）
+KEEP_OPENING = "前に聞いたことから始める（そのものの名前をはっきり言う）。"
 
 
 def _pick_openings(name: str, k: int = 1) -> list:
@@ -2689,11 +2691,84 @@ MEMORY_ON = True         # 思い出を一言に混ぜるか（2026-09-23。本�
 SAID_MIN_LINES = 2       # その人の言葉が何件たまったら、しゃべり方を写すか（2026-09-23）
 SAID_MIN_CHARS = 10      # 合計でこれだけの字数がたまってから
 
+# ---- 前に聞いたことを、次に来たときに持ち出す（2026-09-26・本人「そうしましょう」）----
+# いまの対話は、答えてもその場で消える。「なに つくるの？」に「カレー」と答えても、
+# 次に来たときには何も残っていない。「覚えていてくれた」は台帳#6（人ごとの地霊は
+# 1キャラより愛着を強める）の柱なのに、残っていたのは場所の様子（シンク）だけで、
+# その人と交わした言葉は1つも残っていなかった。
+# 崩さない線（2026-09-25 本人「意味がわかることを発してほしい」）：
+#   ・持ち出すときは**そのものの名前を言う**。「あれ」「それ」で済ませない
+#   ・評価しない（うまい・すごい・えらい）。回数や日数を言わない
+#   ・できたか・やったかを問い詰めない。答えなくても何も残らない聞き方にする
+#   ・1人につき1つだけ。持ち出したら下ろす。古くなったら捨てる
+KEEP_ON = True
+KEEP_WINDOW = 7 * 86400.0        # これより古くなったら捨てる
+KEEP_MAX = 12                    # 覚えておくことばの長さ（字）
+
+_KEEP_SYSTEM = """共有キッチンに住む小さな地霊が、そこに来た人と少し話しました。
+その人が言ったことを文字にしたものが届きます（粗いマイクなので、聞き間違いが混ざります）。
+次に会ったときに地霊が持ち出せるものを、1つだけ取り出してください。
+
+取り出してよいもの：
+- 名前を言えば相手に伝わる、具体的なもの（たべもの・のみもの・道具・したこと・行った場所）
+- 例：「カレー」「みそしる」「なべ」「そうじ」
+
+取り出さないもの：
+- 体のこと・仕事や勉強のつらさ・お金・ほかの人のこと
+- 聞き間違いで意味をなさないもの、何を指すか分からないもの
+- 「今日」「これ」「それ」のように、それだけでは何も指さないことば
+
+書き方：その人に伝わる短い呼び方で、12字以内。ひらがな・カタカナでよい。
+JSONだけで答える：{"what": "カレー"} または {"what": null}"""
+
+
+async def _keep_topic(said: list) -> str:
+    """その人が言ったことから、次に持ち出せるものを1つ。取れなければ空。"""
+    if not said or not os.environ.get("ANTHROPIC_API_KEY"):
+        return ""
+    try:
+        from anthropic import AsyncAnthropic
+        msg = await AsyncAnthropic(timeout=20.0, max_retries=1).messages.create(
+            model=MODEL, max_tokens=60, system=_KEEP_SYSTEM,
+            messages=[{"role": "user", "content":
+                       "／".join("『%s』" % s for s in said[:6]) + "\nJSONで。"}])
+        out = "".join(b.text for b in msg.content if b.type == "text")
+        i, j = out.find("{"), out.rfind("}")
+        what = json.loads(out[i:j + 1]).get("what") if 0 <= i < j else None
+    except Exception as e:
+        logger.warning("keep topic failed: %s", e)
+        return ""
+    if not isinstance(what, str):
+        return ""
+    what = re.sub(r"[{}\"\\\s]", "", what).strip()
+    return what[:KEEP_MAX] if len(what) >= 2 else ""
+
+
+async def _kept_for(ref, doc: dict, now: float) -> str:
+    """この人に持ち出せる「前に聞いたこと」。まだ無ければ作る。持ち出せなければ空。"""
+    if not KEEP_ON:
+        return ""
+    k = doc.get("kept") or {}
+    said = [s for s in (doc.get("said") or []) if isinstance(s, str) and s.strip()]
+    if k.get("what") and now - float(k.get("at") or 0) <= KEEP_WINDOW and not k.get("told"):
+        return str(k["what"])
+    # 新しく聞いた言葉が増えていなければ、作り直さない（同じ言葉に何度も費用をかけない）
+    if not said or int(k.get("from") or -1) == len(said):
+        return ""
+    what = await _keep_topic(said)
+    try:
+        ref.update({"kept": {"what": what, "at": now, "from": len(said), "told": False}})
+    except Exception as e:
+        logger.warning("kept save failed: %s", e)
+    _log_event("kept", {"person": ref.id, "what": what or "（取れなかった）",
+                        "from_said": len(said)})
+    return what
+
 
 async def _greet_line(persona: str, manner: str, thanks: bool = False,
                       news: bool = False, name: str = "", avoid: list | None = None,
                       said: list | None = None, memory: dict | None = None,
-                      opening: str = "") -> str:
+                      opening: str = "", kept: str = "") -> str:
     """その人へ向けた一言をつくる。
 
     opening＝入り方の型（2026-09-25）。GREET_OPENINGS から1つ渡す。
@@ -2745,6 +2820,17 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
                 "回数（◯回目）・日数（なん日ぶり・3日まえ・先週）・『ひさしぶり』・『しばらく』・"
                 "『また来た』のような、**来かたや空いた時間に触れることばは一切言わない**。"
                 "いつのことかを言うのは『さっき』『きのう』『このまえ』の3つだけ。")
+    if kept:
+        # 2026-09-26 本人「そうしましょう」。前に聞いたことを、次に来たときに持ち出す。
+        ask += ("\n【前に聞いたこと】この人は前に『%s』のことを話していた。"
+                "**『%s』ということばを、そのまま文の中に出す。**"
+                "そのことを1つだけ、聞くか、ひとこと言う。"
+                "\n線："
+                "『あれ』『それ』『いつもの』で済ませない（聞いた人に何のことか分からない）。"
+                "うまい・すごい・えらい・おいしそう のような評価はしない。"
+                "できたか・やったかを問い詰めない。**答えなくても何も困らない聞き方にする。**"
+                "いつ聞いたか・何回目かには触れない。"
+                "「おぼえてたよ」と言わない（覚えていたことを手柄にしない）。" % (kept, kept))
     said = [s for s in (said or []) if isinstance(s, str) and s.strip()]
     if len(said) >= SAID_MIN_LINES and sum(len(s) for s in said) >= SAID_MIN_CHARS:
         ask += ("\n【この人が実際に言った言葉】" + "／".join("『%s』" % s for s in said[:6]) +
@@ -3547,19 +3633,28 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             mem = (_recent_memory(d.id, after=float(doc.get("told_change") or 0))
                    if MEMORY_ON else None)
             nm = (doc.get("name") or "") if CALL_NAME else ""
+            kept = await _kept_for(d.reference, doc, now)
+            # 前に聞いたことは3本に1本くらい。出すときは思い出と重ねない（2026-09-26）。
+            # ひとつの一言に、場所の思い出とその人の話を両方入れると、何の話か分からなくなる。
+            use_kept = bool(kept) and random.random() < 0.34
             # 思い出を出すのは4本に1本くらい（2026-09-25）。毎回出すと、どの迎えも同じ話になる。
-            if mem and random.random() >= 0.25:
+            if use_kept or (mem and random.random() >= 0.25):
                 mem = None
             text = await _greet_line(persona, manner, thanks, news and not thanks, nm,
                                      avoid=[x.get("t") for x in _slots(doc) if x.get("t")],
                                      said=doc.get("said"), memory=mem,
-                                     opening=MEMORY_OPENING if mem else _pick_openings(nm)[0])
+                                     kept=kept if use_kept else "",
+                                     opening=(KEEP_OPENING if use_kept else
+                                              MEMORY_OPENING if mem else _pick_openings(nm)[0]))
             if text:
                 ls = _put_line(_slots(doc), text, now)
                 if ls is not None:
                     upd = {"lines": ls}
                     if mem:
                         upd["told_change"] = mem["t"]
+                    if use_kept:
+                        # 持ち出したら下ろす。同じことを毎回聞かない
+                        upd["kept"] = dict(doc.get("kept") or {}, told=True)
                     d.reference.update(upd)
                     n += 1
         text = await _greet_line(persona, BOND_STAGES[0][2], False, news,
@@ -3592,27 +3687,37 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
     # 見せたことは「話した」に入らない。本番に入れるときだけ、話した印を見て・立てる。
     mem = (_recent_memory(pid, after=float(doc.get("told_change") or 0) if save else 0.0)
            if (MEMORY_ON if memory_on is None else memory_on) else None)
+    # 前に聞いたこと（2026-09-26）。見本では、下ろしたものでも見せる（本人が形を見るため）。
+    kept = await _kept_for(ref, doc, time.time()) if save else str((doc.get("kept") or {}).get("what") or "")
     # 入り方は本ごとに変える（2026-09-25）。作り直すのは4本なので、型は重ならない。
     kinds = _pick_openings(name, n)
     # 思い出は4本のうち1本だけに入れる（2026-09-25）。全部に渡すと、どの迎えも
     # 同じ話になる（見本で p01 は4本中3本、p02 は4本中3本がシンクの話になった）。
-    mem_at = random.randrange(len(kinds)) if mem else -1
+    # 前に聞いたことも別の1本に入れる。2つを同じ一言に混ぜると、何の話か分からなくなる。
+    spots = random.sample(range(len(kinds)), min(2, len(kinds)))
+    mem_at = spots[0] if mem else -1
+    keep_at = (spots[1] if mem else spots[0]) if kept else -1
     if mem:
         kinds[mem_at] = MEMORY_OPENING
-    texts, got_mem = [], False
+    if kept:
+        kinds[keep_at] = KEEP_OPENING
+    texts, got_mem, got_kept = [], False, False
     # 型は「何本できたか」ではなく「何回ためしたか」で進める（2026-09-25）。
     # できた数で進めていたら、捨てられた型を8回とも引き直し、**1本も作れなかった**。
     # 1つの型がうまくいかなくても、ほかの型はためされる形にする。
     for i in range(n * 2):                     # 同じ文が出たら数に入れない
         at = i % len(kinds)
         use_mem = bool(mem) and at == mem_at and not got_mem
+        use_kept = bool(kept) and at == keep_at and not got_kept
         t = await _greet_line(st.get("persona", ""), manner, False, False, name,
                               avoid=texts, said=doc.get("said"),
                               memory=mem if use_mem else None,
+                              kept=kept if use_kept else "",
                               opening=kinds[at])
         if t and t not in texts:
             texts.append(t)
             got_mem = got_mem or use_mem
+            got_kept = got_kept or use_kept
         if len(texts) >= n:
             break
     if save and texts:
@@ -3620,6 +3725,8 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
         upd = {"lines": [{"t": t, "m": "", "at": now} for t in texts]}
         if got_mem:
             upd["told_change"] = mem["t"]
+        if got_kept:
+            upd["kept"] = dict(doc.get("kept") or {}, told=True)
         ref.update(upd)
         _log_event("lines_remade", {"person": pid, "lines": len(texts)})
     return texts
@@ -3638,6 +3745,7 @@ async def greet_preview(person: str, n: int = 4, save: int = 0,
     return {"person": person, "name": doc.get("name"), "said": doc.get("said") or [],
             # さかのぼる範囲は本番と同じ7日（2026-09-25 本人決定）
             "memory": _recent_memory(person),
+            "kept": doc.get("kept") or {},          # 前に聞いたこと（2026-09-26）
             "lines": texts, "saved": bool(save and texts)}
 
 
