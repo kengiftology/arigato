@@ -529,6 +529,20 @@ FACE_BUF_SEC = 120.0      # これより古い顔は忘れる
 FACE_BUF_MAX = 8          # 同じ顔として束ねる枚数の上限
 FACE_BUF_KEEP = 6         # Firestore に持ち回るコマ数（1本512個の数値・6本で約25KB）
 FACE_BUF_MIN_NEW = 2      # 新しいIDを出すのに、最低これだけの枚数が要る
+# ただし「**明らかに誰でもない**」顔は1コマでも新しい人にする（2026-09-26）。
+# 9/26、未登録の方が一日中 `one_frame` のまま登録されなかった。横を向いた顔は本人どうしでも
+# 似ないので（実測 0.036・0.147）、束ねる線 0.35 に届かず n が 1 のままだった。
+# 本人の分類528枚で測ると、全員と 0.20 未満だった顔は **1枚だけ**（0.2%）。
+# この材料に未登録の人は居ないので、その1枚は割れ。**528枚に1枚の割れ**と引き換えに、
+# 知らない人をその場で登録できる。割れは夜のまとめ直しで戻せるが、登録されなかった人は戻せない。
+# 9/26 の通しの再生で線ごとに測り直した（本人の分類2,306枚・空の覚えから）：
+#   0.20 … 名前1117枚・**別人1枚**・ID10個   ← 別人が出るので採らない
+#   0.15 … 名前1094枚・別人0枚・ID 9個       ← これを採る
+#   0.10 … 名前1089枚・別人0枚・ID 8個
+# この材料には未登録の人が居ないので、増えたIDはすべて割れ。名前が付く顔が 1132→1094 に
+# 減るのも割れの巻き添え。**得（知らない人を登録できる）はこの材料では測れない**ので、
+# 損だけを見て、別人が出ない中でいちばん緩い線を採る。
+FACE_NEW_ALONE = 0.15     # 全員とこれ未満なら、1コマでも新しい人にしてよい
 # ただし、十分に大きく起きた顔なら1枚で足りる。
 # 実測（同一人物・正面・200px以上）で、本人を認める91%・
 # 他人を誤る0%。一方で、大きい写真は1枚送るのに3.9秒かかり、
@@ -976,8 +990,18 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
     else:
         frames, n, best_px, spread = _remember_face(st, one, px, pos)
     need = FACE_MIN_FRAMES_SMALL if best_px < FACE_SMALL_PX else FACE_MIN_FRAMES
-    one_ok = False
-    if not dn and n < need and known and px >= FACE_ONE_PX:
+    one_ok = alone_ok = False
+    if not dn and n < need and known and front and 100 <= px <= FACE_ENROLL_MAX_PX:
+        # 明らかに誰でもない1枚（2026-09-26）。このあとの「枚数が足りない」で弾かれると
+        # 登録の道に届かないので、ここだけ通す。横を向いた顔は本人どうしでも似ないため、
+        # 未登録の人は束ねが溜まらないまま一日中 one_frame で終わる（9/26 に実際に起きた）。
+        try:
+            sc0 = face.score_frames([one], known)
+            if sc0 and max(sc0.values()) < FACE_NEW_ALONE:
+                frames, n, alone_ok = [one], need, True
+        except Exception as e:
+            logger.warning("alone check failed: %s", e)
+    if not dn and not alone_ok and n < need and known and px >= FACE_ONE_PX:
         # 大きく写った1枚。ここで決めないと、通り過ぎる人は永久に名前が付かない。
         # 近さが FACE_ONE_SIM 以上のときだけ、この1枚で決める。
         try:
@@ -1042,7 +1066,12 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
         # 塞いだ。22:01、本人が278pxで写り、自分の p01 と 0.131 しか合わずに
         # p03 として登録された。1コマで決めないという決まりは、照合だけでなく
         # 登録にも要る。大きさは「小さい顔から作らない」の役だけに戻す。
-        if n < FACE_BUF_MIN_NEW and not _confirm_new(vec, pos, px):
+        # sim は「覚えの重心との近さ」の最大（測ったのと同じものさし）。
+        # sim1（覚え8本のうち一番似た1本）は値が上ぶれするので使わない。
+        alone = alone_ok or (bool(known) and sim < FACE_NEW_ALONE and front and not dn)
+        if alone and n < FACE_BUF_MIN_NEW:
+            _log_small("new_alone", best_px, sim=round(sim, 3), n=n)
+        if n < FACE_BUF_MIN_NEW and not alone and not _confirm_new(vec, pos, px):
             _log_small("not_enough", best_px, n=n)
             return None
         if _face_span[0] < MIN_PRESENCE:

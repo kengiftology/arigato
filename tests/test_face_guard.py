@@ -54,6 +54,7 @@ def test_判定の線が決めた値のまま():
     assert sp.FACE_ENROLL_MAX_PX == 290       # これより大きい顔から新しい人を作らない
     assert sp.FACE_NEW_MIN_N == 3             # 新しい人に要るコマ数
     assert sp.FACE_NEW_SPAN == 5.0            # そのコマが広がっていてほしい秒数
+    assert sp.FACE_NEW_ALONE == 0.15          # 全員とこれ未満なら1コマで新しい人にする
     assert sp.FACE_MIN_FRAMES == 2
     assert sp.FACE_MIN_FRAMES_SMALL == 3
     assert sp.MIN_PRESENCE == 30.0            # これ未満は「通りすがり」
