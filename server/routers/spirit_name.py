@@ -67,6 +67,14 @@ VOICEVOX_SPEAKER = 3             # ずんだもん（作り置きと同じ声）
 def _may_ask(st: dict, pid: str, doc: dict, now: float, alone: bool) -> bool:
     if not ASK_ON or (ASK_ONLY_ALONE and not alone) or not pid or pid == "unknown" or doc.get("name"):
         return False
+    # いま誰かと話している間は、別の問いかけを始めない（2026-09-26）。
+    # 顔の照合は、同じ人がカメラに近づくと見失うことがある（18:19:48：296px で
+    # 本人との近さ 0.160 → unknown。9/20 には 328px で 0.06 になり、別人として
+    # 登録された）。会話の最中に新しい ID が生まれると、**その新しい人に向けて
+    # 呼び名をたずね始める**ので、相手からは「話している途中で別の問いが来る」形に
+    # なる。話しかけは一度に1つだけにする。
+    if asking(st, now):
+        return False
     visit = float((st.get("visit_of") or {}).get(pid) or st.get("visit_start") or 0)
     return not (visit and float((st.get("asked") or {}).get(pid) or 0) >= visit)
 
@@ -545,6 +553,8 @@ async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
     """来訪ごとに1回、こちらから話しかける。始めたら True。"""
     if not TALK_ON or not pid or pid == "unknown":
         return False
+    if asking(st, now):
+        return False                         # 話している間は、別の話しかけを始めない
     if doc is None:
         try:
             doc = get_db().collection("faces").document(pid).get().to_dict() or {}
