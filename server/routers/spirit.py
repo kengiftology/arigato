@@ -2626,8 +2626,26 @@ _GREET_BAD = ("こんにちは", "こんばんは", "おはよう", "いらっ�
 # 「くっついちゃってもいい？」が出た。**問いかけそのものは捨てない**
 # （「なに つくるの？」は掟に触れないし、話が続くもとになる）。
 # 捨てるのは、相手に許しを求める形・何かをしてもらう形だけ。
-_GREET_BEG = ("おねがい", "てもいい", "ていい？", "てくれる", "てくれない",
+_GREET_BEG = ("おねがい", "てもいい", "ていい？", "てくれる？", "てくれない？",
               "てほしい", "しようよ", "しない？", "しよう？")
+# 来かたに触れることば（2026-09-10 本人決定）。指示にも書いてあるが、9/26 の見本で
+# 「また来てくれたんだ」「またきたね」「あのね、このあいだ……」が4本すり抜けた。
+# 『また来た』という形だけを禁じていたので、言い方を変えられると通ってしまった。
+_GREET_AGAIN = ("また来", "またき", "またお", "またあ", "このあいだ", "ひさしぶり",
+                "しばらく", "まえにも", "にどめ", "かいめ")
+# 何も言っていない一言を見分けるための、意味を持たないことば（2026-09-26）。
+# これを取り去って4字も残らなければ、聞いた人には何も伝わらない
+# （9/26 の実測：44本のうち8本が「きゃあ、あ……。」「うれしいなあ。……えーと。」だった）。
+_GREET_FILLER = ("うれしいなあ", "うれしい", "あのね", "えーとね", "えっとね", "えーと",
+                 "えっと", "きゃあ", "あっ", "なあ", "だなあ", "あれ", "ふふ", "ね")
+
+
+def _says_nothing(t: str) -> bool:
+    """意味を持たないことばを取り去ると、ほとんど何も残らない一言か。"""
+    s = re.sub(r"[。、！？…・\s]", "", t or "")
+    for w in sorted(_GREET_FILLER, key=len, reverse=True):
+        s = s.replace(w, "")
+    return len(s.strip("あ")) < 4
 
 GREET_OPENINGS = [
     "呼び名から始める（『◯◯ちゃん、……』）。",
@@ -2869,7 +2887,9 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
         # 2026-09-25 の見本に「こんにちは」が混ざった。使わない約束は _GREET_SYSTEM に
         # 書いてあるのに、すり抜けた。出てしまったものは捨てる。捨てても作り直しは
         # もう一度まわるので、足りなくなるだけで、おかしな一言は残らない。
-        bad = [w for w in _GREET_BAD + _GREET_BEG if w in text]
+        bad = [w for w in _GREET_BAD + _GREET_BEG + _GREET_AGAIN if w in text]
+        if _says_nothing(text):
+            bad.append("何も言っていない")
         # いつのことかを言い違えた一言も捨てる（2026-09-25）。39時間前を「さっき」と
         # 言った見本が4本中2本あった。頼むだけでは直らないので、出たものは捨てる。
         if memory and memory.get("what"):
@@ -3658,8 +3678,12 @@ async def _prepare_greetings(st: dict, now: float) -> int:
                     if mem:
                         upd["told_change"] = mem["t"]
                     if use_kept:
-                        # 持ち出したら下ろす。同じことを毎回聞かない
-                        upd["kept"] = dict(doc.get("kept") or {}, told=True)
+                        # 持ち出したら下ろす。同じことを毎回聞かない。
+                        # 2026-09-26：ここで dict(doc["kept"], told=True) と書いていたら、
+                        # doc は取り出す前に読んだものなので **what ごと消えていた**
+                        # （見本の「覚えていること」が毎回「なし」になっていた）。
+                        # 下の1つだけを書き替える形にする。
+                        upd["kept.told"] = True
                     d.reference.update(upd)
                     n += 1
         # 初めての人には思い出が無いので、場所の様子は news の口から言う。
@@ -3735,7 +3759,7 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
         if got_mem:
             upd["told_change"] = mem["t"]
         if got_kept:
-            upd["kept"] = dict(doc.get("kept") or {}, told=True)
+            upd["kept.told"] = True        # 中の1つだけ書き替える（what を消さない）
         ref.update(upd)
         _log_event("lines_remade", {"person": pid, "lines": len(texts)})
     return texts
