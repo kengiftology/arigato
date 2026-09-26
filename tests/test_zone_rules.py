@@ -86,3 +86,20 @@ def test_どの区画にもいつどう決めたかが書いてある():
     # 手で決めた数字には、いつ・どうやって決めたかを必ず添える。
     for name, cfg in sp.ZONE_CFG_DEFAULT.items():
         assert cfg.get("decided"), "%s に decided が無い" % name
+
+
+# --- 区画の数と、基準写真の寿命の釣り合い（2026-09-26） ---
+
+def test_一周が基準写真の寿命より短い():
+    """区画を増やすと1周が延びる。基準の寿命を超えると**比較が一度も成立しない**。
+
+    2026-09-26、区画を5つにした時点で 1周2.5時間・基準の寿命2時間となり、
+    次に同じ区画へ戻ったとき必ず「基準が古い」で捨てられる状態になっていた。
+    しかも記録には baseline だけが並ぶので、**静かに起きる**。
+    区画を足すときは、ここが落ちることで気づけるようにしておく。"""
+    zones = len(sp._zone_names())
+    round_sec = zones * sp.IDLE_CHECK_GAP
+    assert round_sec < sp.BASELINE_MAX_AGE, (
+        "区画%d個で1周%.1f時間、基準の寿命は%.1f時間。"
+        "このままでは比較が成立しない。寿命を延ばすか、点検の間隔を縮めること"
+        % (zones, round_sec / 3600, sp.BASELINE_MAX_AGE / 3600))
