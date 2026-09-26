@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>デモ4 庭 — ありがとう</title>
+<link rel="stylesheet" href="./proto.css">
+<style>
+  .proto-nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px; font-size: 0.7rem; color: var(--text-muted);
+    background: var(--surface);
+  }
+  .proto-nav a { color: var(--text-muted); text-decoration: none; }
+  /* リビングだけ、丸アイコンを実写真にする */
+  .home-icon.is-photo { overflow: hidden; }
+  .home-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  /* シート内 */
+  .person-sheet-avatar.is-emoji { background: var(--accent-soft); font-size: 1.3rem; }
+  .sheet-body { padding: 16px 20px 30px; }
+  .sheet-body .msg-place { margin-top: 0; }
+  .sheet-photo { margin-bottom: 16px; display: block; }
+  .sheet-care-btn {
+    width: 100%; padding: 13px; background: var(--bg);
+    border: 1.5px solid var(--accent); color: var(--accent-deep);
+    border-radius: 12px; font-size: 0.9rem; font-weight: 800;
+    font-family: inherit; cursor: pointer;
+  }
+  .sheet-care-btn:active { transform: scale(0.98); }
+  .niwa-note {
+    font-size: 11px; color: var(--text-muted); text-align: center;
+    padding: 24px 18px 40px; line-height: 1.8;
+  }
+</style>
+</head>
+<body>
+
+<div class="proto-nav"><a href="./index.html">← デモ一覧</a><span>デモ4：庭（俯瞰）</span></div>
+
+<div class="home-head">
+  <div class="home-title">場所の庭</div>
+  <div class="home-sub">みんなの場所 — きょうの様子</div>
+</div>
+
+<div id="garden"></div>
+
+<div class="niwa-note">これは部屋に置く共有画面のイメージ。順位や点数は出ない。</div>
+
+<div class="person-overlay" id="sheetOverlay" onclick="if(event.target===this)closeSheet()">
+  <div class="person-sheet">
+    <div class="person-sheet-header">
+      <div class="person-sheet-avatar" id="sheetAvatar"></div>
+      <div>
+        <div class="person-sheet-name" id="sheetName"></div>
+        <div class="person-sheet-sub" id="sheetSub"></div>
+      </div>
+    </div>
+    <div class="sheet-body" id="sheetBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <div class="toast-icon">🌿</div>
+  <div>
+    <div class="toast-app">ありがとう</div>
+    <div class="toast-msg" id="toastMsg"></div>
+  </div>
+</div>
+
+<script src="./data.js"></script>
+<script>
+var livingPhoto = ZONE_DATA.cares[ZONE_DATA.cares.length - 1].after_photo;
+var STATE_LABEL = { fresh: "いきいき", kept: "おだやか", wilting: "しおれぎみ", untouched: "ひっそり" };
+var PLACES = [
+  { id: "living", name: "リビング", state: "fresh",     line: "きょうも気持ちいいよ",       icon: "photo" },
+  { id: "sink",   name: "流し",     state: "wilting",   line: "マグが3日、置きっぱなし",     icon: "🫧" },
+  { id: "genkan", name: "玄関",     state: "kept",      line: "傘が2本、迷子ぎみ",           icon: "🚪" },
+  { id: "shelf",  name: "棚2F",     state: "kept",      line: "整ってて、気分がいい",         icon: "📚" },
+  { id: "desk",   name: "机まわり", state: "wilting",   line: "ケーブルが絡まってきた",       icon: "🔌" },
+  { id: "board",  name: "掲示板",   state: "untouched", line: "ポスターがはがれかけ",         icon: "📌" }
+];
+var current = -1;
+var toastTimer = null;
+
+function renderGarden() {
+  var html = "";
+  PLACES.forEach(function (p, i) {
+    var icon = p.icon === "photo"
+      ? '<div class="home-icon is-photo"><img src="' + livingPhoto + '" alt=""></div>'
+      : '<div class="home-icon">' + p.icon + "</div>";
+    html += '<div class="home-item ' + p.state + '" id="row-' + i + '" onclick="openSheet(' + i + ')">' +
+      icon +
+      '<div class="home-body"><div class="home-name">' + p.name + "</div>" +
+      '<div class="home-state">' + p.line + "</div></div>" +
+      '<div class="home-arrow">›</div></div>';
+  });
+  document.getElementById("garden").innerHTML = html;
+}
+
+function openSheet(i) {
+  current = i;
+  var p = PLACES[i];
+  var avatar = document.getElementById("sheetAvatar");
+  if (p.icon === "photo") {
+    avatar.className = "person-sheet-avatar";
+    avatar.innerHTML = '<img src="' + livingPhoto + '" alt="">';
+  } else {
+    avatar.className = "person-sheet-avatar is-emoji";
+    avatar.textContent = p.icon;
+  }
+  document.getElementById("sheetName").textContent = p.name;
+  document.getElementById("sheetSub").textContent = "きょうの様子：" + STATE_LABEL[p.state];
+
+  var body = "";
+  body += '<div class="msg-place"><div class="msg-place-icon">' + (p.icon === "photo" ? "🌿" : p.icon) + "</div>" +
+    '<div class="msg-place-bubbles"><div class="bubble-place">' + p.line + "</div></div></div>";
+  if (p.id === "living") {
+    body += '<img class="cont-new sheet-photo" src="' + livingPhoto + '" alt="">';
+  }
+  body += '<button class="btn-send" onclick="openPlace()">この場所をひらく</button>';
+  body += '<button class="sheet-care-btn" onclick="careIt()">手をかけた（デモ）</button>';
+  document.getElementById("sheetBody").innerHTML = body;
+  document.getElementById("sheetOverlay").classList.add("open");
+}
+
+function closeSheet() {
+  document.getElementById("sheetOverlay").classList.remove("open");
+}
+
+function openPlace() {
+  var p = PLACES[current];
+  if (p.id === "living") {
+    location.href = "./t1_ikimono.html";
+    return;
+  }
+  showToast("この庭では、リビングだけ中に入れます（デモ）");
+}
+
+function careIt() {
+  var p = PLACES[current];
+  p.state = "fresh";
+  p.line = "わあ、生き返った。ありがとう。";
+  closeSheet();
+  renderGarden();
+  var row = document.getElementById("row-" + current);
+  if (row) row.classList.add("post-highlight");
+}
+
+function showToast(msg) {
+  var t = document.getElementById("toast");
+  document.getElementById("toastMsg").textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.classList.remove("show"); }, 2400);
+}
+
+renderGarden();
+</script>
+</body>
+</html>

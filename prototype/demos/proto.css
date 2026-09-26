@@ -1,0 +1,757 @@
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #fbfaf7;
+      --surface: #f2efe9;
+      --border: #e7e3da;
+      --text: #2a2722;
+      --text-muted: #9b948a;
+      --accent: #5b9e7a;
+      --accent-soft: #e8f1ea;
+      --accent-deep: #3f7d5e;
+    }
+
+    body {
+      font-family: -apple-system, 'Helvetica Neue', sans-serif;
+      background: var(--bg); color: var(--text);
+      max-width: 390px; margin: 0 auto;
+    }
+
+    /* ヘッダー */
+    header {
+      padding: 14px 18px 10px;
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo { font-size: 1.1rem; font-weight: 900; letter-spacing: 0.12em; color: var(--text); }
+    .header-right { display: flex; align-items: center; gap: 10px; }
+    .my-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      overflow: hidden; background: var(--surface);
+    }
+    .my-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* ゾーンバナー */
+    .zone-banner {
+      padding: 14px 18px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .zone-label { font-size: 0.68rem; color: var(--text-muted); letter-spacing: 0.08em; margin-bottom: 3px; }
+    .zone-name-text { font-size: 1.25rem; font-weight: 800; }
+
+    /* 貢献者アバター */
+    .contributor-avatars { display: flex; cursor: pointer; }
+    .c-avatar {
+      width: 30px; height: 30px; border-radius: 50%;
+      border: 2px solid var(--bg);
+      overflow: hidden; background: var(--surface);
+      margin-left: -8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; font-weight: 700; color: var(--text-muted);
+    }
+    .c-avatar:first-child { margin-left: 0; }
+    .c-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* 場所＝ひとつの生きてる存在 */
+    .place { padding-bottom: 40px; }
+    /* 環境からのありがとう（ヒト→環境→ヒトの最後の往復） */
+    .place-from {
+      display: flex; gap: 12px; align-items: flex-start;
+      margin: 16px 14px; padding: 16px;
+      background: var(--accent-soft); border-radius: 16px;
+    }
+    .place-from-icon {
+      width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+      background: var(--bg); display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; box-shadow: 0 0 0 4px rgba(91,158,122,0.10);
+    }
+    .place-from-body { flex: 1; }
+    .place-from-name { font-size: 0.72rem; font-weight: 800; color: var(--accent-deep); margin-bottom: 6px; letter-spacing: 0.04em; }
+    .place-from-line { font-size: 0.95rem; font-weight: 700; line-height: 1.75; color: var(--accent-deep); }
+    .place-now { padding: 16px 18px 18px; border-bottom: 1px solid var(--border); }
+    .place-now-label { font-size: 0.72rem; color: var(--text-muted); letter-spacing: 0.06em; margin-bottom: 8px; }
+    .place-now-photo {
+      width: 100%; aspect-ratio: 4/3; object-fit: cover;
+      border-radius: 16px; background: var(--surface); display: block;
+    }
+    .place-now-line {
+      font-size: 1.0rem; font-weight: 700; line-height: 1.7;
+      color: var(--accent-deep); margin-top: 14px;
+    }
+    .place-hist-head {
+      font-size: 0.72rem; color: var(--text-muted); letter-spacing: 0.06em;
+      padding: 18px 18px 6px;
+    }
+    .place-snap {
+      display: flex; gap: 12px; padding: 12px 18px;
+      border-bottom: 1px solid var(--border); align-items: flex-start;
+    }
+    .place-snap-photo {
+      width: 84px; height: 84px; object-fit: cover; border-radius: 12px;
+      background: var(--surface); flex-shrink: 0;
+    }
+    .place-snap-body { flex: 1; min-width: 0; padding-top: 2px; }
+    .place-snap-when { font-size: 0.68rem; color: var(--text-muted); margin-bottom: 5px; }
+    .place-snap-line { font-size: 0.88rem; font-weight: 600; line-height: 1.6; color: var(--text); }
+    .place-thank-btn {
+      margin-top: 10px; border: 1.5px solid var(--accent); background: var(--bg);
+      color: var(--accent-deep); border-radius: 18px; padding: 7px 15px;
+      font-size: 0.78rem; font-weight: 800; font-family: inherit; cursor: pointer;
+    }
+    .place-thank-btn:active { transform: scale(0.96); }
+
+    /* ホーム：維持マップ */
+    .home-head { padding: 20px 18px 10px; }
+    .home-title { font-size: 1.3rem; font-weight: 900; letter-spacing: 0.02em; }
+    .home-sub { font-size: 0.76rem; color: var(--text-muted); margin-top: 4px; }
+    .home-item {
+      display: flex; align-items: center; gap: 13px;
+      padding: 14px 18px; border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .home-item:active { background: var(--surface); }
+    .home-icon {
+      width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+      background: var(--accent-soft);
+    }
+    .home-body { flex: 1; min-width: 0; }
+    .home-name { font-size: 0.98rem; font-weight: 800; }
+    .home-state { font-size: 0.74rem; color: var(--text-muted); margin-top: 2px; }
+    .home-arrow { color: var(--border); font-size: 1.4rem; font-weight: 700; }
+    /* 状態で温度差をつける */
+    .home-item.fresh .home-icon { background: var(--accent-soft); box-shadow: 0 0 0 4px rgba(91,158,122,0.08); }
+    .home-item.kept .home-icon { background: var(--accent-soft); }
+    .home-item.wilting .home-icon { background: #f1ede6; }
+    .home-item.wilting .home-name { color: var(--text-muted); }
+    .home-item.untouched .home-icon { background: var(--surface); color: var(--border); }
+    .home-item.untouched .home-name { color: var(--text-muted); }
+    .home-item.untouched .home-state { color: #c4bdb1; }
+
+    /* 場所が一人称で話す */
+    .zone-speech {
+      margin: 16px 14px 8px;
+      display: flex; gap: 12px; align-items: flex-start;
+    }
+    .zone-speech-icon {
+      width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0;
+      background: var(--accent-soft);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem;
+      box-shadow: 0 0 0 4px rgba(91,158,122,0.08);
+    }
+    .zone-speech-body { flex: 1; padding-top: 2px; }
+    .zone-speech-from {
+      font-size: 0.7rem; font-weight: 800; color: var(--accent-deep);
+      letter-spacing: 0.06em; margin-bottom: 6px;
+    }
+    .zone-speech-bubble {
+      background: var(--accent-soft);
+      border-radius: 4px 16px 16px 16px;
+      padding: 13px 15px;
+      font-size: 0.92rem; font-weight: 600; line-height: 1.75;
+      color: var(--accent-deep); letter-spacing: 0.02em;
+    }
+
+    /* チャット版：場所との会話 */
+    .chat { padding: 6px 14px 90px; }
+    /* チャットでは「手伝う」FABは出さない（手伝うのは現実。アプリは記録するだけ） */
+    body.chat-view .fab { display: none; }
+    /* チャットでは既定ヘッダー/バナーを隠し、会話相手ヘッダーに差し替える */
+    body.chat-view > header, body.chat-view #zoneBanner { display: none; }
+    /* 会話相手＝場所、を最上部に固定（誰と話しているか一目で分かる） */
+    .chat-header {
+      position: sticky; top: 0; z-index: 20; background: var(--bg);
+      display: flex; align-items: center; gap: 11px;
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+    }
+    .chat-header-icon {
+      width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+      background: var(--accent-soft); display: flex; align-items: center; justify-content: center;
+      font-size: 1.25rem; box-shadow: 0 0 0 4px rgba(91,158,122,0.10);
+    }
+    .chat-header-name { font-size: 1.0rem; font-weight: 800; }
+    .chat-header-sub { font-size: 0.7rem; color: var(--accent-deep); margin-top: 1px; }
+    /* 🍂🌿の意味ガイド（初回の道しるべ） */
+    .chat-legend {
+      display: flex; gap: 16px; justify-content: center;
+      font-size: 0.68rem; color: var(--text-muted);
+      padding: 12px 14px 4px;
+    }
+    .chat-legend b { font-weight: 800; }
+    /* 📷 いまの姿を撮るボタン */
+    .chat-cam {
+      flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%;
+      border: 1.5px solid var(--border); background: var(--bg);
+      font-size: 1.2rem; cursor: pointer; font-family: inherit;
+    }
+    .chat-cam:active { transform: scale(0.94); }
+    /* 投稿フロー：どの姿の続きかを選ぶシート */
+    .cont-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 300; display: flex; align-items: flex-end; justify-content: center;
+    }
+    .cont-sheet {
+      background: var(--bg); width: 100%; max-width: 390px;
+      border-radius: 20px 20px 0 0; padding: 20px 18px 30px;
+      max-height: 86vh; overflow-y: auto;
+    }
+    .cont-label { font-size: 0.78rem; font-weight: 800; color: var(--text-muted); margin: 4px 2px 10px; }
+    .cont-newwrap { margin-bottom: 18px; }
+    .cont-new { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 14px; background: var(--surface); }
+    .cont-thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .cont-thumb {
+      width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px;
+      background: var(--surface); cursor: pointer; border: 2px solid transparent;
+    }
+    .cont-thumb:active { border-color: var(--accent); }
+    .cont-new-place {
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      font-size: 0.7rem; font-weight: 700; color: var(--text-muted); line-height: 1.4;
+      border: 1.5px dashed var(--border);
+    }
+    .cont-cancel {
+      width: 100%; margin-top: 18px; padding: 12px; border: none; background: none;
+      color: var(--text-muted); font-size: 0.85rem; font-family: inherit; cursor: pointer;
+    }
+    /* 電波（場所→あなた）を強調 */
+    .msg-place.denpa .bubble-place.strong {
+      background: var(--accent); color: #fff;
+      box-shadow: 0 2px 12px rgba(91,158,122,0.25);
+    }
+    /* 下がり方向（散らかってきた＝環境が困って呼ぶ）：枯れ色 */
+    .msg-place.down .msg-place-icon { background: #f3ebe0; }
+    .bubble-place.down { background: #f3ebe0; color: #8a7a63; }
+    .bubble-place.photo.down { filter: saturate(0.85) brightness(0.97); }
+    /* 引用：さっきの散らかっていた姿を引いて返す＝ビフォーとアフターの紐づき */
+    .quote-before {
+      display: flex; align-items: center; gap: 8px;
+      border-left: 3px solid var(--accent); padding: 5px 0 5px 9px;
+      margin-bottom: 6px; max-width: 84%;
+    }
+    .quote-before img {
+      width: 38px; height: 38px; object-fit: cover; border-radius: 7px;
+      flex-shrink: 0; filter: saturate(0.85) brightness(0.97);
+    }
+    .quote-before span { font-size: 0.72rem; color: var(--text-muted); line-height: 1.4; }
+    .quote-before[role="button"] { cursor: pointer; border-radius: 0 8px 8px 0; transition: background .15s; }
+    .quote-before[role="button"]:hover { background: rgba(0,0,0,0.04); }
+    @keyframes postFlash { 0%,100%{ background: transparent; } 30%{ background: rgba(120,170,120,0.20); } }
+    .post-highlight { animation: postFlash 1.6s ease; border-radius: 14px; }
+    /* 場所の小さな追い吹き出し（受け取り方・呼びかけ） */
+    .bubble-place.note {
+      background: transparent; color: var(--text-muted);
+      padding: 2px 2px; font-size: 0.78rem; font-weight: 600; font-style: italic;
+      display: block; margin-bottom: 2px;
+    }
+    .bubble-place.down.note { background: transparent; color: #a59076; }
+    /* 手入れの受け取り方（ありがとうの有無で変わる） */
+    .care-reception {
+      font-size: 0.8rem; color: var(--text-muted); line-height: 1.6;
+      margin: 6px 2px 0; font-style: italic;
+    }
+    .care-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+    .care-thank-btn {
+      border: 1.5px solid var(--accent); background: var(--bg);
+      color: var(--accent-deep); border-radius: 16px; padding: 6px 14px;
+      font-size: 0.76rem; font-weight: 800; font-family: inherit; cursor: pointer;
+    }
+    .care-thank-btn:active { transform: scale(0.96); }
+    .care-thank-btn.done { border-color: var(--border); color: var(--text-muted); background: var(--surface); }
+    .chat-day {
+      text-align: center; font-size: 0.68rem; color: var(--text-muted);
+      margin: 14px 0 18px; letter-spacing: 0.04em;
+    }
+    .chat-time { font-size: 0.62rem; color: var(--text-muted); margin-top: 4px; }
+    .msg-place { display: flex; gap: 10px; margin: 14px 0; align-items: flex-start; }
+    .msg-place-icon {
+      width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+      background: var(--accent-soft);
+      display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+    }
+    .msg-place-bubbles { flex: 1; min-width: 0; }
+    .bubble-place {
+      background: var(--accent-soft); color: var(--accent-deep);
+      border-radius: 4px 16px 16px 16px;
+      padding: 11px 14px; font-size: 0.9rem; font-weight: 600; line-height: 1.7;
+      display: inline-block; max-width: 84%; margin-bottom: 6px;
+    }
+    .bubble-place.photo { padding: 0; overflow: hidden; display: block; max-width: 84%; }
+    .bubble-place.photo .photo-wrap { border-radius: 14px; overflow: hidden; }
+    .bubble-place.photo .card-photo { aspect-ratio: 4/3; }
+    .msg-you { display: flex; justify-content: flex-end; margin: 14px 0; }
+    .bubble-you {
+      background: var(--accent); color: #fff;
+      border-radius: 16px 4px 16px 16px;
+      padding: 10px 14px; font-size: 0.9rem; font-weight: 600; line-height: 1.6;
+      max-width: 75%;
+    }
+    /* トークらしさ：吹き出しのしっぽ（色は各吹き出しの背景に合わせる） */
+    .bubble-place:not(.photo):not(.note):not(.soft) { position: relative; }
+    .bubble-place:not(.photo):not(.note):not(.soft)::before {
+      content: ""; position: absolute; left: -5px; top: 13px;
+      width: 10px; height: 10px; background: var(--accent-soft);
+      clip-path: polygon(100% 0, 100% 100%, 0 35%);
+    }
+    .bubble-place.down:not(.photo)::before { background: #f3ebe0; }
+    .bubble-place.strong::before { background: var(--accent); }
+    .bubble-you { position: relative; }
+    .bubble-you::before {
+      content: ""; position: absolute; right: -5px; top: 13px;
+      width: 10px; height: 10px; background: var(--accent);
+      clip-path: polygon(0 0, 0 100%, 100% 35%);
+    }
+    /* アフター写真への「ありがとう」ボタン（押すと場所がお礼を言う） */
+    .chat-thank-btn {
+      display: flex; align-items: center; gap: 6px; width: fit-content;
+      margin-top: 8px;
+      background: var(--bg); color: var(--accent-deep);
+      border: 1.5px solid var(--accent); border-radius: 999px;
+      padding: 7px 16px 7px 13px;
+      font-size: 0.8rem; font-weight: 700; line-height: 1;
+      cursor: pointer; font-family: inherit;
+      transition: background .15s ease, transform .1s ease, box-shadow .15s ease;
+    }
+    .chat-thank-btn::before { content: "🌱"; font-size: 0.92rem; }
+    .chat-thank-btn:hover { background: var(--accent-soft); box-shadow: 0 2px 8px rgba(60,110,80,0.12); }
+    .chat-thank-btn:active { transform: scale(0.96); }
+    /* 手入れに集まった匿名の感謝（その投稿に属する。右の「自分」位置には置かない） */
+    .care-thanks-cluster {
+      display: flex; flex-wrap: wrap; gap: 6px;
+      margin: 8px 0 6px;
+    }
+    .thanks-chip {
+      background: var(--accent-soft); color: var(--accent-deep);
+      border-radius: 14px; padding: 5px 11px;
+      font-size: 0.78rem; font-weight: 700; line-height: 1.4;
+    }
+    .thanks-chip.mine { outline: 2px solid var(--accent); }
+    /* まだ承認されていない手入れ（行為の事実だけ） */
+    .care-pending {
+      font-size: 0.74rem; color: var(--text-muted);
+      margin: 8px 0 4px; font-style: italic;
+    }
+    /* 承認前は少し控えめ／承認後ははっきり */
+    .msg-place.pending .bubble-place { opacity: 0.78; }
+    .bubble-place.soft {
+      background: transparent; color: var(--accent-deep);
+      padding: 4px 2px; font-size: 0.82rem; font-weight: 700;
+    }
+    .chat-compose {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 390px;
+      background: var(--bg); border-top: 1px solid var(--border);
+      padding: 10px 14px; display: flex; gap: 8px; align-items: center;
+    }
+    .chat-input {
+      flex: 1; min-width: 0; border: 1.5px solid var(--border); border-radius: 22px;
+      padding: 11px 16px; font-family: inherit; font-size: 0.9rem;
+      outline: none; background: var(--surface); color: var(--text);
+    }
+    .chat-input:focus { border-color: var(--accent); background: var(--bg); }
+    .chat-send {
+      background: var(--accent); color: #fff; border: none; border-radius: 22px;
+      padding: 11px 18px; font-weight: 800; font-family: inherit; cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* タイムライン：場所の変遷 */
+    .tl-summary {
+      padding: 16px 18px; border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .tl-summary-title { font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; margin-bottom: 6px; }
+    .tl-summary-nums { font-size: 0.82rem; color: var(--text); font-weight: 700; }
+    .tl-summary-period { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
+
+    /* 一本の縦線 */
+    .timeline { position: relative; padding: 4px 0 0 0; }
+    .timeline::before {
+      content: ""; position: absolute; left: 31px; top: 0; bottom: 0;
+      width: 2px; background: var(--border);
+    }
+    .tl-event { position: relative; padding-left: 52px; }
+
+    /* care（手入れ）：●＋写真つきカード */
+    .tl-care { padding-bottom: 8px; }
+    .tl-care .tl-marker {
+      position: absolute; left: 24px; top: 14px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--text); border: 3px solid var(--bg); z-index: 1;
+    }
+    .tl-care-head { padding: 12px 18px 6px 0; }
+    .tl-care-when { font-size: 0.7rem; color: var(--text-muted); }
+    .tl-care-who { font-weight: 700; font-size: 0.9rem; margin-top: 1px; }
+    .tl-handoff { font-size: 0.72rem; color: var(--accent); margin-top: 3px; }
+    .tl-care-thanks { font-size: 0.76rem; color: #555; padding: 6px 18px 0 0; }
+    .tl-care-thanks .msg { color: var(--text); }
+
+    /* use（利用）：写真なしの細い枝行 */
+    .tl-use {
+      padding-top: 8px; padding-bottom: 8px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .tl-use .tl-marker {
+      position: absolute; left: 28px; top: 14px;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--border); border: 2px solid var(--bg); z-index: 1;
+    }
+    .tl-use-text { font-size: 0.74rem; color: var(--text-muted); }
+    .tl-use-face {
+      width: 18px; height: 18px; border-radius: 50%;
+      overflow: hidden; flex-shrink: 0; background: var(--surface);
+    }
+    .tl-use-face img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* カード */
+    .card { border-bottom: 1px solid var(--border); }
+    .card-header {
+      padding: 12px 18px 8px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      overflow: hidden; background: var(--surface); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; color: var(--text-muted);
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .card-person { font-weight: 700; font-size: 0.9rem; }
+    .card-time { font-size: 0.7rem; color: var(--text-muted); margin-top: 1px; }
+
+    /* 写真 */
+    .photo-wrap { position: relative; width: 100%; overflow: hidden; }
+    .card-photo {
+      width: 100%; display: block;
+      aspect-ratio: 4/3; object-fit: cover;
+      background: var(--surface);
+    }
+    .photo-label {
+      position: absolute; top: 10px; right: 10px;
+      background: rgba(0,0,0,0.45); color: white;
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 0.06em;
+      padding: 3px 8px; border-radius: 10px;
+    }
+
+    /* 写真切り替えヒント */
+    .photo-tap-hint {
+      position: absolute; bottom: 10px; left: 10px;
+      background: rgba(0,0,0,0.4); color: white;
+      font-size: 0.62rem; padding: 3px 8px; border-radius: 10px;
+      pointer-events: none;
+    }
+    .photo-wrap { cursor: pointer; }
+
+    /* ありがとうフロート */
+    .arigato-overlay {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 100%; pointer-events: none; overflow: hidden;
+    }
+    .af {
+      position: absolute; bottom: 0;
+      display: flex; align-items: center; gap: 5px;
+      background: rgba(255,255,255,0.92);
+      border-radius: 20px; padding: 4px 9px 4px 5px;
+      animation: floatUp 5s linear infinite; opacity: 0;
+    }
+    .af-face {
+      width: 20px; height: 20px; border-radius: 50%;
+      overflow: hidden; flex-shrink: 0;
+    }
+    .af-face img { width: 100%; height: 100%; object-fit: cover; }
+    .af-text {
+      font-size: 0.7rem; font-weight: 700; color: #333;
+      letter-spacing: 0.06em;
+    }
+    @keyframes floatUp {
+      0%   { transform: translateY(0);       opacity: 1; }
+      65%  { transform: translateY(-95px);   opacity: 1; }
+      100% { transform: translateY(-150px);  opacity: 0; }
+    }
+
+    /* ありがとうエリア */
+    .thanks-row {
+      padding: 10px 18px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .thanks-senders { display: flex; }
+    .sender-avatar {
+      width: 26px; height: 26px; border-radius: 50%;
+      border: 2px solid var(--bg);
+      overflow: hidden; background: var(--surface);
+      margin-left: -7px;
+    }
+    .sender-avatar:first-child { margin-left: 0; }
+    .sender-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+    /* ありがとうボタン */
+    .btn-thanks {
+      width: 62px; height: 62px; border-radius: 50%;
+      border: none;
+      background: var(--accent-soft); padding: 0;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      font-size: 0.68rem; font-weight: 800; color: var(--accent-deep);
+      letter-spacing: 0.02em;
+      transition: transform 0.15s, background 0.15s;
+      font-family: inherit;
+    }
+    .btn-thanks:active { transform: scale(0.95); }
+    .btn-thanks.sent { background: var(--accent); color: #fff; }
+    .btn-thanks.first {
+      background: var(--accent); color: #fff;
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(91,158,122,0.45); }
+      50%       { box-shadow: 0 0 0 9px rgba(91,158,122,0); }
+    }
+
+    /* FAB */
+    .fab {
+      position: fixed; bottom: 28px; right: 24px;
+      width: 72px; height: 72px; border-radius: 50%;
+      background: var(--accent); color: white; border: none;
+      cursor: pointer;
+      box-shadow: 0 6px 20px rgba(63,125,94,0.4);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.82rem; font-weight: 900; font-family: inherit;
+      letter-spacing: 0.04em;
+    }
+    .spacer { height: 90px; }
+
+    /* モード選択シート */
+    .mode-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      display: flex; align-items: flex-end; justify-content: center;
+      z-index: 110;
+    }
+    .mode-overlay.hidden { display: none; }
+    .mode-sheet {
+      background: white; width: 100%; max-width: 390px;
+      border-radius: 20px 20px 0 0; padding: 20px 20px 36px;
+    }
+    .mode-handle {
+      width: 36px; height: 4px; background: #e0e0e0;
+      border-radius: 2px; margin: 0 auto 20px;
+    }
+    .mode-btn {
+      width: 100%; padding: 18px 20px;
+      border: 1.5px solid var(--border); border-radius: 14px;
+      background: white; cursor: pointer; margin-bottom: 10px;
+      text-align: left; font-family: inherit;
+    }
+    .mode-btn:last-child { margin-bottom: 0; }
+    .mode-label { font-weight: 700; font-size: 0.95rem; }
+    .mode-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+    /* ありがとうモーダル */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+      display: flex; align-items: flex-end; justify-content: center;
+      z-index: 100;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal {
+      background: white; width: 100%; max-width: 390px;
+      border-radius: 20px 20px 0 0; padding: 28px 24px 40px;
+    }
+    .modal-person-photo {
+      width: 64px; height: 64px; border-radius: 50%;
+      overflow: hidden; margin: 0 auto 12px; background: var(--surface);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem; font-weight: 700; color: var(--text-muted);
+    }
+    .modal-person-photo img { width: 100%; height: 100%; object-fit: cover; }
+    .modal-hint { text-align: center; font-size: 0.82rem; color: var(--text-muted); margin-bottom: 24px; }
+    .thanks-textarea {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid var(--border); border-radius: 10px;
+      font-size: 0.9rem; font-family: inherit; resize: none;
+      outline: none; color: var(--text); margin-bottom: 14px;
+      background: var(--surface);
+    }
+    .thanks-textarea:focus { border-color: var(--accent); background: white; }
+    .btn-send {
+      width: 100%; padding: 14px; background: var(--text);
+      color: white; border: none; border-radius: 12px;
+      font-size: 0.95rem; font-weight: 700; cursor: pointer;
+      margin-bottom: 10px; font-family: inherit;
+    }
+    .btn-skip {
+      width: 100%; padding: 10px; background: none; border: none;
+      color: var(--text-muted); font-size: 0.85rem; cursor: pointer;
+      font-family: inherit;
+    }
+
+    /* 人の蓄積シート */
+    .person-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+      display: flex; align-items: flex-end; justify-content: center;
+    }
+    .person-overlay.open { opacity: 1; pointer-events: all; }
+    .person-sheet {
+      background: white; width: 100%; max-width: 390px;
+      border-radius: 20px 20px 0 0;
+      max-height: 80vh; overflow-y: auto;
+      transform: translateY(30px); transition: transform 0.25s;
+    }
+    .person-overlay.open .person-sheet { transform: translateY(0); }
+    .person-sheet-header {
+      padding: 20px 20px 14px; position: sticky; top: 0;
+      background: white; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px;
+    }
+    .person-sheet-avatar {
+      width: 44px; height: 44px; border-radius: 50%; overflow: hidden;
+      background: var(--surface); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; color: var(--text-muted);
+    }
+    .person-sheet-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .person-sheet-name { font-weight: 800; font-size: 1.05rem; }
+    .person-sheet-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+    .person-photo-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+      padding: 2px;
+    }
+    .person-photo-item {
+      aspect-ratio: 1; overflow: hidden; position: relative;
+      background: var(--surface);
+    }
+    .person-photo-item img { width: 100%; height: 100%; object-fit: cover; }
+    .person-photo-date {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.5));
+      color: white; font-size: 0.58rem; padding: 10px 4px 4px;
+    }
+    .person-empty { padding: 32px 20px; text-align: center; color: #bbb; font-size: 0.85rem; }
+    .card-header { cursor: pointer; }
+
+    /* 気になるカード */
+    .concern-card {
+      border-bottom: 1px solid var(--border);
+      background: #fafafa;
+    }
+    .concern-tag {
+      font-size: 0.62rem; font-weight: 700; letter-spacing: 0.06em;
+      color: var(--accent); border: 1px dashed var(--accent);
+      border-radius: 10px; padding: 2px 8px; flex-shrink: 0;
+    }
+    .concern-photo {
+      width: 100%; display: block;
+      aspect-ratio: 4/3; object-fit: cover;
+      background: var(--surface);
+    }
+    .concern-row {
+      padding: 10px 18px 14px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    }
+    .concern-hint { font-size: 0.72rem; color: var(--text-muted); }
+    .btn-help {
+      border: 1.5px solid var(--text); background: var(--bg); color: var(--text);
+      border-radius: 20px; padding: 9px 20px;
+      font-size: 0.8rem; font-weight: 800; font-family: inherit;
+      cursor: pointer; flex-shrink: 0;
+      transition: transform 0.15s;
+    }
+    .btn-help:active { transform: scale(0.95); }
+
+    /* 匿名：数だけ表示するラベル */
+    .contrib-count { font-size: 0.72rem; color: var(--text-muted); font-weight: 700; }
+    .thanks-count-label { font-size: 0.74rem; color: var(--text-muted); font-weight: 700; }
+    .card-handoff { font-size: 0.72rem; color: var(--accent); padding: 10px 18px 0; }
+
+    /* アプリ内トースト通知 */
+    .toast {
+      position: fixed; bottom: 100px; left: 50%;
+      transform: translateX(-50%) translateY(160px);
+      background: #1a1a1a; color: white;
+      padding: 12px 18px; border-radius: 14px;
+      font-size: 0.82rem; line-height: 1.5;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+      z-index: 300; max-width: 320px; width: 90%;
+      transition: transform 0.35s cubic-bezier(0.175,0.885,0.32,1.275);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast-icon {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: var(--accent); flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+    }
+    .toast-app { font-size: 0.65rem; color: #888; margin-bottom: 2px; }
+    .toast-msg { font-weight: 600; }
+    .toast-sub { font-size: 0.72rem; color: #aaa; }
+
+    /* 空フィード */
+    .empty { text-align: center; color: #bbb; padding: 60px 0; font-size: 0.9rem; }
+
+    .hidden { display: none; }
+
+    /* 認証画面 */
+    .auth-screen {
+      position: fixed; inset: 0; background: white; z-index: 400;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .auth-screen.hidden { display: none; }
+    .auth-inner {
+      width: 100%; max-width: 390px; padding: 40px 28px;
+      display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: center;
+    }
+    .auth-logo { font-size: 1.4rem; font-weight: 900; letter-spacing: 0.12em; margin-bottom: 40px; }
+    .auth-title { font-size: 1.05rem; font-weight: 800; margin-bottom: 8px; text-align: center; }
+    .auth-sub { font-size: 0.8rem; color: #999; margin-bottom: 32px; text-align: center; }
+    .auth-btn {
+      width: 100%; padding: 16px; border-radius: 14px;
+      border: 1.5px solid var(--border); background: white;
+      font-size: 0.95rem; font-weight: 700; font-family: inherit;
+      cursor: pointer; margin-bottom: 12px; text-align: left;
+    }
+    .auth-btn.primary { background: var(--text); color: white; border-color: var(--text); }
+    .auth-btn-sub { font-size: 0.75rem; font-weight: 400; margin-top: 3px; opacity: 0.6; }
+    .auth-btn:disabled { background: var(--surface); color: var(--text-muted); border-color: var(--border); cursor: default; }
+    .auth-back {
+      width: 100%; background: none; border: none; font-size: 0.85rem;
+      color: #999; cursor: pointer; margin-bottom: 28px; padding: 0;
+      font-family: inherit; text-align: left;
+    }
+    .auth-name-row { display: flex; gap: 10px; width: 100%; margin-bottom: 14px; }
+    .auth-input {
+      flex: 1 1 0; min-width: 0; padding: 14px 16px;
+      border: 1.5px solid var(--border); border-radius: 12px;
+      font-size: 0.95rem; font-family: inherit; outline: none;
+      color: var(--text); background: var(--surface);
+    }
+    .auth-input:focus { border-color: var(--accent); background: white; }
+    .auth-selfie-wrap { margin: 20px 0 28px; width: 100%; }
+    .auth-selfie {
+      width: 90px; height: 90px; border-radius: 50%;
+      border: 1.5px solid var(--border); background: var(--surface);
+      margin: 0 auto; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; overflow: hidden; transition: background 0.15s;
+    }
+    .auth-selfie:hover { background: #e8e8e8; }
+    .auth-selfie img { width: 100%; height: 100%; object-fit: cover; display: none; }
+    .auth-selfie-label { text-align: center; font-size: 0.72rem; color: #999; margin-top: 8px; }
+    .auth-user-grid {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      width: 100%; overflow-y: auto; max-height: 55vh; align-content: flex-start;
+    }
+    .auth-user-card {
+      display: flex; flex-direction: column; align-items: center;
+      width: 76px; cursor: pointer; padding: 8px; border-radius: 12px;
+      border: 2px solid transparent; transition: all 0.15s;
+    }
+    .auth-user-card:hover { background: var(--surface); }
+    .auth-user-card.selected { border-color: var(--text); background: var(--surface); }
+    .auth-user-photo {
+      width: 56px; height: 56px; border-radius: 50%;
+      overflow: hidden; background: #eee; margin-bottom: 6px;
+    }
+    .auth-user-photo img { width: 100%; height: 100%; object-fit: cover; }
+    .auth-user-name { font-size: 0.68rem; font-weight: 700; text-align: center; line-height: 1.4; }
+  

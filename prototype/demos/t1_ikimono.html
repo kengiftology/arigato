@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>デモ1 場所が生き物 — ありがとう</title>
+<link rel="stylesheet" href="./proto.css">
+<style>
+  .proto-nav {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 14px; font-size: 0.7rem; color: var(--text-muted);
+    background: var(--surface);
+  }
+  .proto-nav a { color: var(--text-muted); text-decoration: none; }
+  .face-svg { width: 26px; height: 26px; display: block; }
+  .face-eye { transform-origin: center; transition: transform 0.1s; }
+  #mouth { transition: d 0.3s; }
+  .chat-header-icon { transition: box-shadow 0.4s, transform 0.4s, background 0.4s; }
+  body.mood-beam .chat-header-icon { transform: scale(1.1); box-shadow: 0 0 0 7px rgba(91,158,122,0.22); }
+  body.mood-sad .chat-header-icon { background: #f3ebe0; box-shadow: 0 0 0 4px rgba(160,140,100,0.10); }
+  .demo-bar {
+    position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 390px; background: var(--bg);
+    border-top: 1px dashed var(--border);
+    display: flex; gap: 8px; align-items: center; padding: 7px 14px;
+    z-index: 10;
+  }
+  .demo-bar-label { font-size: 0.62rem; color: var(--text-muted); letter-spacing: 0.06em; flex-shrink: 0; }
+  .demo-pill {
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+    border-radius: 14px; padding: 5px 12px; font-size: 0.72rem;
+    font-family: inherit; cursor: pointer;
+  }
+  .demo-pill:active { transform: scale(0.96); }
+  .chat { padding-bottom: 160px; }
+</style>
+</head>
+<body>
+
+<div class="proto-nav"><a href="./index.html">← デモ一覧</a><span>デモ1：場所が生き物</span></div>
+
+<div class="chat-header">
+  <div class="chat-header-icon">
+    <svg class="face-svg" viewBox="0 0 26 26" aria-hidden="true">
+      <circle class="face-eye" id="eyeL" cx="9" cy="11" r="2.1" fill="#3f7d5e"/>
+      <circle class="face-eye" id="eyeR" cx="17" cy="11" r="2.1" fill="#3f7d5e"/>
+      <path id="mouth" d="M8,16 Q13,19.5 18,16" stroke="#3f7d5e" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+    </svg>
+  </div>
+  <div>
+    <div class="chat-header-name" id="zoneName">リビング</div>
+    <div class="chat-header-sub" id="moodSub">きげん：いい</div>
+  </div>
+</div>
+
+<div class="chat" id="chat"></div>
+
+<div class="demo-bar">
+  <span class="demo-bar-label">デモ操作</span>
+  <button class="demo-pill" onclick="demoMess()">散らかったことにする</button>
+  <button class="demo-pill" onclick="demoClean()">整えたことにする</button>
+</div>
+
+<div class="chat-compose">
+  <button class="chat-cam" onclick="camHint()">📷</button>
+  <input class="chat-input" id="chatInput" placeholder="メッセージを入力" onkeydown="if(event.key==='Enter')sendMsg()">
+  <button class="chat-send" onclick="sendMsg()">送る</button>
+</div>
+
+<div class="toast" id="toast">
+  <div class="toast-icon">🌱</div>
+  <div>
+    <div class="toast-app">ありがとう</div>
+    <div class="toast-msg" id="toastMsg"></div>
+    <div class="toast-sub" id="toastSub"></div>
+  </div>
+</div>
+
+<script src="./data.js"></script>
+<script>
+var MOUTH = {
+  happy:  "M7,15.5 Q13,21.5 19,15.5",
+  normal: "M8,16 Q13,19.5 18,16",
+  sad:    "M8,18.5 Q13,15.5 18,18.5"
+};
+var messy = false;
+
+function fmtDay(iso) {
+  var d = new Date(iso);
+  return (d.getMonth() + 1) + "月" + d.getDate() + "日";
+}
+function fmtTime(iso) {
+  var d = new Date(iso);
+  var h = d.getHours(), m = d.getMinutes();
+  return h + ":" + (m < 10 ? "0" + m : m);
+}
+
+function setFace(mood) {
+  document.getElementById("mouth").setAttribute("d", MOUTH[mood] || MOUTH.normal);
+  document.body.classList.toggle("mood-sad", mood === "sad");
+  var sub = document.getElementById("moodSub");
+  if (mood === "happy") sub.textContent = "きげん：とてもいい";
+  else if (mood === "sad") sub.textContent = "きげん：しょんぼり";
+  else sub.textContent = "きげん：いい";
+}
+function beam() {
+  document.body.classList.add("mood-beam");
+  setFace("happy");
+  setTimeout(function () { document.body.classList.remove("mood-beam"); }, 1800);
+}
+setInterval(function () {
+  var l = document.getElementById("eyeL"), r = document.getElementById("eyeR");
+  l.style.transform = "scaleY(0.12)"; r.style.transform = "scaleY(0.12)";
+  setTimeout(function () { l.style.transform = ""; r.style.transform = ""; }, 130);
+}, 4200);
+
+function bubblePlace(inner, extra) {
+  return '<div class="msg-place ' + (extra || "") + '">' +
+    '<div class="msg-place-icon">' + (extra === "down" ? "🍂" : "🌿") + "</div>" +
+    '<div class="msg-place-bubbles">' + inner + "</div></div>";
+}
+
+function render() {
+  var cares = ZONE_DATA.cares.slice(-2);
+  var html = "";
+  html += '<div class="msg-place"><div class="msg-place-icon">🌿</div><div class="msg-place-bubbles">' +
+    '<div class="bubble-place">やあ、来てくれてありがとう。<br>わたしの今日を、ちょっと見ていって。</div></div></div>';
+  html += '<div class="chat-legend"><span>🍂 <b>散らかっていた姿</b></span><span>🌿 <b>整えてもらった姿</b></span></div>';
+
+  cares.forEach(function (c, i) {
+    html += '<div class="chat-day">' + fmtDay(c.when) + "</div>";
+    if (c.before_photo) {
+      html += bubblePlace(
+        '<div class="bubble-place photo down"><div class="photo-wrap"><img class="card-photo" src="' + c.before_photo + '" alt=""></div></div>' +
+        '<div class="bubble-place down">' + (c.before_line || "ここ、ちょっと気になっているんだ。") + "</div>" +
+        '<div class="chat-time">' + fmtTime(c.when) + "</div>", "down");
+    }
+    if (c.after_photo) {
+      var quote = c.before_photo
+        ? '<div class="quote-before"><img src="' + c.before_photo + '" alt=""><span>' + (c.before_line || "さっきの、散らかっていた姿") + "</span></div>"
+        : "";
+      var chips = c.thanks_count > 0
+        ? '<div class="care-thanks-cluster"><span class="thanks-chip">' + c.thanks_count + " のありがとう</span></div>"
+        : "";
+      html += bubblePlace(
+        '<div class="bubble-place photo"><div class="photo-wrap"><img class="card-photo" src="' + c.after_photo + '" alt=""></div></div>' +
+        quote +
+        '<div class="bubble-place" id="line-' + i + '">' + (c.after_line || "ここ、すっきり整った。") + "</div>" +
+        chips +
+        '<div id="thx-' + i + '"><button class="chat-thank-btn" onclick="thank(' + i + ')">ありがとう</button></div>' +
+        '<div class="chat-time">' + fmtTime(c.completed || c.when) + "</div>");
+    }
+  });
+
+  html += '<div class="chat-day">きょう</div>';
+  var last = ZONE_DATA.cares[ZONE_DATA.cares.length - 1];
+  html += bubblePlace(
+    '<div class="bubble-place photo"><div class="photo-wrap"><img class="card-photo" src="' + last.after_photo + '" alt=""></div></div>' +
+    '<div class="bubble-place" id="currentLine">きょうも、この姿をキープできてるよ。</div>');
+  document.getElementById("chat").innerHTML = html;
+}
+
+function appendPlace(text, extra) {
+  var chat = document.getElementById("chat");
+  var div = document.createElement("div");
+  div.innerHTML = bubblePlace('<div class="bubble-place ' + (extra === "down" ? "down" : "") + '">' + text + "</div>", extra);
+  chat.appendChild(div.firstChild);
+  chat.lastChild.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+function thank(i) {
+  var box = document.getElementById("thx-" + i);
+  if (!box) return;
+  box.innerHTML = '<div class="care-thanks-cluster"><span class="thanks-chip mine">あなたのありがとう</span></div>';
+  appendPlace("うれしい。だいじに受け取ったよ。");
+  beam();
+}
+
+function demoMess() {
+  if (messy) return;
+  messy = true;
+  setFace("sad");
+  appendPlace("…ちょっと散らかってきたなあ。", "down");
+  setTimeout(function () {
+    appendPlace('<span style="font-size:0.8rem">だれか、気づいてくれるかな。</span>', "down");
+  }, 900);
+}
+function demoClean() {
+  if (messy) {
+    messy = false;
+    appendPlace("わあ、すっきり。気持ちいいよ、ありがとう。");
+    beam();
+  } else {
+    appendPlace("もう、きれいだよ。ありがとう。");
+    setFace("happy");
+  }
+}
+
+function sendMsg() {
+  var input = document.getElementById("chatInput");
+  var msg = input.value.trim();
+  input.value = "";
+  var chat = document.getElementById("chat");
+  var you = document.createElement("div");
+  you.className = "msg-you";
+  you.innerHTML = '<div class="bubble-you">' + (msg || "ありがとう") + "</div>";
+  chat.appendChild(you);
+  setTimeout(function () {
+    appendPlace("受け取ったよ。うれしいな。");
+    beam();
+  }, 600);
+  you.scrollIntoView({ behavior: "smooth", block: "end" });
+}
+
+function camHint() {
+  var t = document.getElementById("toast");
+  document.getElementById("toastMsg").textContent = "これはデモ版です";
+  document.getElementById("toastSub").textContent = "撮影・投稿は本物のアプリでどうぞ";
+  t.classList.add("show");
+  setTimeout(function () { t.classList.remove("show"); }, 2400);
+}
+
+render();
+setFace("normal");
+</script>
+</body>
+</html>
