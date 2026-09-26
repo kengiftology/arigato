@@ -5499,7 +5499,7 @@ async def zones_status():
 
 
 @router.post("/zone/ref")
-async def zone_ref(zone: str, key: str = ""):
+async def zone_ref(request: Request, zone: str, key: str = ""):
     """いまの写真を、その区画の見本として覚える（2026-09-26）。
 
     区画ごとに見本が要る。向きが違えば写る中身も違うので、
@@ -5514,9 +5514,16 @@ async def zone_ref(zone: str, key: str = ""):
     obj = (cfg.get("aim") or {}).get("ref")
     if not obj:
         raise HTTPException(status_code=400, detail="%s に見本の置き場が無い" % zone)
-    data = read_object("spirit/latest.jpg")
-    if data is None:
-        return {"ok": False, "error": "いまの写真がありません"}
+    # 写真を body で送ってもらうのが本筋（2026-09-26）。
+    # `spirit/latest.jpg` は人が居るときと見回りのときにしか書かれないので、
+    # 「カメラを向けてから最新写真を使う」では、いつまでも前の景色のままになる
+    # （9/26、実際にこれで3回とも登録できなかった）。
+    # **人が目で見て確かめた、その1枚**を送って登録するほうが、確かでもある。
+    data = await request.body()
+    if not data:
+        data = read_object("spirit/latest.jpg")
+    if not data:
+        return {"ok": False, "error": "写真がありません（body で送るか、いまの写真が要ります）"}
     upload_to(obj, data, "image/jpeg")
     _ref_cache[0] = 0.0                       # 読み置きを捨てて、すぐ効かせる
     _log_event("zone_ref", {"zone": zone, "obj": obj, "bytes": len(data)})
