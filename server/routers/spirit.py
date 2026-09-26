@@ -2732,7 +2732,11 @@ _CHECK_SYSTEM = """共有キッチンに棲む、子どものような地霊が�
 - **その人がしたことに、ありがとうの気持ちを伝える**
   （「◯◯ちゃんが きれいにしてくれたんだなあ」「◯◯ちゃんのおかげだね」）。
   これは感謝で、評価（えらい・すごい）ではありません
-- **その人自身のことを、その人に聞く**（「料理、どんなかんじなんかなあ」）
+- **その人自身のことを、その人に聞く**（「料理、どんなかんじなんかなあ」）。
+  **問いかけ（質問）そのものは決まり違反ではありません。**だめなのは、
+  相手に何かをさせようとする言い方（命令・お願い・提案）だけです
+- **呼び名で呼ぶこと**。文の中の「◯◯ちゃん」は、目の前にいるその人です。
+  第三者ではありません
 - 相手が来たことを喜ぶ・気づく（「きてくれたんだ」「きた」「◯◯ちゃんだ」「きょうも◯◯ちゃんだ」）
 - 「さっき」「きのう」「このまえ」で、いつのことかを言う
 - 場所の様子を言う（「シンクがきれいになってた」「ここ、しずかだったんだよ」「あたたかいなあ」）
@@ -2742,7 +2746,7 @@ _CHECK_SYSTEM = """共有キッチンに棲む、子どものような地霊が�
 JSONだけで答える：{"ok": true} または {"ok": false, "why": "どれだけ来ていないかに触れている"}"""
 
 
-async def _greet_check(text: str) -> str:
+async def _greet_check(text: str, name: str = "") -> str:
     """一言を掟に照らして見直す。守れていれば空、だめなら理由（2026-09-26）。
 
     見直せなかったとき（鍵が無い・落ちた）は空を返す＝通す。
@@ -2753,7 +2757,11 @@ async def _greet_check(text: str) -> str:
         from anthropic import AsyncAnthropic
         msg = await AsyncAnthropic(timeout=15.0, max_retries=0).messages.create(
             model=MODEL, max_tokens=80, system=_CHECK_SYSTEM,
-            messages=[{"role": "user", "content": "『%s』\nJSONで。" % text}])
+            messages=[{"role": "user", "content":
+                       ((("この一言は『%sちゃん』へ向けて言うものです。"
+                          "文の中の『%sちゃん』は、目の前にいるその人のことです。\n") % (name, name))
+                         if name else "")
+                       + "『%s』\nJSONで。" % text}])
         out = "".join(b.text for b in msg.content if b.type == "text")
         i, j = out.find("{"), out.rfind("}")
         d = json.loads(out[i:j + 1]) if 0 <= i < j else {}
@@ -3033,7 +3041,7 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
         # 9/26 の点検で「いつもの人だ」「せんしゅうもみたひとだ」「だから……ってまた」が
         # すり抜けた。禁じた語を足すたびに次の言い換えが出るので、最後に一度、
         # 掟に照らして見直す。捨てても作り直しはもう一度まわる。
-        why = await _greet_check(out)
+        why = await _greet_check(out, name)
         if why:
             _log_event("greet_dropped", {"text": out[:40], "why": "見直し：" + why[:40]})
             return ""
