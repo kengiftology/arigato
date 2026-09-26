@@ -3640,7 +3640,12 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             # 思い出を出すのは4本に1本くらい（2026-09-25）。毎回出すと、どの迎えも同じ話になる。
             if use_kept or (mem and random.random() >= 0.25):
                 mem = None
-            text = await _greet_line(persona, manner, thanks, news and not thanks, nm,
+            # 場所の変化を言うのは【思い出】の口だけにする（2026-09-26）。
+            # news は「24時間のうちにシンクが片づいた」だけで**全員の全部の一言**に入るので、
+            # 実測で48本のうち46本が「シンク、ぴかぴか」になっていた。思い出の側には
+            # いつのことか・一度言ったら下ろす・4本に1本、という決まりが付いている。
+            # 同じことを2つの口から言わせない。
+            text = await _greet_line(persona, manner, thanks, False, nm,
                                      avoid=[x.get("t") for x in _slots(doc) if x.get("t")],
                                      said=doc.get("said"), memory=mem,
                                      kept=kept if use_kept else "",
@@ -3657,7 +3662,10 @@ async def _prepare_greetings(st: dict, now: float) -> int:
                         upd["kept"] = dict(doc.get("kept") or {}, told=True)
                     d.reference.update(upd)
                     n += 1
-        text = await _greet_line(persona, BOND_STAGES[0][2], False, news,
+        # 初めての人には思い出が無いので、場所の様子は news の口から言う。
+        # ただし毎回は言わない（3回に1回くらい）。同じ話ばかりになる（2026-09-26）
+        text = await _greet_line(persona, BOND_STAGES[0][2], False,
+                                 news and random.random() < 0.34,
                                  opening=_pick_openings("")[0])
         if text and text != st.get("next_new_text"):
             st["next_new_text"], st["next_new_at"] = text, now
@@ -3680,8 +3688,9 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
     ref = get_db().collection("faces").document(pid)
     doc = ref.get().to_dict() or {}
     name = doc.get("name") or ""
-    if not name:
-        return []
+    # 2026-09-26：呼び名の無い人も作り直せるようにした。呼び名を覚えた瞬間のための
+    # 仕組みだったが、直したあとの一言を入れ直す口がここしか無く、呼び名の無い9人の
+    # 古い一言（言い方の直しが入る前のもの）を入れ替えられなかった。
     manner = _bond_stage(_bond_now(doc))[1]
     # 見本（save=False）は、もう話した思い出でも見せる。本人が言い方を見るためのもので、
     # 見せたことは「話した」に入らない。本番に入れるときだけ、話した印を見て・立てる。
