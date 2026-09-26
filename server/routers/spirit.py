@@ -4154,7 +4154,12 @@ async def _compare_images(a: bytes, b: bytes, focus: str = "") -> dict:
 # 根拠（9/9の実測・本番と同じモデル）：同じ景色20枚で誤報0／コップ1→5個は10/10「増えた」／
 # 5個→コップ1は10/10「減った」／散らかった同士では片方向だと5組中4組が「減った」と誤報し、
 # 両方向ルールで0になった／横0.05〜0.10のずれは平気、シンクが切れると誤報。
-ZONE_NAMES = ("シンク",)          # 見張る区画。首振りで増やすときはここに足す
+# 見張る区画。**設定（ZONE_CFG_DEFAULT）で active になっているもの**を回す（2026-09-26）。
+# ここを別に持っていたせいで、9/26 に設定を5区画ぶん書いたのに、本番はシンク1つを
+# 回したままだった。**設定と、実際に回る一覧が食い違っていた。**
+def _zone_names() -> tuple:
+    names = [n for n, c in ZONE_CFG_DEFAULT.items() if c.get("active")]
+    return tuple(names or ("シンク",))
 ZONE_FIXTURES = {
     "シンク": ("備え付けの物（ステンレスの水切りかご、壁の包丁立てと包丁、壁のフックに掛かっている道具、"
               "蛇口、排水口の網）は見ません。見るのは『シンク（流し台の金属のくぼみ）の底に置かれている物』だけです。"),
@@ -4619,7 +4624,7 @@ async def _derive_zones(data: bytes) -> list:
     # 記録の欄（試した数・当たり・誤報・状態）も揃えて返す。名前だけだと、
     # あとで誤報率を出すところで KeyError: 'false' になり、比較が途中で落ちた
     # （2026-09-10 15:32・15:43 の zone_error）。
-    return [{"name": n, "trials": 0, "hits": 0, "false": 0, "state": "採用"} for n in ZONE_NAMES]
+    return [{"name": n, "trials": 0, "hits": 0, "false": 0, "state": "採用"} for n in _zone_names()]
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return []
     try:
@@ -5284,7 +5289,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
     比べたときは、裏で続ける仕事（_zone_tail）に渡す材料を返す。"""
     try:
         # 区画は ZONE_NAMES に決め打ち。古い状態（AIが起こした調理台・棚など）が残っていたら立て直す
-        if [z.get("name") for z in (st.get("zones") or [])] != list(ZONE_NAMES):
+        if [z.get("name") for z in (st.get("zones") or [])] != list(_zone_names()):
             st["zones_prev"] = st.get("zones") or []     # なぜ立て直したかを記録に残す
             st["zones"] = await _derive_zones(data)
             if st["zones"]:
@@ -5559,11 +5564,10 @@ async def zones_refresh(key: str = ""):
     """画角を変えたときに、区画を立て直す。成績もやり直す。"""
     if not key_ok(key):
         raise HTTPException(status_code=401, detail="bad key")
-    data = read_object("spirit/latest.jpg")
-    if data is None:
-        return {"ok": False, "error": "まだ写真がありません"}
+    # 写真は要らない。区画の一覧は設定から作る（2026-09-26）
     st = _load()
-    st["zones"] = await _derive_zones(data)
+    st["zones"] = [{"name": n, "trials": 0, "hits": 0, "false": 0, "state": "採用"}
+                   for n in _zone_names()]
     st["zone_rotate"] = 0
     _save(st)
     _log_event("zones_set", {"zones": [z["name"] for z in st["zones"]]})
