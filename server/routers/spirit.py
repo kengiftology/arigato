@@ -2661,12 +2661,57 @@ _GREET_BEG = ("おねがい", "てもいい", "ていい？", "てくれる？",
 # 「また来てくれたんだ」「またきたね」「あのね、このあいだ……」が4本すり抜けた。
 # 『また来た』という形だけを禁じていたので、言い方を変えられると通ってしまった。
 _GREET_AGAIN = ("また来", "またき", "またお", "またあ", "このあいだ", "ひさしぶり",
-                "しばらく", "まえにも", "にどめ", "かいめ")
+                "しばらく", "まえにも", "にどめ", "かいめ",
+                # 2026-09-26 の点検で出たもの。来かたや、どれだけ来ていないかに触れている
+                "いつもの", "せんしゅう", "先週", "せんげつ", "先月", "まえから",
+                "はなしたことない", "話したことない", "あんまり")
 # 何も言っていない一言を見分けるための、意味を持たないことば（2026-09-26）。
 # これを取り去って4字も残らなければ、聞いた人には何も伝わらない
 # （9/26 の実測：44本のうち8本が「きゃあ、あ……。」「うれしいなあ。……えーと。」だった）。
 _GREET_FILLER = ("うれしいなあ", "うれしい", "あのね", "えーとね", "えっとね", "えーと",
                  "えっと", "きゃあ", "あっ", "なあ", "だなあ", "あれ", "ふふ", "ね")
+
+
+_CHECK_SYSTEM = """共有キッチンに棲む、子どものような地霊が、そこに来た人へ言う一言を作りました。
+その一言が、決まりを守れているかだけを見てください。中身の良し悪しは見ません。
+
+守れていないもの（ひとつでも当たれば「だめ」）：
+1. その一言だけを聞いて意味が分からない。前に何があったかを知らないと分からない。
+   「あれ」「それ」「いつもの」のように、何を指すか言っていない
+2. 日本語として壊れている。言いかけで終わっている。つながっていない
+3. 相手に命令・お願い・提案している。許しを求めている
+4. 相手を評価している（えらい・すごい・じょうず・おいしそう）
+5. 来かたや、来ていなかった時間、回数に触れている
+   （また来た・ひさしぶり・せんしゅうも・いつもの人・あんまり話したことない・◯回目）
+6. その場に居ない誰かのことを言っている（「だれかが」「だれだろう」を含む）
+7. ていねい語・あいさつのことば（です・ます・こんにちは・いらっしゃい）
+8. 相手が何をしたか・何を作ったかを、名前を言わずになぞっている
+
+守れていれば「よい」。子どもっぽさ・ひらがなの多さ・点々（……）は決まり違反ではありません。
+JSONだけで答える：{"ok": true} または {"ok": false, "why": "来かたに触れている"}"""
+
+
+async def _greet_check(text: str) -> str:
+    """一言を掟に照らして見直す。守れていれば空、だめなら理由（2026-09-26）。
+
+    見直せなかったとき（鍵が無い・落ちた）は空を返す＝通す。
+    見直しの仕組みが止まったせいで地霊が黙る、という形にはしない。"""
+    if not text or not os.environ.get("ANTHROPIC_API_KEY"):
+        return ""
+    try:
+        from anthropic import AsyncAnthropic
+        msg = await AsyncAnthropic(timeout=15.0, max_retries=0).messages.create(
+            model=MODEL, max_tokens=80, system=_CHECK_SYSTEM,
+            messages=[{"role": "user", "content": "『%s』\nJSONで。" % text}])
+        out = "".join(b.text for b in msg.content if b.type == "text")
+        i, j = out.find("{"), out.rfind("}")
+        d = json.loads(out[i:j + 1]) if 0 <= i < j else {}
+    except Exception as e:
+        logger.warning("greet check failed: %s", e)
+        return ""
+    if d.get("ok") is False:
+        return str(d.get("why") or "決まりに合わない")
+    return ""
 
 
 def _says_nothing(t: str) -> bool:
@@ -2927,7 +2972,16 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
             _log_event("greet_dropped", {"text": text[:40], "why": "／".join(bad)})
             return ""
         # 呼び名が入るぶん、上限も広げる（読みのひらがな＋「ちゃん」。途中で切れないように）
-        return _sanitize(text, MAX_COMMENT + (len(name) * 3 + 3 if name else 0))
+        out = _sanitize(text, MAX_COMMENT + (len(name) * 3 + 3 if name else 0))
+        # ことばの一覧で捕まえる形は、言い換えられると通ってしまう（2026-09-26）。
+        # 9/26 の点検で「いつもの人だ」「せんしゅうもみたひとだ」「だから……ってまた」が
+        # すり抜けた。禁じた語を足すたびに次の言い換えが出るので、最後に一度、
+        # 掟に照らして見直す。捨てても作り直しはもう一度まわる。
+        why = await _greet_check(out)
+        if why:
+            _log_event("greet_dropped", {"text": out[:40], "why": "見直し：" + why[:40]})
+            return ""
+        return out
     except Exception as e:
         logger.warning("greet failed: %s", e)
         return ""
