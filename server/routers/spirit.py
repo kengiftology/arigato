@@ -1548,7 +1548,10 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
     _save(st)
     # 人が去って落ち着いてから突き合わせる。居る間の1枚を「後」にすると
     # 本人が写り込んでしまい、物の変化と見分けがつかない。
-    check = st.get("check_pose") or ""
+    # 区画を順ぐりに回すようになったので、照らす先は check_pose（シンク固定）ではなく
+    # **いま見に行かせた向き**。ここを直さないと、水切り以降の写真が全部
+    # 「見に行った先と違う」で捨てられ、比較が1回も走らなくなる（2026-09-26）。
+    check = st.get("check_issued") or st.get("check_pose") or ""
     right_place = (not check) or (pose == check)   # 見に行く先で撮った1枚か
     if right_place and npeople == 0 and now - st.get("last_seen", 0) > VISIT_END_GAP:
         # 2026-09-14：突き合わせと「前」の差し替えは、返事を返す前に済ませる。
@@ -1948,7 +1951,13 @@ async def hint():
     now = time.time()
     # 誰も居ないと分かってから、キッチンを見に行く。
     # 目はここを3秒おきに覗きにくるので、札を立てるだけで伝わる。
-    check = st.get("check_pose") or ""
+    # 区画は5つあるが、見に行く向き（check_pose）は1つしか持っていなかった。
+    # そのためカメラは毎回シンクしか見ず、残りの4区画は一度も撮られないまま
+    # 「違う景色」で飛ばされる。9/24 に自分で警告した形を、自分で作っていた。
+    # 見回りが出るたびに1区画ずつずらして、順ぐりに回す（2026-09-26）。
+    poses = _check_poses()
+    idx = int(st.get("zone_rotate", 0)) % max(1, len(poses or (1,)))
+    check = ((poses[idx] if poses else "") or st.get("check_pose") or "")
     # 「人が来た」の手がかりは3つ：顔・人感・動きのあるコマ(big=1)。どれかの最後の時刻。
     checked = st.get("checked_at", 0)
     # 見回りでカメラが動くと、その動き自体が「動きのあるコマ」として届き、
@@ -1964,6 +1973,19 @@ async def hint():
     if (check and now - active > CHECK_QUIET_SEC
             and active > checked
             and now - checked > CHECK_GAP):
+        # どの向きへ見に行かせたかを控える。届いた1枚は、その向きの区画としてだけ比べる。
+        # 進めるのは**出した時点**。届いてから進めると、写真が1枚落ちただけで
+        # 同じ区画に永久に留まり、残りの区画が二度と見られなくなる。
+        # ただし目は3秒おきにここを覗きにくる。見回りが終わるまで（checked が
+        # 新しくなるまで）は**同じ向きを返す**。そうしないと往復の20秒のあいだに
+        # 向きが何段も早送りされ、控えた向きと実際に撮った向きが食い違う。
+        if checked >= st.get("check_issued_at", 0):
+            st["check_issued"] = check
+            st["check_issued_at"] = now
+            st["zone_rotate"] = idx + 1
+            _save(st)
+        else:
+            check = st.get("check_issued") or check       # まだ前の見回りの途中
         return "check " + check + "\n"
     # 人を探して首を振る仕組みは止めた（2026-09-06）。
     # カメラは入り口を向いて待っているので、探しに行く先がもう無い。
@@ -4268,6 +4290,24 @@ async def _compare_images(a: bytes, b: bytes, focus: str = "") -> dict:
 def _zone_names() -> tuple:
     names = [n for n, c in ZONE_CFG_DEFAULT.items() if c.get("active")]
     return tuple(names or ("シンク",))
+
+
+# 見に行く向きの一覧（2026-09-26）。**区画の数とは違う。**
+# テーブルとコンロは同じ向き（-0.40_0.00）の1枚を、切り出しで分けたもの。
+# 区画ごとに回すと同じ向きへ2回続けて行き、1周が無駄に伸びる。
+# 向きで回し、その向きに属する区画はまとめて比べる。
+def _check_poses() -> tuple:
+    out = []
+    for n in _zone_names():
+        pose = _zone_cfg(n).get("pose") or ""
+        if pose and pose not in out:
+            out.append(pose)
+    return tuple(out)
+
+
+def _zones_at(pose: str) -> tuple:
+    """その向きの1枚から見る区画（複数あり得る）。"""
+    return tuple(n for n in _zone_names() if (_zone_cfg(n).get("pose") or "") == pose)
 ZONE_FIXTURES = {
     "シンク": ("備え付けの物（ステンレスの水切りかご、壁の包丁立てと包丁、壁のフックに掛かっている道具、"
               "蛇口、排水口の網）は見ません。見るのは『シンク（流し台の金属のくぼみ）の底に置かれている物』だけです。"),
@@ -4447,7 +4487,13 @@ def _frame_match(a: bytes, b: bytes, band: tuple = None) -> tuple:
         return 0, 0, None
 
 
-_last_good = {"jpg": None, "ref_at": 0.0}   # 「見本そのものと合った」最後の1枚（錨）
+# 「その見本そのものと合った」最後の1枚（錨）。**見本ごとに持つ**（2026-09-26）。
+# 9/26 20:40 の事故：錨を全区画で1つしか持っていなかったため、シンクの写真が錨になり、
+# 続く4区画はその**同じ1枚**と照らして合格した（自分自身と比べれば確かさは1.0）。
+# シンクの向きで撮った1枚が、水切り・テーブル・コンロ・IH の答えになった（zone_all of=5）。
+# 錨は「この区画の見本と合った」証しなので、区画をまたいで使い回してはいけない。
+# 鍵は見本と帯。テーブルとコンロは同じ見本・同じ帯なので、錨を分け合ってよい。
+_last_good = {}
 
 
 _ref_cache = [0.0, None]     # 見本の読み置き（時刻, 中身）
@@ -4492,16 +4538,29 @@ def _view_ok(now: bytes, zone: str = "") -> tuple:
     min_conf = aim.get("min_conf") or AIM_MIN_CONF    # 区画ごとの線
     ref = read_object(ref_obj)
     if ref is None:
+        # 見本が無いときの扱い（2026-09-26 に直した）。
+        # それまでは「判断できないので止めない」で**素通りさせていた**。
+        # 区画が1つ（シンク）のうちは見本が必ずあったので問題にならなかったが、
+        # 区画を5つに増やした9/26、見本を登録していない区画が3つあり、
+        # **シンクの向きで撮った1枚が、テーブル・コンロ・IH の答えになった**
+        # （20:40 の zone_all：of=5・changed=3）。向きの守りが無い区画は、
+        # 「どこを写したか分からない1枚」で判定していることになる。
+        # 区画が自分の見本を指しているのに実物が無いなら、**通さない**。
+        # 共通の見本（シンク）しか持たない区画だけ、これまでどおり止めない。
+        if aim.get("ref"):
+            return False, None, None
         return True, None, None
     now_t = time.time()
+    anchor = _last_good.setdefault(str(ref_obj) + "|" + str(band),
+                                   {"jpg": None, "ref_at": 0.0})
     dx, dy, resp = _frame_match(ref, now, band)
     if resp is None:
         return True, None, [dx, dy]
     if resp >= min_conf:
-        _last_good["jpg"], _last_good["ref_at"] = now, now_t
+        anchor["jpg"], anchor["ref_at"] = now, now_t
         return True, round(resp, 3), [dx, dy]
-    prev = _last_good["jpg"]
-    if prev is not None and now_t - _last_good["ref_at"] < LAST_GOOD_TTL:
+    prev = anchor["jpg"]
+    if prev is not None and now_t - anchor["ref_at"] < LAST_GOOD_TTL:
         pdx, pdy, presp = _frame_match(prev, now, band)
         if (presp is not None and presp >= min_conf
                 and abs(pdx) <= SHIFT_MAX_PX and abs(pdy) <= SHIFT_MAX_PX):
@@ -4886,10 +4945,16 @@ async def _zone_pass(st: dict, before: bytes, after: bytes,
     quiet＝この間、誰も来ていない。そこで出た変化はすべて誤報とみなす。"""
     zones = _live_zones(st)
     cared = []                                 # 片づいた方向に変わった区画
-    if quiet:                                  # 点検は1区画ずつ順ぐりに（費用のため）
-        i = st.get("zone_rotate", 0) % max(1, len(zones))
+    # 届いた1枚は**見に行かせた向き**のもの。ほかの区画と比べても「違う景色」に
+    # なるだけで、記録が誤報で埋まる（2026-09-26）。
+    # 同じ向きを持つ区画（テーブルとコンロ）は、この1枚からまとめて見る。
+    want = st.get("check_issued") or ""
+    at = _zones_at(want) if want else ()
+    if at:
+        zones = [z for z in zones if z.get("name") in at] or zones[:1]
+    elif quiet:
+        i = int(st.get("zone_rotate", 0)) % max(1, len(zones))
         zones = zones[i:i + 1]
-        st["zone_rotate"] = i + 1
     results = []
     for z in zones:
         r = await _compare_zone(before, after, z["name"],     # 見方C（両方向ルール）

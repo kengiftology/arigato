@@ -93,28 +93,51 @@ def still(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.abs(a - b).mean() * 255)
 
 
-_ref = [None]
-_ref_raw = [None]
+# 向きごとの見本（2026-09-26）。区画を5つに増やしたので、見本も向きの数だけ要る。
+# ここを1枚（シンク）で済ませていたため、他の区画の写真はすべて「違う景色」で
+# 止められ、1枚もクラウドへ届かない形になっていた。
+# 置き場は bridge/zoneref/<向き>.jpg（例 zoneref/-1.00_-1.00.jpg）。
+# **見本が無い向きは、ずれと景色を見ない**（ぶれと静けさだけで通す）。
+# 無い見本を勝手に作ると、ずれた1枚がそのまま見本になって、以後ずっと
+# 「合っている」と出続ける（9/23〜24 の 20時間50分の停止と同じ形）。
+# 見本を作るのは、本人が写真を目で見て「その場所が写っている」と言ったときだけ。
+REFDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zoneref")
+SINK_POSE = "-0.70_-1.00"          # この向きだけは前からある sink_ref.jpg を使う
+_refs = {}                         # 向き → (グレー画像, 元のjpg) ／ 見本が無ければ (None, None)
 
 
-def ref() -> np.ndarray | None:
-    if _ref[0] is None and os.path.exists(REF):
-        with open(REF, "rb") as f:
-            _ref_raw[0] = f.read()
-        _ref[0] = gray(_ref_raw[0])
-    return _ref[0]
+def ref_path(pose: str | None) -> str:
+    if not pose or pose == SINK_POSE:
+        return REF
+    return os.path.join(REFDIR, pose + ".jpg")
 
 
-def check(jpg: bytes, prev_jpg: bytes | None = None) -> dict:
-    """1枚を測って {ok, why, shift, blur, still} を返す。"""
+def ref(pose: str | None = None) -> np.ndarray | None:
+    key = pose or SINK_POSE
+    if key not in _refs:
+        path = ref_path(pose)
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                raw = f.read()
+            _refs[key] = (gray(raw), raw)
+        else:
+            _refs[key] = (None, None)
+    return _refs[key][0]
+
+
+def check(jpg: bytes, prev_jpg: bytes | None = None, pose: str | None = None) -> dict:
+    """1枚を測って {ok, why, shift, blur, still} を返す。
+
+    pose を渡すと、その向きの見本と照らす。見本が無い向きなら、ずれと景色は見ない。"""
     g = gray(jpg)
     out = {"blur": round(blur_score(g), 2), "shift": None, "still": None, "conf": None,
            "ok": True, "why": ""}
-    r = ref()
+    r = ref(pose)
     if r is not None:
+        raw = _refs[pose or SINK_POSE][1]
         dx, dy, _ = shift_px(r, g)
         out["shift"] = (dx, dy)
-        c, cmin = conf(_ref_raw[0], jpg)
+        c, cmin = conf(raw, jpg)
         out["conf"] = round(c, 3)
         if c < cmin:
             out["ok"], out["why"] = False, "違う景色"   # 確かさが低いと、ずれの数字は当てにならない
@@ -140,13 +163,13 @@ if __name__ == "__main__":
         print("%-50s blur=%6.2f shift=%s" % (os.path.basename(p), blur_score(g), s), flush=True)
 
 
-def shift_of(jpg: bytes) -> tuple:
+def shift_of(jpg: bytes, pose: str | None = None) -> tuple:
     """この1枚が、基準の写真からどれだけずれているか (dx, dy, 確度)。
 
     2026-09-12 夜：画角を探し直すのに使う。check() と同じ計算だが、
     合否ではなく数字をそのまま返す。基準が読めなければ (None, None, 0.0)。"""
     try:
-        ref = gray(open(REF, "rb").read())
+        r = gray(open(ref_path(pose), "rb").read())
     except Exception:
         return None, None, 0.0
-    return shift_px(ref, gray(jpg))
+    return shift_px(r, gray(jpg))

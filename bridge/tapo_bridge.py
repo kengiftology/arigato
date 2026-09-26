@@ -575,7 +575,7 @@ def take_good_shot(x: float, y: float) -> bytes | None:
         if jpg is None:
             print(time.strftime("%H:%M:%S"), "見回りの写真 %d回目: 映像が無い" % i, flush=True)
             continue
-        r = shot_check.check(jpg, prev)
+        r = shot_check.check(jpg, prev, pose="%.2f_%.2f" % (x, y))
         print(time.strftime("%H:%M:%S"),
               "見回りの写真 %d回目: ぶれ=%.1f ずれ=%s 動き=%s → %s"
               % (i, r["blur"], r["shift"], r["still"], "使える" if r["ok"] else r["why"]),
@@ -596,7 +596,7 @@ def take_good_shot(x: float, y: float) -> bytes | None:
             jpg = _next_frame(prev, moved_at + SETTLE_AFTER_MOVE)
             if jpg is None:
                 continue
-            r = shot_check.check(jpg, prev)
+            r = shot_check.check(jpg, prev, pose="%.2f_%.2f" % (x, y))
             if r["ok"] and prev is not None:
                 print(time.strftime("%H:%M:%S"), "探し直したあとで撮れた", flush=True)
                 return jpg
