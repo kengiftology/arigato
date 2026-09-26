@@ -118,3 +118,49 @@ def test_見本が無い区画は通さない(monkeypatch):
     # 共通の見本しか持たない区画（シンク）＝これまでどおり止めない
     ok, _, _ = sp._view_ok(b"x", "シンク")
     assert ok is True
+
+
+# ── 人が去ったあと、その滞在に関わる区画をぜんぶ見る（2026-09-26・帰属の穴） ──
+#
+# なぜ要るか：区画が5つになると、1回の滞在で見られるのは1区画だけになる。
+# 残りは次の滞在、その次の滞在…と後回しになり、撮る頃には間に何人も来ている。
+# **「誰がやったか」が結びつかない。**しかも見送った区画は visit_seen が消えたあとに
+# 回ってくるので「静か（誰も来ていない）」と読まれ、本物の片づけまで誤報に数えられる。
+
+def test_一周で全部の向きを1回ずつ見る():
+    poses = sp._check_poses()
+    rotate, left, seen = 0, [], []
+    for _ in range(len(poses)):
+        pose, left, rotate = sp._sweep_plan(rotate, left, poses)
+        seen.append(pose)
+    assert sorted(seen) == sorted(poses), seen
+    assert left == [], "1周したのに残っている: %s" % (left,)
+
+
+def test_一周の起点は滞在ごとにずれる():
+    # いつも同じ区画が最初だと、その区画だけ「前」の写真が新しく、
+    # ほかは1周ぶん古いままになる。起点をずらして偏りを無くす。
+    poses = sp._check_poses()
+    starts = []
+    rotate = 0
+    for _ in range(len(poses) + 1):
+        left = []
+        pose, left, rotate = sp._sweep_plan(rotate, left, poses)
+        starts.append(pose)
+        # この滞在の残りは捨てられたものとして、次の滞在へ
+    assert len(set(starts[:len(poses)])) == len(poses), starts
+
+
+def test_設定から消えた向きは捨てる():
+    # 区画を止めたあとも古い状態に残っていると、無い場所へ首を振りつづける。
+    poses = sp._check_poses()
+    pose, left, rotate = sp._sweep_plan(0, ["-9.99_-9.99", poses[0]], poses)
+    assert pose == poses[0], pose
+    assert "-9.99_-9.99" not in left
+
+
+def test_区画が無ければ何も見に行かない():
+    pose, left, rotate = sp._sweep_plan(3, [], ())
+    assert pose == ""
+    assert left == []
+    assert rotate == 3

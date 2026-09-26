@@ -1955,9 +1955,6 @@ async def hint():
     # そのためカメラは毎回シンクしか見ず、残りの4区画は一度も撮られないまま
     # 「違う景色」で飛ばされる。9/24 に自分で警告した形を、自分で作っていた。
     # 見回りが出るたびに1区画ずつずらして、順ぐりに回す（2026-09-26）。
-    poses = _check_poses()
-    idx = int(st.get("zone_rotate", 0)) % max(1, len(poses or (1,)))
-    check = ((poses[idx] if poses else "") or st.get("check_pose") or "")
     # 「人が来た」の手がかりは3つ：顔・人感・動きのあるコマ(big=1)。どれかの最後の時刻。
     checked = st.get("checked_at", 0)
     # 見回りでカメラが動くと、その動き自体が「動きのあるコマ」として届き、
@@ -1967,22 +1964,40 @@ async def hint():
     if motion < checked + CHECK_SELF_SEC:
         motion = 0
     active = max(st.get("last_seen", 0), motion)
+    # 1周の途中で人が来たら、残りは捨てる。顔を撮るほうが大事で、
+    # それに人が居るあいだの1枚を「後」にすると、その人が写り込んで
+    # 物の変化と見分けがつかない。次の滞在で見直す。
+    if st.get("sweep_left") and active > float(st.get("check_issued_at", 0)):
+        cut = list(st.get("sweep_left") or [])
+        st["sweep_left"] = []
+        _save(st)
+        _log_event("sweep_cut", {"left": len(cut), "poses": cut})
+    # 見に行く向きを決める。**残りを捨てたあとに決める**（捨てる前に決めると、
+    # 捨てたはずの続きをそのまま書き戻してしまう）。
+    poses = _check_poses()
+    check, left, rotate = _sweep_plan(st.get("zone_rotate", 0),
+                                      st.get("sweep_left"), poses)
+    check = check or st.get("check_pose") or ""
     # 出す条件（2026-09-09）：静かになってから CHECK_QUIET_SEC 経った ＋
     # 前回の見回りのあとに人が来ている ＋ 見回り同士は CHECK_GAP 以上あける。
     # 誰も来なければ何度見ても同じなので出さない（AIも呼ばれない）。
-    if (check and now - active > CHECK_QUIET_SEC
-            and active > checked
-            and now - checked > CHECK_GAP):
+    done = checked >= st.get("check_issued_at", 0)     # 前の1枚は撮り終えている
+    # はじめの1回＝静かになって、前回の見回りのあとに人が来ている、が要る。
+    # 1周の続き＝同じ滞在の続きなので、そこは要らない。ただし静けさは要る。
+    first = (active > checked and now - checked > CHECK_GAP)
+    cont = bool(st.get("sweep_left")) and done
+    if check and now - active > CHECK_QUIET_SEC and (first or cont):
         # どの向きへ見に行かせたかを控える。届いた1枚は、その向きの区画としてだけ比べる。
         # 進めるのは**出した時点**。届いてから進めると、写真が1枚落ちただけで
         # 同じ区画に永久に留まり、残りの区画が二度と見られなくなる。
         # ただし目は3秒おきにここを覗きにくる。見回りが終わるまで（checked が
         # 新しくなるまで）は**同じ向きを返す**。そうしないと往復の20秒のあいだに
         # 向きが何段も早送りされ、控えた向きと実際に撮った向きが食い違う。
-        if checked >= st.get("check_issued_at", 0):
+        if done:
             st["check_issued"] = check
             st["check_issued_at"] = now
-            st["zone_rotate"] = idx + 1
+            st["sweep_left"] = left
+            st["zone_rotate"] = rotate
             _save(st)
         else:
             check = st.get("check_issued") or check       # まだ前の見回りの途中
@@ -4305,6 +4320,32 @@ def _check_poses() -> tuple:
     return tuple(out)
 
 
+# 人が去ったあと、その滞在に関わる区画を**ぜんぶ**見る（2026-09-26）。
+#
+# なぜ：区画が5つになると、1回の滞在で見られるのは1区画だけになる。残りの4区画は
+# 次の滞在、その次の滞在…と後回しになり、ようやく撮る頃には間に何人も来ている。
+# **「誰がやったか」が結びつかない。**しかも見送った区画は `visit_seen` が消えたあとに
+# 回ってくるので「静か（＝誰も来ていない）」と読まれ、本物の片づけまで誤報に数えられる。
+#
+# そこで、静かになったら**その滞在のあいだに1周ぜんぶ回す**。1周4回・往復20秒ずつなので
+# 2分ほど。人が来たら残りは捨てる（顔を撮るほうが大事。次の滞在で見直す）。
+def _sweep_plan(rotate: int, left, poses: tuple) -> tuple:
+    """(いま見に行く向き, その滞在で残る向き, 次の起点) を返す。
+
+    left が空なら、その滞在の1周を rotate の位置から組み立てる。
+    起点をずらすのは、いつも同じ区画が最初になると、
+    その区画だけ「前」の写真が新しく、ほかは古いままになるため。"""
+    n = len(poses)
+    if not n:
+        return "", [], rotate
+    left = [p for p in (left or []) if p in poses]
+    if not left:
+        i = int(rotate) % n
+        left = [poses[(i + k) % n] for k in range(n)]
+        rotate = i + 1
+    return left[0], left[1:], rotate
+
+
 def _zones_at(pose: str) -> tuple:
     """その向きの1枚から見る区画（複数あり得る）。"""
     return tuple(n for n in _zone_names() if (_zone_cfg(n).get("pose") or "") == pose)
@@ -5496,9 +5537,15 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
             # 次の比較の「前」の答え。この1枚でもう聞いてあればそれを使う（同じ写真に二度聞かない）
             prev = st.get("sink_now") if now - float(st.get("sink_now_at") or 0) <= 60 else None
             st["sink_empty_prev"] = prev if prev is not None else await _sink_empty(data)
-            st["visit_people"] = []            # 比べられなかった来訪は数えない
-            st["visit_seen"], st["seen_by"] = False, []
-            st["visit_face_first"] = st["visit_face_last"] = 0.0
+            # 比べられなかった来訪は数えない。ただし**1周の途中なら残す**
+            # （2026-09-26）。1周は「その滞在に関わる区画をぜんぶ見る」ためのもので、
+            # 途中の1区画が基準の取り直しになっただけで滞在を捨てると、
+            # 残りの区画はその滞在を「静か（誰も来ていない）」と読み、
+            # 本物の片づけを誤報に数える。
+            if not (st.get("sweep_left") or []):
+                st["visit_people"] = []
+                st["visit_seen"], st["seen_by"] = False, []
+                st["visit_face_first"] = st["visit_face_last"] = 0.0
             _save(st)
             _log_event("baseline", {"pose": pose, "sink_empty": st["sink_empty_prev"]})
             return None
@@ -5543,11 +5590,17 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
         # 「分かった」に見えるが、分からなかった滞在が記録されていないだけ）。
         # 顔が写っていた長さ（秒）。MIN_PRESENCE(30秒)未満なら「通り過ぎた」と読める。
         fspan = round(float(st.get("visit_face_last") or 0) - float(st.get("visit_face_first") or 0))
-        _log_event("visit", {"who": who, "sink_empty": empty,
-                             "stay": {k: round(stays[k]) for k in who},
-                             "seen": bool(st.get("visit_seen")),
-                             "face_span": max(0, fspan),
-                             "passed_by": bool(st.get("visit_face_first")) and fspan < MIN_PRESENCE})
+        # 滞在の記録は**1滞在に1回**。1周で4枚撮るようになったので、素直に書くと
+        # 同じ滞在が4件並び、「通り過ぎ率」の分母が4倍になる（2026-09-26）。
+        vid = float(st.get("visit_start") or 0)
+        if float(st.get("visit_logged") or 0) != vid or not vid:
+            st["visit_logged"] = vid
+            _log_event("visit", {"who": who, "sink_empty": empty,
+                                 "stay": {k: round(stays[k]) for k in who},
+                                 "seen": bool(st.get("visit_seen")),
+                                 "face_span": max(0, fspan),
+                                 "passed_by": bool(st.get("visit_face_first"))
+                                 and fspan < MIN_PRESENCE})
         if who:
             if empty:
                 st["sink_level"] = 0                      # 空＝一番きれい（Aは戻す合図）
@@ -5568,9 +5621,10 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
         # 次の比較が「どちらか不明」になり、塗りつぶし比較（AI）に回ってしまう。
         if empty is not None:
             st["sink_empty_prev"] = empty                        # 次の比較の「前」の答え
-        st["visit_people"] = []
-        st["visit_seen"], st["seen_by"] = False, []
-        st["visit_face_first"] = st["visit_face_last"] = 0.0
+        if not (st.get("sweep_left") or []):
+            st["visit_people"] = []                  # 1周が終わってから締める
+            st["visit_seen"], st["seen_by"] = False, []
+            st["visit_face_first"] = st["visit_face_last"] = 0.0
         _save(st)
         return tail
     except Exception as e:
