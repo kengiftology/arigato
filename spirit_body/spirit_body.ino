@@ -731,6 +731,14 @@ static String processCmd(String cmd) {
     else if (cmd == "sleep")  ctlScene = 4;
     else if (cmd == "hatch")  ctlScene = 5;
     else if (cmd == "mur")    { ctlMurmur = true; voiceOnce = true; }
+    else if (cmd.startsWith("item")) {                      // item 0〜6／item -1（持たない）
+        // その日の持ち物（2026-09-27）。C3 は日付を知らないので、決めるのはクラウド側。
+        int v = -1;
+        sscanf(cmd.c_str(), "item %d", &v);
+        setItem(v);
+        // ここで out += して返すと二重になる（D の申し送り・9/23 に同じ所を踏んでいる）。
+        // 最後にまとめて "OK <命令>" が付くので、ここでは何も足さない。
+    }
     else if (cmd.startsWith("listen")) {                    // listen 1／listen 0（名前を聞いている間）
         // 橋渡しが無線で送る（同じ家の中なので0.2〜1秒）。クラウドからはここへ直接届かない。
         // 無線の合図は届かないことがあるので、「切り」が落ちても LISTEN_MAX_MS で自分から戻る。
@@ -1128,9 +1136,12 @@ void loop() {
             if (bootTold) joyToTell = -1;          // 届いた → 喜んだ知らせは済んだ（起動の知らせと同時には送らない）
             bootTold = true;
             if (wdBoots) { wdBoots = 0; prefs.putUChar("wd", 0); }   // 通った → 見張りの回数を戻す
-            float m, n; int f, s = 0, li = -1, hd = -1;
-            int got = sscanf(body, "%f %f %d %d %d %d", &m, &n, &f, &s, &li, &hd);
+            float m, n; int f, s = 0, li = -1, hd = -1, it = -2;
+            int got = sscanf(body, "%f %f %d %d %d %d %d", &m, &n, &f, &s, &li, &hd, &it);
             if (got >= 2) onMN(m, n);
+            // 7つめ＝その日の持ち物（2026-09-27）。C3 は日付を知らないので、クラウドが決める。
+            // -1＝持たない。届かない古いクラウドなら -2 のままで、いまの持ち物を保つ。
+            if (got >= 7 && it >= -1 && it != itemToday) setItem(it);
             // 6つめ＝撤去期に何を消すか（2026-09-24）。0=ふつう 1=画面だけ 2=画面と声。
             // ここは入りにも切りにも使う。手元の命令ではなくクラウドが持ち主なので、
             // 起動し直しても10秒で正しい状態に戻る（2週間のあいだ必ず何度か起き直すため）。

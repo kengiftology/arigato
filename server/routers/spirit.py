@@ -1740,6 +1740,37 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
             "hires": now < st.get("want_hires", 0)}
 
 
+# ---- その日の持ち物（2026-09-27・本人「それでいきましょう」）----
+# C3 は日付を知らないので、決めるのはクラウド側。頭の左上に小さな印が1つ付く。
+# 0=りぼん 1=ぼうし 2=はっぱ 3=はな 4=ほし 5=どんぐり 6=はこ（-1＝持たない）
+# 決め方：**日付を土台に、よく来る人のときだけ別のものにする。**
+# 毎日変わるので見に行く理由になり、かつ「自分のときは違う」が生まれる。
+ITEM_ON = True
+ITEM_N = 7
+ITEM_BOND = 6.0                  # なつき度がこれ以上の人には、その人ぶんの持ち物
+
+
+def _item_today(st: dict, now: float) -> int:
+    """いま C3 に持たせる物の番号。持たせないなら -1。"""
+    if not ITEM_ON:
+        return -1
+    day = int(now // 86400)
+    base = day % ITEM_N
+    pid = st.get("cur_person")
+    if not pid or pid == "unknown":
+        return base
+    try:
+        doc = get_db().collection("faces").document(pid).get().to_dict() or {}
+    except Exception as e:
+        _log_error("item_lookup", e)
+        return base
+    if _bond_now(doc) < ITEM_BOND:
+        return base
+    # よく来る人：その人ごとに決まった持ち物（日が変わっても、その人には同じもの）。
+    # 「この人が来ると、いつもあれを持っている」が成り立つ。
+    return (sum(ord(c) for c in pid) + 1) % ITEM_N
+
+
 @router.get("/m", response_class=PlainTextResponse)
 async def get_m(boot: str | None = None, joy: int | None = None):
     """C3互換: 'score N flag stage'（flag 1=無人）。
@@ -1799,8 +1830,11 @@ async def get_m(boot: str | None = None, joy: int | None = None):
         hide = hide if hide in (0, 1, 2) else 0
     except Exception:
         hide = 0
-    return "%.3f %.3f %d %d %d %d\n" % (
-        st["score"], n, 1 if st["empty"] else 0, stage, listen, hide)
+    # 7つめ＝その日の持ち物（2026-09-27）。末尾に足しただけなので、
+    # 6つしか読まない古いファームはそのまま動く。
+    return "%.3f %.3f %d %d %d %d %d\n" % (
+        st["score"], n, 1 if st["empty"] else 0, stage, listen, hide,
+        _item_today(st, now))
 
 
 # 直近の問い合わせで C3 に渡したもの（時刻, 人, 段階, 顔で確かめてからの秒）。
