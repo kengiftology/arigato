@@ -296,6 +296,24 @@ def _log_small(why: str, px: int, **extra):
     _log_event("arrive", {"person": "unknown", "why": why, "px": px, **extra})
 
 
+_err_seen: dict = {}              # 同じ落ち方を、何度も記録に書かないため
+ERR_GAP = 60.0                   # 同じ種類は、この間隔でしか書かない
+
+
+def _log_error(step: str, e: Exception, **extra):
+    """落ちたことを1行残す。中身（一言の本文・顔の数値・写真）は出さない。
+
+    2026-09-27：落ちるたびに書くと、壊れ方によっては記録そのものが埋まる
+    （見回りは数秒おきに回る）。直しが事故にならないよう、同じ種類は1分に1回まで。"""
+    key = (step, type(e).__name__)
+    now = time.time()
+    if now - float(_err_seen.get(key) or 0) < ERR_GAP:
+        return
+    _err_seen[key] = now
+    _log_event("step_error", dict(extra, step=step,
+                                  err=("%s: %s" % (type(e).__name__, e))[:160]))
+
+
 def _log_event(kind: str, data: dict):
     """研究用の時系列ログ（spirit_log）。失敗しても本体を止めない。"""
     now = time.time()
@@ -3084,7 +3102,8 @@ async def greet():
         return st["greet_line"] + "\n"        # 同じ滞在で言い直さない
     try:
         doc = get_db().collection("faces").document(pid).get().to_dict() or {}
-    except Exception:
+    except Exception as e:
+        _log_error("字幕のための覚えの読み出し", e)
         doc = {}
     alone = len(st.get("visit_people") or []) <= 1
     thanks = _own_care(pid)               # 本人が片づけていたときだけ、ありがとう
@@ -3914,6 +3933,7 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             n += 1
     except Exception as e:
         logger.warning("prepare greetings failed: %s", e)
+        _log_error("一言の作り置き", e, made=n)
     if n:
         _log_event("prepared", {"lines": n})
     return n
@@ -4150,6 +4170,7 @@ async def voice_pcm():
             b = read_object(LINES_PREFIX + nm + ".pcm")
         except Exception as e:
             logger.warning("line read failed (%s): %s", nm, e)
+            _log_error("声の読み出し", e, line=nm)
             b = None
         if b:
             pcms.append((nm, b))
