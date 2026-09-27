@@ -57,7 +57,9 @@ def main() -> None:
         print("      %s を飛ばした理由: %s ×%d" % (n, w, c))
 
     print("\n② 1周にかかった時間")
-    rounds = [e for e in ev if e["kind"] == "judge" and e.get("round_done")]
+    # **シンク以外の向きでは `judge` が出ない**（写真全体の判断は飛ばすのが正しい）。
+    # `judge` だけを見ると、シンクで終わった1周しか数えられない（2026-09-27）。
+    rounds = [e for e in ev if e["kind"] in ("judge", "judge_skip") and e.get("round_done")]
     if not rounds:
         print("   最後まで回った1周がまだありません")
     for e in rounds[-8:]:
@@ -73,7 +75,7 @@ def main() -> None:
         print("   %s  残り %d 区画 %s" % (f(e["t"]), e.get("left", 0), e.get("poses") or ""))
 
     print("\n④ 「前」の写真の古さ（prev_age・基準の寿命は 10800秒）")
-    ages = [e for e in ev if e["kind"] == "judge" and e.get("prev_age") is not None]
+    ages = [e for e in ev if e["kind"] in ("judge", "judge_skip") and e.get("prev_age") is not None]
     if ages:
         xs = [e["prev_age"] for e in ages]
         print("   中央値 %d秒 ／ 最長 %d秒 ／ 寿命超え %d件"

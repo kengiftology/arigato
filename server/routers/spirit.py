@@ -1525,7 +1525,17 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
         sink_now = await _sink_empty(data)
     else:
         sink_now = None
-        _log_event("judge_skip", {"scope": "aim_off", "pose": pose, "shift": view_shift, "resp": view_resp})
+        # 1周の材料は、ここにも要る（2026-09-27・関門④）。**シンク以外の向きでは
+        # 写真全体の判断（judge）は出ない**（シンクの見本と合わないので飛ばす。これは正しい）。
+        # そのため `judge` にだけ `round_sec` を書いていたら、**1周の実時間が
+        # シンクで終わった1周でしか出せなかった。**測りたいものが測れない形だった。
+        ats0 = st.get("baseline_ats") or {}
+        left0 = st.get("sweep_left") or []
+        _log_event("judge_skip", {"scope": "aim_off", "pose": pose, "shift": view_shift,
+                                  "resp": view_resp, "zone": "・".join(_zones_at(pose)),
+                                  "round_sec": round(now - float(st.get("sweep_at") or now)),
+                                  "round_done": not left0, "round_left": len(left0),
+                                  "prev_age": round(now - float(ats0.get(pose) or now))})
     st["sink_now"], st["sink_now_at"] = sink_now, now
     # 写真全体（r）からは物の一覧と人数だけを使い、点数と一言はシンクのくぼみだけを
     # 切り出した写真（rs）で作る（2026-09-22 本人「シンクだけ」）。写真全体に「シンクの物だけで
