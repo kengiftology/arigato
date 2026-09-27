@@ -2772,6 +2772,8 @@ async def _greet_check(text: str, name: str = "") -> str:
         d = json.loads(out[i:j + 1]) if 0 <= i < j else {}
     except Exception as e:
         logger.warning("greet check failed: %s", e)
+        _log_event("greet_error", {"err": ("%s: %s" % (type(e).__name__, e))[:160],
+                                   "step": "見直し"})
         return ""
     if d.get("ok") is False:
         return str(d.get("why") or "決まりに合わない")
@@ -2894,6 +2896,8 @@ async def _keep_topic(said: list) -> str:
         what = json.loads(out[i:j + 1]).get("what") if 0 <= i < j else None
     except Exception as e:
         logger.warning("keep topic failed: %s", e)
+        _log_event("greet_error", {"err": ("%s: %s" % (type(e).__name__, e))[:160],
+                                   "step": "前に聞いたことの取り出し"})
         return ""
     if not isinstance(what, str):
         return ""
@@ -3056,7 +3060,12 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
             return ""
         return out
     except Exception as e:
+        # 2026-09-27：ここは空を返すだけで、記録に何も残らなかった。
+        # `+` の二重で全部落ちていたのに、外からは「一言が作られない」としか
+        # 見えなかった。空を返すのはそのまま、落ちたことだけ残す。
         logger.warning("greet failed: %s", e)
+        _log_event("greet_error", {"err": ("%s: %s" % (type(e).__name__, e))[:160],
+                                   "had_memory": bool(memory), "had_kept": bool(kept)})
         return ""
 
 
@@ -5317,6 +5326,8 @@ def _recent_change(window: float) -> dict | None:
             break
     except Exception as e:
         logger.warning("recent change lookup failed: %s", e)
+        _log_event("greet_error", {"err": ("%s: %s" % (type(e).__name__, e))[:160],
+                                   "step": "思い出のさがし"})
         return None                              # 調べ損ねたときは控えを作らない
     _LAST_CHANGE[window] = (time.time(), out)
     return out
