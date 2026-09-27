@@ -11,9 +11,9 @@
     python scripts/passing_by.py [さかのぼる日数]    （既定 7日）
 
 数え方（2026-09-27 本人決定）：
-  通り過ぎ … その人の滞在が 30秒（MIN_PRESENCE）未満
-  立ち寄り … 30秒以上
-  不明     … 人が居たのは確かだが、顔が1枚も取れていない滞在
+  立ち寄り     … 顔が2コマ以上あり、最初と最後の幅が 30秒以上
+  通り過ぎ     … 顔が2コマ以上あり、幅が 30秒未満
+  測れていない … 顔が1コマだけ、または顔が1枚も取れていない滞在
 """
 import collections, json, sys, time, urllib.request
 
@@ -50,12 +50,14 @@ def stays_from_faces(ev: list) -> list:
     for pid, ts in seen.items():
         ts.sort()
         first = prev = ts[0]
+        n = 1
         for t in ts[1:]:
             if t - prev > MERGE:
-                out.append((pid, first, prev))
-                first = t
+                out.append((pid, first, prev, n))
+                first, n = t, 0
             prev = t
-        out.append((pid, first, prev))
+            n += 1
+        out.append((pid, first, prev, n))
     return out
 
 
@@ -64,15 +66,20 @@ def main() -> None:
     since = time.time() - days * 86400
     ev = fetch(since)
     stays = stays_from_faces(ev)
-    near = [s for s in stays if s[2] - s[1] >= LINE]
-    pass_ = [s for s in stays if s[2] - s[1] < LINE]
+    # 1コマしか写らなかった人は「0秒の滞在」ではなく**測れていない**
+    # （A の設計・2026-09-27）。10分居て顔が1回しか撮れなかった場合と区別できない。
+    one = [s for s in stays if s[3] < 2]
+    both = [s for s in stays if s[3] >= 2]
+    near = [s for s in both if s[2] - s[1] >= LINE]
+    pass_ = [s for s in both if s[2] - s[1] < LINE]
     # 不明：人が居たのは確かだが、顔が1枚も取れていない滞在
     unknown = [e for e in ev if e["kind"] == "visit" and e.get("seen") and not (e.get("who") or e.get("spans"))]
-    n_near, n_pass, n_unk = len(near), len(pass_), len(unknown)
+    n_near, n_pass, n_unk = len(near), len(pass_), len(unknown) + len(one)
     print("直近 %.0f日（%s 以降）" % (days, time.strftime("%m/%d %H:%M", time.localtime(since))))
     print("  立ち寄り（%.0f秒以上） %3d" % (LINE, n_near))
     print("  通り過ぎ（%.0f秒未満） %3d" % (LINE, n_pass))
-    print("  不明（顔が1枚も無い滞在） %3d" % n_unk)
+    print("  測れていない            %3d  （顔が1枚だけ %d ＋ 顔が1枚も無い滞在 %d）"
+          % (n_unk, len(one), len(unknown)))
     if n_near + n_pass:
         lo = 100.0 * n_pass / (n_near + n_pass + n_unk) if (n_near + n_pass + n_unk) else 0
         hi = 100.0 * (n_pass + n_unk) / (n_near + n_pass + n_unk) if (n_near + n_pass + n_unk) else 0
@@ -82,9 +89,9 @@ def main() -> None:
     else:
         print("\n  材料がありません")
     # 顔が1枚しか取れず、長さ0秒になった滞在（＝本当に通り過ぎたとは限らない）
-    zero = [s for s in pass_ if s[2] - s[1] == 0]
-    print("\n  通り過ぎのうち、顔が1枚だけで長さ0秒だったもの: %d件" % len(zero))
-    print("  （10分居たが顔が1回しか撮れなかった場合も、ここに入る）")
+    print("")
+    print("  ※「顔が1コマだけ」を通り過ぎに数えない理由："
+          "**10分居たが顔が1回しか撮れなかった場合と区別できない**（A の設計・2026-09-27）")
 
 
 if __name__ == "__main__":
