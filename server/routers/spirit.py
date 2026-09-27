@@ -5308,6 +5308,11 @@ def _recent_change(window: float) -> dict | None:
     now = time.time()
     # まず控え（起きた瞬間に書いたもの）。これがあれば、記録をめくらずに済む。
     note = (_load() or {}).get("last_change") or {}
+    # 2026-09-27：控えは区画を持つようになったが、**それより前に書かれた控えには入っていない**。
+    # 区画が無い控えをそのまま使うと、区画の名前を言えないままになる（関門①が0件になる）。
+    # 記録の側には区画が入っているので、区画の無い控えは使わず、さかのぼる道へ回す。
+    if note.get("what") and not note.get("zone"):
+        note = {}
     if note.get("what") and 0 < now - float(note.get("t") or 0) <= window:
         out = {"what": note["what"], "hours": int((now - float(note["t"])) // 3600),
                "who": note.get("who") or [], "t": float(note["t"]),
