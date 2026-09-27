@@ -231,3 +231,44 @@ def test_人が来たら1周を打ち切る(monkeypatch):
     st["last_seen"] = now + 25                        # 人が来た
     assert _hint_once(monkeypatch, st, now + 30) == ""   # すぐには出さない
     assert st.get("sweep_left") == [], "残りを捨てていない"
+
+
+def test_振ったあとの待ちが実測より短くない():
+    """2026-09-27 の実測：首を振り終えてから**映像が入れ替わるまで9秒**かかる。
+
+    カメラ自身は4.2秒で「止まった」と返すので、そこで撮ると**振り向く途中の景色**が
+    送られ、クラウドは正しく「違う景色」として弾く。9/27 の午前、それで区画の判定が
+    1件も通らなかった（`zone_skip` 17件・`aim_mismatch` 17件）。
+    ここを短くするなら、**先に実測をやり直すこと。**"""
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bridge"))
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "bridge", "tapo_bridge.py")
+    src = open(path, encoding="utf-8").read()
+    line = [l for l in src.splitlines() if l.startswith("SETTLE_AFTER_MOVE")][0]
+    sec = float(line.split("=")[1].split("#")[0].strip())
+    assert sec >= 9.0, "実測9秒より短い: %s" % line
+
+
+def test_打ち切られた残りから先に回る():
+    """9/27 実測：1周は 8回中5回（63%）人の到着で打ち切られていた。
+
+    拾い直さない作りでは、その区画はその滞在で**見ていないまま**終わる。
+    遅れではなく欠落で、9/29 の見切りの分母に直に効く。
+    人が去って次の1周を始めるとき、**打ち切られた残りから先に**回す。"""
+    poses = list(sp._check_poses())
+    if len(poses) < 3:
+        pytest.skip("区画が少なくて試せない")
+    saved = [poses[2], poses[3]] if len(poses) > 3 else [poses[2]]
+    pose, left, rotate = sp._sweep_plan(0, [], tuple(poses), saved)
+    order = [pose] + left
+    assert order[:len(saved)] == saved, order
+    assert sorted(order) == sorted(poses), "1周で全部を回らない: %s" % order
+
+
+def test_消えた向きは残りからも落とす():
+    poses = sp._check_poses()
+    pose, left, rotate = sp._sweep_plan(0, [], poses, ["-9.99_-9.99"])
+    assert "-9.99_-9.99" not in [pose] + left
+    assert sorted([pose] + left) == sorted(poses)

@@ -1568,10 +1568,20 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                                 "since": round(now - st.get("face_at", 0))})
     if sc is not None:
         aim_shift, aim_conf = _aim_now(data)
+        # 区画と1周の時間も残す（2026-09-27・関門④）。
+        # `pose` だけでは、外から「どの区画を見ていたか」「1周に何分かかったか」が出せない。
+        # `prev_age` は、この向きの「前」の写真の古さ。**1周が基準写真の寿命
+        # （BASELINE_MAX_AGE）を超えると、比較が一度も成立しないまま基準だけが並ぶ。**
+        ats = st.get("baseline_ats") or {}
+        left = st.get("sweep_left") or []
         _log_event("judge", {"raw": sc, "score": round(st["score"], 3), "pose": pose, "scope": scope,
                              "N": round(_calc_n(st, now), 3), "comment": st.get("comment", ""),
                              "objects": st.get("objects", []), "people": npeople,
                              "who": st.get("seen_people") or [],
+                             "zone": "・".join(_zones_at(pose)),
+                             "round_sec": round(now - float(st.get("sweep_at") or now)),
+                             "round_done": not left, "round_left": len(left),
+                             "prev_age": round(now - float(ats.get(pose) or now)),
                              "aim_shift": aim_shift, "aim_conf": aim_conf})
     st["seen_people"] = []                # ここまでを1区間として締める
     _save(st)
@@ -2002,13 +2012,14 @@ async def hint():
     if st.get("sweep_left") and active > float(st.get("check_issued_at", 0)):
         cut = list(st.get("sweep_left") or [])
         st["sweep_left"] = []
+        st["sweep_saved"] = cut            # 人が去ったら、ここから先に回す（2026-09-27）
         _save(st)
         _log_event("sweep_cut", {"left": len(cut), "poses": cut})
     # 見に行く向きを決める。**残りを捨てたあとに決める**（捨てる前に決めると、
     # 捨てたはずの続きをそのまま書き戻してしまう）。
     poses = _check_poses()
-    check, left, rotate = _sweep_plan(st.get("zone_rotate", 0),
-                                      st.get("sweep_left"), poses)
+    check, left, rotate = _sweep_plan(st.get("zone_rotate", 0), st.get("sweep_left"),
+                                      poses, st.get("sweep_saved"))
     check = check or st.get("check_pose") or ""
     # 出す条件（2026-09-09）：静かになってから CHECK_QUIET_SEC 経った ＋
     # 前回の見回りのあとに人が来ている ＋ 見回り同士は CHECK_GAP 以上あける。
@@ -2026,6 +2037,9 @@ async def hint():
         # 新しくなるまで）は**同じ向きを返す**。そうしないと往復の20秒のあいだに
         # 向きが何段も早送りされ、控えた向きと実際に撮った向きが食い違う。
         if done:
+            if not st.get("sweep_left"):       # ここが1周の始まり
+                st["sweep_at"] = now           # 1周にかかった時間を測るため
+                st["sweep_saved"] = []         # 打ち切られた残りは、この1周で使い切った
             st["check_issued"] = check
             st["check_issued_at"] = now
             st["sweep_left"] = left
@@ -4456,10 +4470,13 @@ def _check_poses() -> tuple:
 #
 # そこで、静かになったら**その滞在のあいだに1周ぜんぶ回す**。1周4回・往復20秒ずつなので
 # 2分ほど。人が来たら残りは捨てる（顔を撮るほうが大事。次の滞在で見直す）。
-def _sweep_plan(rotate: int, left, poses: tuple) -> tuple:
+def _sweep_plan(rotate: int, left, poses: tuple, saved=()) -> tuple:
     """(いま見に行く向き, その滞在で残る向き, 次の起点) を返す。
 
-    left が空なら、その滞在の1周を rotate の位置から組み立てる。
+    left が空なら、その滞在の1周を組み立てる。
+    **前の1周が人の到着で打ち切られていたら、その残りから先に回す**（2026-09-27）。
+    打ち切りは 9/27 の実測で 8回中5回（63%）起きており、拾い直さない作りでは
+    その区画は「見ていないまま」終わる。**遅れではなく欠落**になっていた。
     起点をずらすのは、いつも同じ区画が最初になると、
     その区画だけ「前」の写真が新しく、ほかは古いままになるため。"""
     n = len(poses)
@@ -4467,8 +4484,10 @@ def _sweep_plan(rotate: int, left, poses: tuple) -> tuple:
         return "", [], rotate
     left = [p for p in (left or []) if p in poses]
     if not left:
+        first = [p for p in (saved or []) if p in poses]
         i = int(rotate) % n
-        left = [poses[(i + k) % n] for k in range(n)]
+        rest = [poses[(i + k) % n] for k in range(n)]
+        left = first + [p for p in rest if p not in first]
         rotate = i + 1
     return left[0], left[1:], rotate
 
@@ -4534,31 +4553,38 @@ ZONE_CFG_DEFAULT = {
                     "線0.30は 9/26 の総当たり（自分1.000／他区画 最大0.060）"),
     },
     "テーブル": {
-        "id": "table", "active": True, "app_zone": "", "pose": "-0.40_0.00",
+        # 向き（2026-09-27 本人が写真4枚から選択）：-0.40 では**コンロが画面から外れていた**
+        # （本人「コンロが映ってないね」）。-0.50 で、テーブルとコンロが1枚に収まる。
+        "id": "table", "active": True, "app_zone": "", "pose": "-0.50_0.00",
         "aim": {"ref": "spirit/zoneref/table.jpg", "band": [0.0, 0.5], "min_conf": 0.30},
         # 帯は**上半分**。全体で測ると違う向きとの差が7倍しか開かないが、上半分なら86倍（9/24 実測）
-        "crop": {"box": [0.42, 0.0, 0.85, 0.58], "rotate": 180, "hide_from": None},
+        "crop": {"box": [0.38, 0.12, 0.80, 0.70], "rotate": 180, "hide_from": None},
         "ask": {"scene": "写真は共有キッチンの丸テーブルを天井近くから写したものです。",
                 "fixtures": "テーブルそのもの（天板と脚）と椅子は、いつもそこにある物です。数えません。",
                 "empty_q": ("テーブルの上に、置かれている物"
                             "（食器・鍋・食材・箱・紙類・ボトルなど）はありますか？ "
                             'JSONだけで答えてください：{"empty": true または false, "items": "あれば短く"}')},
         "rule": {"kind": "change"},
-        "decided": "2026-09-26 本人が向きを指名。切り出し左55%は 9/25 の実測（右半分が床と冷蔵庫だった）。帯は上半分・線0.30は 9/24 と 9/26 の実測",
+        "decided": ("2026-09-27 本人が写真4枚から -0.50_0.00 を選択（-0.40 ではコンロが画面外）。"
+                    "切り出しは同じ1枚から本人が案Aを選択（物が載る面ぜんぶ）。"
+                    "見本は 9/27 12:18 に、**振ってから12秒待って撮った1枚**で登録し直した"
+                    "（それまでの見本は振り向く途中の景色と比べられていた）。帯は上半分・線0.30は 9/24 の実測"),
     },
     "コンロ": {
         # 本人の決め（2026-09-26）：テーブルとコンロは同じ向きに写るが、別々の場所なので分ける。
         # 一緒に見ていたとき、AI はガスコンロそのものを「電気コンロ」という**置かれた物**として
         # 数えていた。区画を分ければ、コンロは「備え付け」として除ける。
-        "id": "stove", "active": True, "app_zone": "", "pose": "-0.40_0.00",
+        "id": "stove", "active": True, "app_zone": "", "pose": "-0.50_0.00",
         "aim": {"ref": "spirit/zoneref/table.jpg", "band": [0.0, 0.5], "min_conf": 0.30},
-        "crop": {"box": [0.74, 0.50, 1.0, 0.90], "rotate": 180, "hide_from": None},
+        "crop": {"box": [0.70, 0.52, 1.0, 0.97], "rotate": 180, "hide_from": None},
         "ask": {"scene": "写真は共有キッチンのガスコンロを天井近くから写したものです。",
                 "fixtures": "コンロ本体・五徳（黒い金属の輪）・つまみ・受け皿は備え付けです。数えません。",
                 "empty_q": ("コンロの上に、フライパンや鍋、やかんは置いてありますか？ "
                             'JSONだけで答えてください：{"empty": true または false, "items": "あれば短く"}')},
         "rule": {"kind": "change"},
-        "decided": "2026-09-26 本人「上下のテーブルとコンロで切り分けましょう」。向きはテーブルと同じ、切り出しだけ別。見本もテーブルと同じ1枚を使う",
+        "decided": ("2026-09-26 本人「上下のテーブルとコンロで切り分けましょう」。向きはテーブルと同じ、"
+                    "切り出しだけ別。見本もテーブルと同じ1枚。2026-09-27、向きを -0.50_0.00 に変え"
+                    "（-0.40 ではコンロが画面外）、切り出しは本人が案A（コンロ＋周りの台）を選択"),
     },
     "IH": {
         "id": "ih", "active": True, "app_zone": "", "pose": "-0.10_-1.00",
@@ -4570,10 +4596,11 @@ ZONE_CFG_DEFAULT = {
                 "empty_q": ("IHの上に、フライパンや鍋は置いてありますか？ "
                             'JSONだけで答えてください：{"empty": true または false, "items": "あれば短く"}')},
         "rule": {"kind": "change"},
-        "decided": "2026-09-26 本人が向きを指名。切り出し（横10〜50%・縦10〜60%）は 9/25 の実測。線0.30は 9/26 の総当たり（自分1.000／他区画 最大0.040）",
-        "decided": ("2026-09-26 本人。向き -0.80_-0.90 は本人が Tapo の画面で示した画角を実測で特定"
-                    "（かごの8割が入る。-1.00_-1.00 では4割）。切り出し左60%はシンクを落とすため（実測）。"
-                    "線0.30は 9/24 の実測（同じ向き1.005／違う向き最大0.050）だが、**この向きでは測り直していない**"),
+        # 2026-09-27：ここに `decided` が2つ並び、**2つ目（水切りの文面）が上書きしていた。**
+        # IH の出どころが水切りの説明にすり替わっていたことになる。片方を消した。
+        "decided": ("2026-09-26 本人が向きを指名。切り出し（横50〜90%・縦40〜90%）は 9/25 の実測。"
+                    "線0.30は 9/26 の総当たり（自分1.000／他区画 最大0.040）。"
+                    "見本は 9/27 12:18 に、**振ってから12秒待って撮った1枚**で登録し直し、本人が目で確認済み"),
     },
 }
 
