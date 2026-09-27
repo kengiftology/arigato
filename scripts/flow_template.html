@@ -1,0 +1,105 @@
+<title>地霊のひとまわり</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --paper:#EFF2F1; --panel:#FFFFFF; --ink:#141C1A; --ink-2:#4B5754; --ink-3:#818D89;
+    --line:#CFD8D4;
+    --ok:#2F7D53;      /* 緑：ふつうの流れ・検証済み */
+    --warn:#A8412E;    /* 赤：警告 */
+    --caution:#9A6B1F; /* 黄：注意 */
+    --auto:#2F5D77;    /* 青：自動・実装済み */
+    --data:#6B4E8C;    /* 紫：データ */
+    --todo:#8A938F;    /* 灰：まだ無い */
+  }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+    --paper:#0F1513; --panel:#171F1D; --ink:#E8EDEB; --ink-2:#A9B5B1; --ink-3:#7C8884; --line:#2B3733;
+    --ok:#6FBF9B; --warn:#E08A76; --caution:#E0B063; --auto:#7FB4D2; --data:#B79BE0; --todo:#6E7A76; } }
+  :root[data-theme="dark"]{
+    --paper:#0F1513; --panel:#171F1D; --ink:#E8EDEB; --ink-2:#A9B5B1; --ink-3:#7C8884; --line:#2B3733;
+    --ok:#6FBF9B; --warn:#E08A76; --caution:#E0B063; --auto:#7FB4D2; --data:#B79BE0; --todo:#6E7A76; }
+  body{ background:var(--paper); color:var(--ink); margin:0;
+        font-family:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN",system-ui,sans-serif; }
+  .wrap{ padding-inline:20px; padding-block:24px 44px; max-width:1420px; margin:0 auto; }
+  header{ border-bottom:2px solid var(--ink); padding-bottom:12px; }
+  h1{ font-size:1.5rem; margin:0; letter-spacing:.04em; }
+  .sub{ color:var(--ink-2); font-size:.84rem; margin-top:6px; line-height:1.6; }
+  .tally{ display:flex; flex-wrap:wrap; gap:10px 22px; margin:16px 0 10px; font-size:.8rem; }
+  .t{ display:inline-flex; align-items:baseline; gap:7px; color:var(--ink-2); }
+  .t b{ font-family:"Roboto Mono",monospace; font-size:1.15rem; font-weight:500; }
+  figure{ margin:0; background:var(--panel); border:1px solid var(--line); border-radius:4px;
+          padding:10px; overflow-x:auto; }
+  svg{ width:100%; height:auto; min-width:1100px; display:block; }
+  .lane{ font-size:15px; font-weight:700; fill:var(--ink-3); text-anchor:middle; letter-spacing:.14em; }
+  .e{ fill:none; stroke:var(--line); stroke-width:2; }
+  .e.cross{ stroke-dasharray:5 4; }
+  .n rect{ fill:var(--panel); stroke-width:2.2; }
+  .n.warn rect{ fill:color-mix(in srgb, var(--warn) 8%, var(--panel)); }
+  .n.todo rect{ stroke-dasharray:6 4; }
+  .num{ font-family:"Roboto Mono",monospace; font-size:11px; fill:var(--ink-3); }
+  .ttl{ font-size:15px; font-weight:700; fill:var(--ink); }
+  .st{ font-size:11.5px; font-weight:700; }
+  .rt{ font-size:11.5px; fill:var(--ink-2); }
+  .nt{ font-size:11px; fill:var(--ink-3); text-anchor:end; }
+  .cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; margin-top:22px; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:14px 16px; }
+  .card h2{ font-size:.75rem; letter-spacing:.12em; color:var(--ink-3); margin:0 0 10px; font-weight:500; }
+  .card ul{ margin:0; padding-left:1.1em; font-size:.83rem; line-height:1.65; color:var(--ink-2); }
+  .card strong{ color:var(--ink); }
+  .card.warn{ border-left:3px solid var(--warn); }
+  table{ width:100%; border-collapse:collapse; font-size:.78rem; }
+  td{ border-top:1px solid var(--line); padding:5px 8px; color:var(--ink-2); }
+  td:first-child{ font-family:"Roboto Mono",monospace; color:var(--ink-3); white-space:nowrap; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>地霊のひとまわり</h1>
+    <div class="sub">人が来てから、片づけが覚えられるまで。<strong>1つの節ごとに「どこまでできているか」を色で分けてある。</strong>
+    数字は実測（出どころは各節の番号＝台帳のタスク）。2026-09-28 時点・{{N}}節。</div>
+  </header>
+
+  <div class="tally">
+    <span class="t" style="color:var(--ok)"><b>{{DONE}}</b>現地で検証済み</span>
+    <span class="t" style="color:var(--auto)"><b>{{BUILT}}</b>実装済み・現地で未検証</span>
+    <span class="t" style="color:var(--warn)"><b>{{WARN}}</b>穴が残っている</span>
+    <span class="t" style="color:var(--todo)"><b>{{TODO}}</b>未実装</span>
+    <span class="t" style="color:var(--data)"><b>{{OBS}}</b>証拠は観察期</span>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 {{W}} {{H}}" xmlns="http://www.w3.org/2000/svg" role="img"
+         aria-label="地霊のひとまわりの流れ図。人の流れ・顔と名前・声と対話・場所と覚えの4列">{{SVG}}</svg>
+  </figure>
+
+  <div class="cards">
+    <div class="card warn">
+      <h2>穴（赤）</h2>
+      <ul>
+        <li><strong>誰か分かるのは4回に1回</strong>（9/23・24.5%）。9/29 に見切りの判断。※これからは上限・下限・不明の3つで書く</li>
+        <li><strong>中断した区画を拾い直すか未確認</strong>。拾い直さないと、その滞在の片づけは誰にも結びつかない</li>
+        <li><strong>片づけとして覚えた実例がまだ細い</strong>（9/25 以来の1件目が 9/26 19:22 コンロ p16）</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>色の意味（本人のロッカーの図に合わせた）</h2>
+      <table>
+        <tr><td style="color:var(--ok)">緑</td><td>ふつうの流れ／現地で検証済み（成功率つき）</td></tr>
+        <tr><td style="color:var(--auto)">青</td><td>自動で動く／実装済みだが現地で未検証</td></tr>
+        <tr><td style="color:var(--warn)">赤</td><td>警告。いま穴が残っている所</td></tr>
+        <tr><td style="color:var(--data)">紫</td><td>データ。道具は済み、数字は観察期（10/5〜）に出る</td></tr>
+        <tr><td style="color:var(--todo)">灰</td><td>まだ無い（点線）</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h2>この図の使い方</h2>
+      <ul>
+        <li><strong>節の番号は台帳（Notion）のタスク番号</strong>。図とスケジュールが同じ番号で引ける</li>
+        <li><strong>毎日書き直せる</strong>（`python3 scripts/flow.py`）。数字が入るたびに更新する</li>
+        <li><strong>設置マニュアル（7.2）の最初のページ</strong>にそのまま使う</li>
+        <li>点線の矢印は<strong>列をまたぐ流れ</strong>（人の流れ → 顔 → 声、場所 → 覚え）</li>
+      </ul>
+    </div>
+  </div>
+</div>

@@ -65,8 +65,8 @@ def main():
         if t["must"] and t["state"] in OPEN and t["due"] and d(t["due"]) > FREEZE:
             found.append(("凍結に間に合わない", "%s は凍結前必須なのに期限 %s" % (t["num"], t["due"])))
         # ④ 期限切れの未着手
-        if t["state"] in OPEN and t["due"] and d(t["due"]) < today:
-            found.append(("期限切れ", "%s %s（%s・%s）" % (t["num"], t["name"][:28], t["who"], t["due"])))
+        if t["state"] in OPEN and t["due_end"] and d(t["due_end"]) < today:
+            found.append(("期限切れ", "%s %s（%s・%s）" % (t["num"], t["name"][:28], t["who"], t["due_end"])))
         # ⑤ 担当が空
         if not t["who"] and t["state"] in OPEN:
             found.append(("担当が空", "%s %s" % (t["num"], t["name"][:28])))
