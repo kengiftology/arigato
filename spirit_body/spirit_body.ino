@@ -66,6 +66,18 @@ static uint8_t prevGrid[1024];
 static uint8_t prevPal[12];
 static bool havePrev = false;
 
+// 顔を描き替えるための控え（2026-09-23／2026-09-27）。
+// .ino の前処理は関数の宣言を先に並べるので、**使う所より前に**置く必要がある。
+static uint8_t gWork[1024];           // これから描くマス目
+static uint8_t faceBase[1024];        // いま出ている顔（まばたきの元・2026-09-27）
+static uint8_t facePal[12];
+static uint8_t mouthBase[1024];       // 喋る前の顔（口を戻すときの元）
+static uint32_t blinkAt = 0;          // 次にまばたきする時刻
+static bool     blinkNow = false;     // いま目を閉じているか
+static int itemToday = -1;                  // -1＝まだ決めていない
+static bool    mouthOn = false;
+static int     mouthNow = -1;
+
 static inline void lcdCmd(uint8_t c) { digitalWrite(PIN_DC, LOW); lcdSPI.write(c); }
 static inline void lcdData(const uint8_t *d, size_t n) { digitalWrite(PIN_DC, HIGH); lcdSPI.writeBytes(d, n); }
 
@@ -148,10 +160,22 @@ static void playAnim(const uint8_t *bin, int loops, BetweenFn between = nullptr)
             const uint8_t *grid = p + 14;
             bool palChanged = havePrev && memcmp(prevPal, pal, 12) != 0;
             if (!havePrev) fillRect(0, 240, pal);      // 初回だけ背景を塗る（画面ぜんぶ）
-            drawGrid(grid, pal, palChanged);
+            // 日替わりの持ち物を重ねる（2026-09-27）。もとの絵は書き替えない
+            if (itemToday >= 0) {
+                memcpy(gWork, grid, 1024);
+                putItem(gWork, pal);
+                memcpy(faceBase, gWork, 1024);         // まばたきの元にもする
+                drawGrid(gWork, pal, palChanged);
+            } else {
+                memcpy(faceBase, grid, 1024);
+                drawGrid(grid, pal, palChanged);
+            }
+            memcpy(facePal, pal, 12);
+            blinkAt = millis() + 2000 + (esp_random() % 4000);
             uint32_t t0 = millis();
             while (millis() - t0 < dur) {
                 if (between && between()) return;
+                tickBlink();                           // まばたき（2026-09-27）
                 delay(10);
             }
             p += 2 + 12 + 1024;
@@ -164,8 +188,6 @@ static void playAnim(const uint8_t *bin, int loops, BetweenFn between = nullptr)
 // 控えのマスを書き替えれば、絵を足さずに「考えている顔」や「開いた口」が作れる。
 // 重ねて塗るのではなく控えを描き直すので、差分描画（前のコマとの違いだけ）がそのまま効く。
 // ＝印が顔に残る心配がない。
-static uint8_t gWork[1024];           // これから描くマス目
-static uint8_t mouthBase[1024];       // 喋る前の顔（口を戻すときの元）
 
 // 目・口の色（6色のうちいちばん暗いもの）。絵を作り直しても付いていけるよう、毎回さがす
 static int darkIndex(const uint8_t *pal) {
@@ -227,6 +249,74 @@ static void buildThinking(const uint8_t *grid, const uint8_t *pal, int qDown) {
             if (QMARK[r] & (0x10 >> c)) gWork[(Q_ROW + qDown + r) * GRID + Q_COL + c] = dk;
 }
 
+// ---------------- まばたき（2026-09-27・本人「表情に豊かさが足りない」）----------------
+// 絵は足さない。目のマスをいったん肌の色にして、すぐ戻すだけ。
+// 「生きている感じ」は、絵の種類よりも動きの間で決まる。
+
+static void buildBlink(const uint8_t *base, const uint8_t *pal) {
+    memcpy(gWork, base, 1024);
+    int dk = darkIndex(pal), d[4];
+    darkParts(base, dk, d);
+    if (d[0] <= 0) return;
+    int skin = base[(d[0] - 1) * GRID + GRID / 2];               // 目のすぐ上＝顔の色
+    int mid = (d[0] + d[1]) / 2;                                 // 閉じた目を置く行
+    for (int r = d[0]; r <= d[1]; r++)
+        for (int c = 0; c < GRID; c++)
+            if (base[r * GRID + c] == dk) {
+                gWork[r * GRID + c] = skin;                      // いったん消して
+                gWork[mid * GRID + c] = dk;                      // 1本の線にする
+            }
+}
+
+// 日替わりの持ち物（2026-09-27・本人「持ち物とか服装とかも、その日によって変わっても良い」）。
+// 頭の左上、絵の無いところに小さな印を1つ。5×6マス＝1つ6バイト。
+// キャラそのものは変えない。**毎日見に行く理由**になればよい。
+static const uint8_t ITEMS[][6] = {
+    {0x00, 0x0E, 0x1F, 0x0E, 0x00, 0x00},   // りぼん
+    {0x0E, 0x1F, 0x00, 0x00, 0x00, 0x00},   // ぼうし
+    {0x04, 0x0E, 0x1F, 0x04, 0x04, 0x00},   // はっぱ
+    {0x0A, 0x1F, 0x1F, 0x0E, 0x04, 0x00},   // はな
+    {0x04, 0x0E, 0x04, 0x0E, 0x04, 0x00},   // ほし
+    {0x00, 0x0A, 0x1F, 0x1F, 0x0E, 0x04},   // どんぐり
+    {0x1F, 0x11, 0x11, 0x1F, 0x00, 0x00},   // はこ
+};
+static const int ITEM_N = sizeof(ITEMS) / sizeof(ITEMS[0]);
+static const int I_COL = 1, I_ROW = 1;      // 頭の左上（「？」は右上なのでぶつからない）
+
+// その日の持ち物を決める（2026-09-27）。クラウドから `item <0-6>` で渡す。
+// -1 を渡せば何も持たない。C3 は日付を知らないので、決めるのはクラウド側。
+static void setItem(int n) {
+    itemToday = (n < 0) ? -1 : (n % ITEM_N);
+    havePrev = false;                        // 絵を全部描き直させる（持ち物を消すため）
+}
+
+static void putItem(uint8_t *g, const uint8_t *pal) {
+    if (itemToday < 0) return;
+    int dk = darkIndex(pal);
+    const uint8_t *m = ITEMS[itemToday % ITEM_N];
+    for (int r = 0; r < 6; r++)
+        for (int c = 0; c < 5; c++)
+            if (m[r] & (0x10 >> c)) g[(I_ROW + r) * GRID + I_COL + c] = dk;
+}
+
+// まばたきを1回ぶん進める（2026-09-27）。描くのは目のまわりだけなので軽い。
+// 喋っている間（mouthOn）はしない。口の動きと重なると、ちらついて見える。
+static void tickBlink() {
+    if (!havePrev || mouthOn || !blinkAt) return;
+    uint32_t now = millis();
+    if (blinkNow) {
+        if (now - blinkAt < 120) return;                 // 閉じているのは120ミリ秒
+        drawGrid(faceBase, facePal, false);              // 開ける
+        blinkNow = false;
+        blinkAt = now + 2000 + (esp_random() % 4000);    // 次は2〜6秒後
+    } else if (now >= blinkAt) {
+        buildBlink(faceBase, facePal);
+        drawGrid(gWork, facePal, false);                 // 閉じる
+        blinkNow = true;
+        blinkAt = now;
+    }
+}
+
 // 喋るときの口（0=閉じる 1=すこし開く 2=大きく開く）。いまの顔の口だけを描き替える
 static void buildMouth(const uint8_t *base, const uint8_t *pal, int level) {
     memcpy(gWork, base, 1024);
@@ -254,8 +344,6 @@ static void buildMouth(const uint8_t *base, const uint8_t *pal, int level) {
 
 // 喋っている間だけ口を動かす。いま出ている顔を元にするので、どの表情でもそのまま使える
 static uint8_t palWork[12];
-static bool    mouthOn = false;
-static int     mouthNow = -1;
 
 static void mouthBegin() {
     if (!havePrev) return;                       // まだ何も描いていない＝動かさない

@@ -76,12 +76,22 @@ def _may_ask(st: dict, pid: str, doc: dict, now: float, alone: bool) -> bool:
     if asking(st, now):
         return False
     visit = float((st.get("visit_of") or {}).get(pid) or st.get("visit_start") or 0)
-    return not (visit and float((st.get("asked") or {}).get(pid) or 0) >= visit)
+    if visit and float((st.get("asked") or {}).get(pid) or 0) >= visit:
+        return False                         # この人には、この来訪でもう聞いた
+    # 2026-09-27 本人「何回も同じ質問を繰り返していた」。
+    # **人ではなく滞在に紐づける。**同じ人に別の ID が付くと、これまでは新しい人だと
+    # 思って聞き直していた（19:13〜20:02 の滞在で、2人しか居ないのに ID は4つ、
+    # そのうち3つに名前を聞いた）。ID が割れても、**ひとつの滞在では一度しか聞かない**。
+    here = float(st.get("visit_start") or 0)
+    if here and float(st.get("asked_at") or 0) >= here:
+        return False
+    return True
 
 
 def _mark_asked(st: dict, pid: str, now: float, line: str, sec: float, desc: str = "") -> None:
     visit = float((st.get("visit_of") or {}).get(pid) or st.get("visit_start") or 0)
     st["asked"] = dict(st.get("asked") or {}, **{pid: visit or now})   # この来訪ではもう聞いた
+    st["asked_at"] = now                     # この滞在ではもう聞いた（ID が割れても数える）
     st["name_ask"] = {"person": pid, "at": now, "sec": sec}
     # いつまで聞いているか。C3 が「聞いている顔」になる元（2026-09-23・研究トークD）
     st["listen_until"] = now + ASK_TTL
@@ -608,6 +618,9 @@ async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
 #   ・1回の来訪につき1度だけ
 #   ・会話中は開かない（話しかけは一度に1つ・9/26 の決まり）
 # 聞こえた声に中身があれば返し、無ければ黙る（何も起きない）。
+# 2026-09-27：**掲示に1行が貼られるまでは開けない**。人が何もしていないのに30秒録るのは、
+# これまで（地霊が喋ったあとだけ録る）から範囲が広がる。約束していない録音はしない。
+# 開ける／開けないの切り替えは、この1つだけ。
 EAR_ON = True
 EAR_SEC = 30.0                   # 顔が分かった直後、これだけ待つ
 EAR_MIN_STAY = 5.0               # すぐ通り過ぎる人には開かない
@@ -849,6 +862,13 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
             if say:
                 again("ask")
                 listen = True
+        elif ans == "unclear" and cand and cand in (text or ""):
+            # 2026-09-27：「しまと桑原でやめたら 桑原です 二人合わせて」のように、
+            # はい／いいえでは無いが**呼び名そのものを言い直している**ことがある。
+            # 聞き返すより受け取るほうが、本人の「なるべく一度で」に近い。
+            learned, result = cand, "yes_in_text"
+            get_db().collection("faces").document(person).update({"name": cand, "name_at": now})
+            say = await _say(st, person, "えへへ……%s。おぼえた" % cand)
         elif ans == "unclear" and cand and rnd < ROUND_MAX:   # どちらか分からない → もう一度確かめる
             result = "unclear_retry"
             say = await _say(st, person, "%s……で、いい？" % cand)
