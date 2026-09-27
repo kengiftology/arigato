@@ -1185,9 +1185,19 @@ def _touch_person(st: dict, pid: str, now: float) -> float:
 
 
 def _person_stay(st: dict, pid: str, now: float) -> float:
-    """その人が、いまの滞在にどれだけ居るか（秒）。"""
+    """その人が、いまの滞在にどれだけ居たか（秒）。
+
+    2026-09-27：`now`（＝いま／前後を比べた時刻）で測っていたので、
+    **その人が帰ったあとの時間まで滞在に足されていた。**
+    見回りは人が去って静かになってから走るので、必ず長めに出る。
+    しかも1周が150秒に伸びたぶん、**滞在時間が装置の都合で伸びる**ことになる。
+    最後にその人を見た時刻（`seen_at`）までで測る。
+    居るあいだに呼ばれたときは `seen_at` がいまなので、これまでと同じ値になる。"""
     v = (st.get("visit_of") or {}).get(pid)
-    return (now - float(v)) if v else 0.0
+    if not v:
+        return 0.0
+    last = float((st.get("seen_at") or {}).get(pid) or 0)
+    return max(0.0, last - float(v))
 
 
 def _stay_seconds(st: dict) -> float:
@@ -5789,6 +5799,10 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
         if short:
             _log_event("visit_short", {"who": short,
                                        "stay": {k: round(stays[k]) for k in short}})
+        # 通り過ぎ率（#25）を出すために、**短かった人も含めた全員の滞在**を残す
+        # （2026-09-27）。`who` は5分より長く居た人だけに絞られるので、
+        # そこから数えると**通り過ぎた人が分母から消える。**
+        spans = {pid: round(stays[pid]) for pid in stays}
         who = [pid for pid in who if stays[pid] > STAY_MIN]
         # 「今、シンクは空か」。見回りの一言を作るときに聞いた答えを使い回す
         # （同じ写真に二度聞かない）。古ければ聞き直す。
@@ -5811,7 +5825,7 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
         vid = float(st.get("visit_start") or 0)
         if float(st.get("visit_logged") or 0) != vid or not vid:
             st["visit_logged"] = vid
-            _log_event("visit", {"who": who, "sink_empty": empty,
+            _log_event("visit", {"who": who, "sink_empty": empty, "spans": spans,
                                  "stay": {k: round(stays[k]) for k in who},
                                  "seen": bool(st.get("visit_seen")),
                                  "face_span": max(0, fspan),
