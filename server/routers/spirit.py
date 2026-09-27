@@ -1005,6 +1005,7 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
                            "scores": {k: round(v, 3) for k, v in face.score_frames([one], known).items()}}
     except Exception as e:
         logger.warning("last_face failed: %s", e)
+        _log_error("face_scores", e)
     if dn:
         # うつむきは束ねないので「何コマ揃ったか」は数えない。下の枚数の条件は通す
         # （小さい顔の3コマ条件も含めて。9/12〜15 の2,306枚では、通しても別人は0枚のまま
@@ -1024,6 +1025,7 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
                 frames, n, alone_ok = [one], need, True
         except Exception as e:
             logger.warning("alone check failed: %s", e)
+            _log_error("new_alone_check", e, px=int(px))
     if not dn and not alone_ok and n < need and known and px >= FACE_ONE_PX:
         # 大きく写った1枚。ここで決めないと、通り過ぎる人は永久に名前が付かない。
         # 近さが FACE_ONE_SIM 以上のときだけ、この1枚で決める。
@@ -1034,6 +1036,7 @@ def _identify_one(st: dict, crop, px: int, edge: bool = False, pos=None,
                 frames, n, one_ok = [one], need, True
         except Exception as e:
             logger.warning("one frame check failed: %s", e)
+            _log_error("one_frame_check", e, px=int(px))
     if n < need and known:
         # まだ1コマしか無い。人が居ることは確かなので、そう伝えるだけにして、
         # 誰かは決めない（次のコマが届けば2枚揃って決まる・数秒後）。
@@ -1720,7 +1723,8 @@ def _face_usable(lf: dict) -> bool:
             return False
         blur = lf.get(LF_BLUR)           # cv2 が失敗すると None
         return blur is not None and float(blur) >= OTHER_FACE_MIN_BLUR
-    except Exception:
+    except Exception as e:
+        _log_error("face_usable", e)
         return False
 
 
@@ -1747,7 +1751,8 @@ def _other_face_now(st: dict, pid: str, now: float) -> bool:
             _other_face_run[0] = t
             _other_face_run[1] = _other_face_run[1] + 1 if float(sc) < OTHER_FACE_SIM else 0
         return _other_face_run[1] >= OTHER_FACE_NEED
-    except Exception:
+    except Exception as e:
+        _log_error("other_face_now", e)
         return False
 
 
@@ -1799,7 +1804,8 @@ def _cur_stage_index(st: dict) -> int:
         return _stage_memo[2]
     try:
         doc = get_db().collection("faces").document(pid).get().to_dict() or {}
-    except Exception:
+    except Exception as e:
+        _log_error("stage_read", e, person=pid)
         return _stage_memo[2] if _stage_memo[0] == pid else 0
     level = _bond_now(doc)
     idx = sum(1 for lo, _n, _m in BOND_STAGES if level >= lo) - 1
@@ -2557,7 +2563,10 @@ def _new_person_id() -> str:
     ref = db.collection("spirit_meta").document("ids")
     try:
         last = int((ref.get().to_dict() or {}).get("last_person") or 0)
-    except Exception:
+    except Exception as e:
+        # ここが黙って落ちると、発行ずみの番号をもう一度出して **前の人を上書きする**
+        # （9/15 01:00〜01:06 に実際に起きた）。必ず記録に残す。
+        _log_error("new_id_highwater", e)
         last = 0
     try:
         for d in db.collection("faces").stream():
