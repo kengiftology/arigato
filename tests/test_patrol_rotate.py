@@ -272,3 +272,33 @@ def test_消えた向きは残りからも落とす():
     pose, left, rotate = sp._sweep_plan(0, [], poses, ["-9.99_-9.99"])
     assert "-9.99_-9.99" not in [pose] + left
     assert sorted([pose] + left) == sorted(poses)
+
+
+def test_前の写真が古い向きから回る():
+    """9/27 夜の実測：1周は人が来ると打ち切られる（8回中5回）。
+
+    打ち切りの残りは次へ持ち越すので、**後ろの向きほど待たされる。**
+    9時間で、シンクだけ5回（他は13〜16回）、**間隔は最長230分**まで開いた。
+    基準写真の寿命は180分なので、**超えた時点で比較が一度も成立しない。**
+    いちばん大事な区画が、いちばん見られていなかった。"""
+    poses = sp._check_poses()
+    if len(poses) < 3:
+        pytest.skip("区画が少なくて試せない")
+    # 最後の向きだけ極端に古い状態を作る
+    ages = {p: 60.0 for p in poses}
+    ages[poses[-1]] = 9999.0
+    pose, left, rotate = sp._sweep_plan(0, [], poses, (), ages)
+    assert pose == poses[-1], "いちばん古い向きから始まっていない: %s" % pose
+    assert sorted([pose] + left) == sorted(poses)
+
+
+def test_打ち切りの残りは古さより先():
+    """持ち越しは「その滞在に紐づける」ためのものなので、古さより優先する。"""
+    poses = sp._check_poses()
+    if len(poses) < 3:
+        pytest.skip("区画が少なくて試せない")
+    ages = {p: 60.0 for p in poses}
+    ages[poses[-1]] = 9999.0
+    pose, left, rotate = sp._sweep_plan(0, [], poses, [poses[1]], ages)
+    assert pose == poses[1], pose
+    assert left[0] == poses[-1], left        # そのあとは古い順

@@ -2144,8 +2144,10 @@ async def hint():
     # 見に行く向きを決める。**残りを捨てたあとに決める**（捨てる前に決めると、
     # 捨てたはずの続きをそのまま書き戻してしまう）。
     poses = _check_poses()
+    ats = st.get("baseline_ats") or {}
+    ages = {p: now - float(ats.get(p) or 0) for p in poses}    # 「前」の写真の古さ
     check, left, rotate = _sweep_plan(st.get("zone_rotate", 0), st.get("sweep_left"),
-                                      poses, st.get("sweep_saved"))
+                                      poses, st.get("sweep_saved"), ages)
     check = check or st.get("check_pose") or ""
     # 出す条件（2026-09-09）：静かになってから CHECK_QUIET_SEC 経った ＋
     # 前回の見回りのあとに人が来ている ＋ 見回り同士は CHECK_GAP 以上あける。
@@ -4649,7 +4651,7 @@ def _check_poses() -> tuple:
 #
 # そこで、静かになったら**その滞在のあいだに1周ぜんぶ回す**。1周4回・往復20秒ずつなので
 # 2分ほど。人が来たら残りは捨てる（顔を撮るほうが大事。次の滞在で見直す）。
-def _sweep_plan(rotate: int, left, poses: tuple, saved=()) -> tuple:
+def _sweep_plan(rotate: int, left, poses: tuple, saved=(), ages=None) -> tuple:
     """(いま見に行く向き, その滞在で残る向き, 次の起点) を返す。
 
     left が空なら、その滞在の1周を組み立てる。
@@ -4666,6 +4668,14 @@ def _sweep_plan(rotate: int, left, poses: tuple, saved=()) -> tuple:
         first = [p for p in (saved or []) if p in poses]
         i = int(rotate) % n
         rest = [poses[(i + k) % n] for k in range(n)]
+        if ages:
+            # **「前」の写真が古い向きから回る**（2026-09-27 夜）。
+            # それまでは順ぐりに回していたが、1周は人が来ると打ち切られる（実測で8回中5回）。
+            # 打ち切りの残りは次に持ち越すので**後ろの向きほど待たされ**、
+            # 9時間の実測でシンクだけ5回（他は13〜16回）、**間隔が最長230分**まで開いた。
+            # 基準写真の寿命は180分なので、**超えた時点で比較が一度も成立しない。**
+            # いちばん大事な区画が、いちばん見られていなかった。
+            rest.sort(key=lambda p: -float(ages.get(p) or 0))
         left = first + [p for p in rest if p not in first]
         rotate = i + 1
     return left[0], left[1:], rotate
