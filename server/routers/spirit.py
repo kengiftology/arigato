@@ -387,7 +387,9 @@ def _note_change(kind: str, data: dict, t: float):
     if kind == "zone":
         what = "、".join((c.get("what") or "") for c in (data.get("changes") or []) if c.get("what"))
     else:
-        what = "%sが きれいに なっていた" % (zone or "シンク")
+        # `care` と `visit（sink_empty）`は、定義上シンクの話。区画の欄が無いので補う
+        zone = zone or "シンク"
+        what = "%sが きれいに なっていた" % zone
     if not what:
         return
     try:
@@ -5532,7 +5534,8 @@ def _recent_change(window: float) -> dict | None:
             if e.get("kind") == "zone" and e.get("better"):
                 what = "、".join((c.get("what") or "") for c in (e.get("changes") or []) if c.get("what"))
             elif e.get("kind") == "care" or (e.get("kind") == "visit" and e.get("sink_empty")):
-                what = "%sが きれいに なっていた" % (zone or "シンク")
+                zone = zone or "シンク"        # 区画の欄が無い古い行のため（2026-09-27）
+                what = "%sが きれいに なっていた" % zone
             if not what:
                 continue
             out = {"what": what[:60], "hours": int((now - t) // 3600), "zone": zone,
