@@ -353,6 +353,9 @@ def _note_change(kind: str, data: dict, t: float):
         _save(_state_cache)
     except Exception as e:
         logger.warning("last change note failed: %s", e)
+        # ここが黙って落ちると、片づいた変化が「思い出」に残らず、
+        # あとから人に結びつけ直すこともできない（研究の主要指標に直に効く）。
+        _log_error("care_note", e, kind=str(kind)[:20])
 
 
 def _load() -> dict:
@@ -5399,6 +5402,7 @@ def _recent_care() -> bool:
                 return True
     except Exception as e:
         logger.warning("recent care lookup failed: %s", e)
+        _log_error("recent_care_lookup", e)
     return False
 
 
@@ -5423,6 +5427,7 @@ def _own_care(pid: str) -> bool:
                 return True
     except Exception as e:
         logger.warning("own care lookup failed: %s", e)
+        _log_error("own_care_lookup", e)
     return False
 
 
