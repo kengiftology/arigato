@@ -562,7 +562,13 @@ async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
             _err(pid, "doc", e)
             doc = {}
     visit = float((st.get("visit_of") or {}).get(pid) or st.get("visit_start") or 0)
-    if visit and float((st.get("talked") or {}).get(pid) or 0) >= visit:
+    # 2026-09-27 本人「入れて」：10分いなくなって戻ってきたら、そこから先は
+    # 「また来た」として、もう一度話しかけてよい（本人の決定「キッチンに行くたびに1回」）。
+    # 滞在の区切りは30分のままなので、滞在だけを見ていると、12分出て戻った回は
+    # 同じ滞在に見えて話しかけない（9/26 の p01 の3回目・42分居たのに黙っていた）。
+    back = float((st.get("back_at") or {}).get(pid) or 0)
+    since = max(visit, back)
+    if since and float((st.get("talked") or {}).get(pid) or 0) >= since:
         return False                         # この来訪ではもう話しかけた
     # 呼び名をたずねた来訪では、続けて話しかけない（2026-09-26）。
     # 9/26 18:40、呼び名を3回たずねて諦めた7秒後に別の問いかけを始めていた。
@@ -581,7 +587,7 @@ async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
     now2 = time.time()
     st["speak_line"] = line
     st["speak_at"] = now2 + sp.SPEAK_MIN
-    st["talked"] = dict(st.get("talked") or {}, **{pid: visit or now2})
+    st["talked"] = dict(st.get("talked") or {}, **{pid: since or now2})
     st["name_ask"] = {"person": pid, "at": now2, "sec": len(pcm) / 32000.0,
                       "phase": "talk", "round": 1, "start": now2}
     st["listen_until"] = now2 + ASK_TTL

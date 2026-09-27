@@ -1165,7 +1165,18 @@ def _touch_person(st: dict, pid: str, now: float) -> float:
     人ごとに区切れば、共用でも成り立つ。"""
     seen = st.get("seen_at") or {}
     vis = st.get("visit_of") or {}
-    if now - float(seen.get(pid) or 0) > VISIT_MERGE_GAP or not vis.get(pid):
+    # 2026-09-27 本人「入れて」：**話しかけの側だけ**、10分いなくなったら「また来た」と数える。
+    # 滞在の区切り（30分・本人が決めた値）はそのまま。滞在は長さやなつき度の計りに使うので、
+    # そちらを短くすると別のものまで変わる。
+    # きっかけ：9/26 の p01 は離れた3回（18:17／19:30〜19:41／19:53〜20:34）来ていたのに、
+    # 話しかけは2回。3回目（42分・99枚）には話しかけていない。2回目と3回目のあいだが
+    # 12分しか空かず、装置が「ひとつの滞在」と見たため。本人の決定は「キッチンに行くたびに1回」。
+    gone = now - float(seen.get(pid) or 0)
+    if gone > TALK_BACK_GAP:
+        back = dict(st.get("back_at") or {})
+        back[pid] = now
+        st["back_at"] = {k: v for k, v in sorted(back.items(), key=lambda x: -x[1])[:8]}
+    if gone > VISIT_MERGE_GAP or not vis.get(pid):
         vis[pid] = now
     seen[pid] = now
     st["seen_at"] = {k: v for k, v in sorted(seen.items(), key=lambda x: -x[1])[:8]}
@@ -5268,6 +5279,9 @@ BOND_USE = 0           # 使って、そのままにした → 動かさない
 # 滞在の扱い（本人決定 2026-09-09 夜）
 STAY_MIN = 300.0        # 5分以下の滞在には何も付けない（本人決定：5分から）
 VISIT_MERGE_GAP = 1800.0 # 出たり入ったりが30分以内なら、同じ滞在として続ける（本人：30分）
+# 話しかけの側だけの区切り（2026-09-27 本人）。これだけ姿が見えなければ、次は「また来た」
+# として扱い、もう一度話しかけてよい。滞在の区切り（上の30分）は変えない。
+TALK_BACK_GAP = 600.0
 # 一度の滞在で +1 は最大1回（30分居ても+1）。滞在の始まりの時刻を「滞在の番号」として
 # 人ごとに覚え、同じ番号では二度と上げない。
 _cur_visit = [0.0]      # いま突き合わせている滞在の番号（_zone_cycle が入れる）
