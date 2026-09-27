@@ -829,7 +829,7 @@ def _refresh_memory(vecs: list, vec: list):
         return out + [{"v": vec}]
     except Exception as e:
         # 思い出が出てこないのと、思い出を取りに行けなかったのは別物（2026-09-27）
-        _log_error("思い出の読み直し", e)
+        _log_error("memory_refresh", e)
         logger.warning("memory refresh failed: %s", e)
         return None
 
