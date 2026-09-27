@@ -4663,7 +4663,7 @@ def _zone_cfg(name: str) -> dict:
         saved = ((_load().get("zone_cfg") or {}).get(name)) or {}
     except Exception as e:
         # 設定が読めなければ既定値で動く。**動いてしまう**ので、落ちたことを残す
-        _log_error("区画の設定", e, zone=name)
+        _log_error("zone_cfg", e, zone=name)
         saved = {}
     out = dict(base)
     for k, v in saved.items():
@@ -5068,7 +5068,7 @@ async def _derive_zones(data: bytes) -> list:
                             "false": 0, "state": "試用中"})
         return out
     except Exception as e:
-        _log_error("区画の立て直し", e)
+        _log_error("zone_derive", e)
         logger.warning("derive zones failed: %s", e)
         return []
 
@@ -5633,7 +5633,7 @@ def _zone_crop(data: bytes, zone: str = "シンク") -> bytes:
     except Exception as e:
         # ここが落ちると**写真まるごと**をその区画として見ることになる。
         # 床や冷蔵庫を見て「物は無い」と答えるのは、この道から来る（2026-09-27）。
-        _log_error("区画の切り出し", e, zone=zone)
+        _log_error("zone_crop", e, zone=zone)
         logger.warning("zone crop failed (%s): %s", zone, e)
         return data
 
@@ -5977,7 +5977,7 @@ async def zones_status():
             aim_now = {"dx": dx, "dy": dy, "off": max(abs(dx), abs(dy)),
                        "resp": round(resp, 3) if resp is not None else None}
     except Exception as e:
-        _log_error("向きの確かめ", e)
+        _log_error("aim_check", e)
         logger.warning("aim check failed: %s", e)
     return {"zones": out, "home": st.get("home_pose") or "",
             "paused": bool(st.get("sweep_paused")),
