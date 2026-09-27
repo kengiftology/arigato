@@ -837,6 +837,56 @@ def _post(path: str, data: bytes | None = None) -> dict:
         return json.loads(r.read().decode())
 
 
+def open_ear(pid: str, sec: float) -> None:
+    """問いかけずに、人から話しかけられるのを待つ（2026-09-27・本人の決定）。
+
+    これまで録音は「地霊が問いかけたあと」にしか開かなかった。主導権が装置の側にある。
+    ここでは**何も鳴らさずに**録る。話しかけられたらクラウドが返しを決め、
+    そこから先はふつうの対話と同じ流れ（say → mur → また聞く）になる。
+    何も聞こえなければ、何も起きない（聞き返さない・催促しない）。"""
+    now = time.time()
+    if _asked["pid"] == pid and now - _asked["at"] < ASK_REPEAT_GAP:
+        return
+    _asked["pid"], _asked["at"] = pid, now
+    print(time.strftime("%H:%M:%S"), "話しかけられるのを待つ:", pid,
+          "（%.0f秒）" % sec, flush=True)
+    c3("listen 1")                          # 「聞いているよ」の顔
+    try:
+        q = "?person=" + urllib.parse.quote(pid) + "&phase=open"
+        # 問いかけは鳴らさないので、キャラの声を待つ必要がない（own_sec=0）
+        wav = listen(min(sec, LISTEN_TOTAL), 0.0, 0.0)
+        if wav is None:
+            print("待ち：音が取れなかった", flush=True)
+            return
+        try:
+            res = _post("/spirit/name" + q, wav)
+        except Exception as e:
+            print("待ち：送れなかった", e, flush=True)
+            return
+        print(time.strftime("%H:%M:%S"), "待ちの結果:",
+              {k: res.get(k) for k in ("ok", "say", "listen")}, flush=True)
+        # 話しかけられて返しが決まったら、そこから先はふつうの対話と同じ
+        for _ in range(ASK_ROUNDS):
+            if not res.get("say"):
+                return
+            time.sleep(1.2)
+            c3("mur")
+            own = float(res.get("speak_sec") or 3.0)
+            speak_end = time.time() + C3_FETCH_SEC + own
+            if not res.get("listen"):
+                return
+            wav = listen(LISTEN_TOTAL, speak_end, own)
+            if wav is None:
+                return
+            try:
+                res = _post("/spirit/name?person=" + urllib.parse.quote(pid), wav)
+            except Exception as e:
+                print("待ち：送れなかった", e, flush=True)
+                return
+    finally:
+        c3("listen 0")
+
+
 def ask_name(pid: str, ask_sec: float = 0.0) -> None:
     now = time.time()
     if _asked["pid"] == pid and now - _asked["at"] < ASK_REPEAT_GAP:
@@ -1037,6 +1087,10 @@ def main():
                         w.last_move = now
                     if res.get("ask_name"):
                         ask_name(res["ask_name"], float(res.get("ask_sec") or 0))
+                        w.last_move = time.time()
+                    elif res.get("ear_sec") and someone(res):
+                        # 鳴らさずに待つ（2026-09-27）。人から話しかけられたときだけ答える
+                        open_ear(res.get("person") or "", float(res["ear_sec"]))
                         w.last_move = time.time()
                     if res.get("hires") and now - last_hires >= HIRES_GAP:
                         # 人は写っているのに顔が取れなかった、と返ってきた。

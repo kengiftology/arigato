@@ -599,6 +599,40 @@ async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
     return True
 
 
+# ---- 1d. 人から話しかけられるのを待つ（2026-09-27・本人「いきましょう」）----
+# これまで地霊は、**自分が話しかけたときしか聞いていなかった**。主導権が装置の側にある。
+# 人の側から声をかけられる形にすると、3つの判断基準（応じなくても何も残らない／
+# タイミングは人が決める／何をするかは人が決める）が、すべて人の側へ倒れる。
+# ずっと聞き続けることはしない（録音の範囲を広げないため）。**窓を開ける**：
+#   ・顔が分かった直後の EAR_SEC 秒だけ
+#   ・1回の来訪につき1度だけ
+#   ・会話中は開かない（話しかけは一度に1つ・9/26 の決まり）
+# 聞こえた声に中身があれば返し、無ければ黙る（何も起きない）。
+EAR_ON = True
+EAR_SEC = 30.0                   # 顔が分かった直後、これだけ待つ
+EAR_MIN_STAY = 5.0               # すぐ通り過ぎる人には開かない
+
+
+def may_open_ear(st: dict, pid: str, doc: dict, now: float) -> float:
+    """待つ窓を開くなら秒数、開かないなら 0。"""
+    if not EAR_ON or not pid or pid == "unknown":
+        return 0.0
+    if asking(st, now):
+        return 0.0                           # 会話中・問いかけ中は開かない
+    visit = float((st.get("visit_of") or {}).get(pid) or st.get("visit_start") or 0)
+    if visit and float((st.get("eared") or {}).get(pid) or 0) >= visit:
+        return 0.0                           # この来訪ではもう開いた
+    return EAR_SEC
+
+
+def mark_ear(st: dict, pid: str, now: float) -> None:
+    visit = float((st.get("visit_of") or {}).get(pid) or st.get("visit_start") or 0)
+    st["eared"] = dict(st.get("eared") or {}, **{pid: visit or now})
+    st["name_ask"] = {"person": pid, "at": now, "phase": "open", "round": 1, "start": now}
+    st["listen_until"] = now + ASK_TTL
+    sp._log_event("ear_open", {"person": pid, "sec": EAR_SEC})
+
+
 async def _talk_turn(st: dict, person: str, text: str, stt: str, level: int,
                      rnd: int, a: dict, t0: float, t1: float) -> dict:
     """相手の返事を受けて、一言返す。黙っていたら終わり（追いかけない）。"""
@@ -752,6 +786,16 @@ async def hear_name(request: Request, person: str, x_upload_key: str = Header(No
     say, listen, learned, result = False, False, None, ""
     picked, answer = None, None               # 記録用：取り出した候補／聞き返しへの答え
     if phase == "talk":                      # ひとこと交わす（2026-09-23）
+        return await _talk_turn(st, person, text, stt, level, rnd, a, t0, t1)
+    if phase == "open":                      # 人から話しかけられるのを待っていた（2026-09-27）
+        if not text:
+            # 誰も話しかけなかった。**何も起きない**（聞き返さない・催促しない）
+            sp._save(st)
+            sp._log_event("ear_close", {"person": person, "level": level, "heard": False})
+            return {"ok": True, "name": None, "say": False, "listen": False}
+        sp._log_event("ear_close", {"person": person, "level": level, "heard": True,
+                                    "text": text, "stt": stt})
+        # 話しかけられた。ここから先は、ふつうの対話と同じ扱い
         return await _talk_turn(st, person, text, stt, level, rnd, a, t0, t1)
     if phase == "ask":
         name = None

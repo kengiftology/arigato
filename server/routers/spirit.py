@@ -1524,6 +1524,12 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                 if (not st.get("speak_line") and not spirit_name.asking(st, now)
                         and _person_stay(st, res["person"], now) >= MIN_PRESENCE):
                     await spirit_name.maybe_talk(st, res["person"], None, now)
+                # 地霊から話しかけないときは、**人から話しかけられるのを待つ**
+                # （2026-09-27）。待つだけで、こちらからは何も鳴らさない。
+                if not st.get("speak_line") and not spirit_name.asking(st, now):
+                    sec = spirit_name.may_open_ear(st, res["person"], None, now)
+                    if sec:
+                        spirit_name.mark_ear(st, res["person"], now)
                 _save(st)
                 _lap("save")
                 _log_ms("face", _ms, len(data))
@@ -1532,7 +1538,11 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                         "judged": False, "why": "person_seen", "ms": _ms,
                         # 呼び名を聞いている相手。ラズパイはこれを見て C3 に鳴らさせ、答えを取りに行く
                         "ask_name": spirit_name.asking(st, now),
-                        "ask_sec": spirit_name.asking_sec(st)}
+                        "ask_sec": spirit_name.asking_sec(st),
+                        # 鳴らさずに待つだけの窓（2026-09-27）。橋渡しはこれを見て、
+                        # **問いかけずに録る**。開いていないときは 0。
+                        "ear_sec": (spirit_name.EAR_SEC
+                                    if (st.get("name_ask") or {}).get("phase") == "open" else 0)}
         except Exception as e:
             logger.warning("identify failed: %s", e)
             _identify_err[0] = "%s: %s" % (type(e).__name__, str(e)[:200])
