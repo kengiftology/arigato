@@ -2945,8 +2945,11 @@ _GREET_AGAIN = ("また来", "またき", "またお", "またあ", "このあ�
 # 何も言っていない一言を見分けるための、意味を持たないことば（2026-09-26）。
 # これを取り去って4字も残らなければ、聞いた人には何も伝わらない
 # （9/26 の実測：44本のうち8本が「きゃあ、あ……。」「うれしいなあ。……えーと。」だった）。
+# 2026-09-27：「なあ」「ね」「あれ」を外した。これらは**ことばの一部**で、
+# 単独の言いよどみではない。剥がすと「だれかなあ」→「だれか」で3字になり、
+# **意味のある一言まで捨てていた**（今日捨てた120件のうち43件がこの判定）。
 _GREET_FILLER = ("うれしいなあ", "うれしい", "あのね", "えーとね", "えっとね", "えーと",
-                 "えっと", "きゃあ", "あっ", "なあ", "だなあ", "あれ", "ふふ", "ね")
+                 "えっと", "きゃあ", "あっ", "ふふ")
 
 
 _CHECK_SYSTEM = """共有キッチンに棲む、子どものような地霊が、そこに来た人へ言う一言を作りました。
@@ -3003,8 +3006,11 @@ async def _greet_check(text: str, name: str = "") -> str:
                          if name else "")
                        + "『%s』\nJSONで。" % text}])
         out = "".join(b.text for b in msg.content if b.type == "text")
-        i, j = out.find("{"), out.rfind("}")
-        d = json.loads(out[i:j + 1]) if 0 <= i < j else {}
+        # 2026-09-27 13:09:47：返事が2つ並ぶと、いちばん外の { } で切って
+        # 「Extra data」で落ちていた（落ちると通す側に倒れるので害は無いが、見直しが働かない）。
+        # 最初の1つだけを読む。
+        i = out.find("{")
+        d = json.JSONDecoder().raw_decode(out[i:])[0] if i >= 0 else {}
     except Exception as e:
         logger.warning("greet check failed: %s", e)
         _log_error("greet_check", e)
@@ -3020,7 +3026,7 @@ def _says_nothing(t: str) -> bool:
     s = re.sub(r"[。、！？…・\s\.．]", "", t or "")
     for w in sorted(_GREET_FILLER, key=len, reverse=True):
         s = s.replace(w, "")
-    return len(s.strip("あ")) < 4
+    return len(s.strip("あ")) < 3
 
 GREET_OPENINGS = [
     "呼び名から始める（『◯◯ちゃん、……』）。",
