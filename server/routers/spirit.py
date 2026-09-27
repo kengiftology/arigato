@@ -84,12 +84,24 @@ _SYSTEM = (
     "【備え付け】ステンレスの水切りかご・壁の包丁立てと包丁・壁のフックに掛かっている道具・"
     "蛇口・排水口の網は備え付けで、物として挙げず、散らかりにも数えない。"
     "このキッチンに食洗機・食器乾燥機は無い（水切りかごを見間違えない）。\n"
-    "【commentの掟】地霊が自分の気持ちをつぶやく独り言だけ。"
+    # 2026-09-27 本人「見たものと変わったことを言おう」。
+    # それまでは「自分の心もちだけ」と決めていたため、10日ぶんの記録が
+    # 「ぴかぴかだなあ、きもちいい」「すっきりしてるなあ」の言い換えばかりになり、
+    # **何がそうなのか・何が起きたのかが伝わらなかった**（本人「もうちょい分かりやすく」）。
+    "【commentの掟】**見たものと、さっきから変わったことを言う。**気持ちはそのあとに足す。\n"
+    "  ① **何がそうなのかを必ず言う。**『ぴかぴかだなあ』ではなく『しんく、ぴかぴかだなあ』。"
+    "『ここ』『それ』で済ませない。\n"
+    "  ② **さっき見えていたもの**が下に書いてあれば、**違いを言う**。"
+    "『さっきまで おさらがあったのに、なくなってる』『なべが ふえてるなあ』のように。"
+    "書いていない・違いが無いときは、いま見えているものを言う。\n"
+    "  ③ 物の呼び名は objects と同じ語を使う（言い換えない）。数は言わない"
+    "（『2まい』ではなく『おさらがある』）。\n"
     "口調は、ちいさな子どものひとりごと（ひらがな多め。『あのね』『〜なあ』『〜かなあ』『〜だね』）。"
     "ていねい語や、『あら』『〜わ』『〜ですわ』のような大人の口調・店員の口調は使わない。"
     "人格の設定に別の口調が書いてあっても、こちらを優先する。"
     "人に指図・お願い・提案は絶対にしない（『片付けましょう』『〜してね』は禁止）。"
-    "『そわそわするなあ』『すっきりして気持ちいいなあ』のように自分の心もちだけ。"
+    "**散らかっていることを咎めない。**見たままを言うだけで、良し悪しは言わない"
+    "（『きたない』『ちらかってる』は言わない。『おさらが あるなあ』でよい）。"
     "責めない・皮肉らない・数字を言わない。\n"
     "【objectsの書き方】写真に写っている物を挙げる。"
     "各項目は {\"name\":\"もの\", \"where\":\"場所\", \"n\":個数} の形。"
@@ -478,6 +490,18 @@ def _sanitize(c, limit: int = MAX_COMMENT) -> str:
     return c[:cut + 1] if cut > 0 else c[:limit]
 
 
+def _prev_note(prev: list | None) -> str:
+    """さっき見えていたものを、判定に渡す形の1行にする（2026-09-27）。
+
+    これが無いと「変わったこと」が言えない。写真1枚では、いまの姿しか分からない。"""
+    got = [x for x in (prev or []) if isinstance(x, dict) and x.get("name")]
+    if not got:
+        return ""
+    return ("【さっき見えていたもの】"
+            + "・".join("%s（%s）" % (x.get("name"), x.get("where") or "?") for x in got[:8])
+            + "。いまと違うところがあれば、それを一言にする。\n")
+
+
 def _shrink_for_judge(data: bytes, max_w: int = 1280) -> bytes:
     """AIに見せる前に写真を小さくする。
 
@@ -505,7 +529,7 @@ CROP_NOTE = ("この写真は、シンク（流し台の金属のくぼみ）の
              "右の灰色の帯は隠してある所で、物ではありません。\n")
 
 
-async def _judge_image(image_bytes: bytes, persona: str = "", sink_empty=None,
+async def _judge_image(image_bytes: bytes, persona: str = "", sink_empty=None, prev: list = None,
                        cropped: bool = False) -> dict:
     """写真をClaudeに直接見せて {score, comment} か {skip} を得る。失敗は {}。
     persona＝そのキャラの人格。ルール部（_SYSTEM）は人格に関わらず常に適用。"""
@@ -525,6 +549,7 @@ async def _judge_image(image_bytes: bytes, persona: str = "", sink_empty=None,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}},
                 {"type": "text", "text": (CROP_NOTE if cropped else "") +
+                                         _prev_note(prev) +
                                          "いまのあなたの見た景色です。判断をJSONで。" + (
                     # シンクのくぼみの中は、別の確かめ（切り出して聞く）で答えが出ている。
                     # 2026-09-13：シンクが空なのに一言が「あちこちに物があって、そわそわする」
@@ -1590,8 +1615,15 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
         rs, scope = {}, "crop_failed"
         _log_event("sink_crop_failed", {"pose": pose})
     else:
-        r, rs = await asyncio.gather(_judge_image(data, persona, sink_now),
-                                     _judge_image(crop, persona, sink_now, cropped=True))
+        # 点数と一言はシンクの切り出しで作る。そこへ**さっき見えていたもの**を渡して、
+        # 「変わったこと」を言えるようにする（2026-09-27 本人「見たものと変わったことを言おう」）。
+        # 渡すのはシンクにあった物だけ（切り出しはシンクしか写していないので、
+        # 部屋ぜんぶの一覧を渡すと、写っていない物の話を始める）。
+        prev_sink = [x for x in (st.get("objects") or [])
+                     if isinstance(x, dict) and x.get("where") == "シンク"]
+        r, rs = await asyncio.gather(
+            _judge_image(data, persona, sink_now),
+            _judge_image(crop, persona, sink_now, prev=prev_sink, cropped=True))
         scope = "sink_crop"
     st["last_judge"] = now
     st["day_calls"] += 1
