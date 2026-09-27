@@ -158,3 +158,31 @@ def test_滞在は帰ったあとの時間を足さない():
     assert sp._person_stay(st2, "p01", 1042.0) == 42.0
     # 覚えが無ければ0
     assert sp._person_stay({}, "p01", 1000.0) == 0.0
+
+
+def test_AIが断られたら健康診断に出る(monkeypatch):
+    """9/27 14:00、Anthropic の残高が切れて AI が断られ始めた。
+
+    **顔も記録も動き続けるので、区画の判定と一言だけが静かに止まる。**
+    見張りには一切かからず（health は ok のまま）、偶然 記録を読んでいて見つけた。
+    観察期（10/5〜12/6）の9週間でこれが起きると、**「世話が起きなかった」という
+    記録だけが残る。**残高切れか一時的な不調かは区別しない。どちらも判定が止まる。"""
+    import time as _t
+    now = _t.time()
+    monkeypatch.setattr(sp, "_ai_ok", [now - 3600, now - 60, "BadRequestError: credit balance"])
+    h = sp._health()
+    assert h["ok"] is False
+    assert "AIが答えていない" in h["stopped"]
+    monkeypatch.setattr(sp, "_ai_ok", [now - 30, 0.0, ""])
+    assert "AIが答えていない" not in sp._health()["stopped"]
+
+
+def test_AIの呼び出しが窓口を通っている():
+    """控えるのを1か所ずつ書くと必ず抜ける。**窓口は1つ**にしてある。"""
+    import io, os
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "server", "routers", "spirit.py")
+    src = io.open(p, encoding="utf-8").read()
+    direct = [l.strip() for l in src.splitlines()
+              if ".messages.create(" in l and "_ai_create" not in l and "**kw" not in l]
+    assert not direct, "窓口を通していない呼び出しがある: %s" % direct

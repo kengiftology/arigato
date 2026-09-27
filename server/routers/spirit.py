@@ -323,6 +323,38 @@ def _log_error(step: str, e: Exception, **extra):
 _log_ok = [0.0, 0.0, ""]        # 最後に書けた時刻／最後に落ちた時刻／落ちた理由
 LOG_FAIL_LIMIT = 600.0          # 直近これだけの間に落ちていれば「止まっている」扱い
 
+# AI が答えているか（2026-09-27）。**観察期でいちばん危ない壊れ方はここ。**
+# 9/27 14:00、Anthropic の残高が切れて AI が断られ始めた。**顔も記録も動き続けるので、
+# 区画の判定と一言だけが静かに止まる。**見張りには一切かからず（health は ok のまま）、
+# 偶然 記録を読んでいて見つけた。9週間のどこかで同じことが起きれば、
+# **「世話が起きなかった」という記録だけが残る。**
+# 残高切れと AI 側の一時的な不調は区別しない。どちらも「判定が止まっている」。
+_ai_ok = [0.0, 0.0, ""]         # 最後に答えた時刻／最後に断られた時刻／断られた理由
+AI_FAIL_LIMIT = 1800.0          # 直近これだけ答えていなければ「止まっている」扱い
+
+
+async def _ai_create(client, **kw):
+    """AI に聞く。**答えた／断られたを、ここで必ず控える。**
+
+    呼び出しが10か所に散っているので、1か所ずつ控えると必ず抜ける。
+    窓口を1つにして、そこを通す。"""
+    try:
+        msg = await _ai_create(client, **kw)
+    except Exception as e:
+        _ai_ping(False, e)
+        raise
+    _ai_ping(True)
+    return msg
+
+
+def _ai_ping(ok: bool, e: Exception = None) -> None:
+    """AI が答えた／断られたを控える。呼ぶだけで、記録には書かない。"""
+    now = time.time()
+    if ok:
+        _ai_ok[0] = now
+    else:
+        _ai_ok[1], _ai_ok[2] = now, ("%s: %s" % (type(e).__name__, e))[:120] if e else "?"
+
 
 def _log_event(kind: str, data: dict):
     """研究用の時系列ログ（spirit_log）。失敗しても本体を止めない。"""
@@ -479,7 +511,7 @@ async def _judge_image(image_bytes: bytes, persona: str = "", sink_empty=None,
         client = AsyncAnthropic()
         b64 = base64.standard_b64encode(_shrink_for_judge(image_bytes)).decode()
         system = (persona or _DEFAULT_PERSONA) + "\n" + _SYSTEM
-        msg = await client.messages.create(
+        msg = await _ai_create(client, 
             # 物の一覧を返させるようになってから、200では足りず返事が途中で
             # 切れていた。壊れたJSONは黙って捨てられ、古い一言が残るので
             # 表からは動いて見えたまま40時間気づけなかった（2026-09-02）。
@@ -2482,6 +2514,17 @@ def _health() -> dict:
     # 注意：これは**この1つのインスタンスの話**。クラウドは同時に何台も動いていて、
     # この返事を書いた台が一度も書いていなければ「まだ分からない」になる。
     # Firestore が本当に落ちていれば、どの台でも落ちるので、続けて叩けば必ず出る。
+    # AI が答えているか（2026-09-27）。答えられなければ区画の判定も一言も出ない。
+    a_ok, a_fail, a_why = _ai_ok[0], _ai_ok[1], _ai_ok[2]
+    if a_fail > a_ok and now - a_fail < AI_FAIL_LIMIT:
+        items.append({"id": "ai", "name": "AIが答えていない（区画の判定と一言が止まる）",
+                      "ago": round(now - a_fail), "limit": AI_FAIL_LIMIT,
+                      "ok": False, "unknown": False, "why": a_why})
+        bad = bad + ["AIが答えていない"]
+    else:
+        items.append({"id": "ai", "name": "AIが答えている",
+                      "ago": round(now - a_ok) if a_ok else None,
+                      "limit": AI_FAIL_LIMIT, "ok": True, "unknown": not a_ok})
     ok_at, fail_at, why = _log_ok[0], _log_ok[1], _log_ok[2]
     if fail_at > ok_at and now - fail_at < LOG_FAIL_LIMIT:
         items.append({"id": "log", "name": "記録が書けていない", "ago": round(now - fail_at),
@@ -2492,6 +2535,8 @@ def _health() -> dict:
                       "ago": round(now - ok_at) if ok_at else None,
                       "limit": LOG_FAIL_LIMIT, "ok": True, "unknown": not ok_at})
     return {"ok": not bad, "stopped": bad, "items": items,
+            "ai_ok_ago": round(now - a_ok) if a_ok else None,
+            "ai_fail_ago": round(now - a_fail) if a_fail else None,
             "log_ok_ago": round(now - ok_at) if ok_at else None,
             "log_fail_ago": round(now - fail_at) if fail_at else None,
             # いま本番で動いているのはどの版か（2026-09-25）。
@@ -2768,7 +2813,7 @@ async def birth(request: Request):
     try:
         from anthropic import AsyncAnthropic
         client = AsyncAnthropic()
-        msg = await client.messages.create(
+        msg = await _ai_create(client, 
             model="claude-opus-4-8", max_tokens=500,
             messages=[{"role": "user", "content": _BIRTH_PROMPT}])
         persona = "".join(b.text for b in msg.content if b.type == "text").strip()
@@ -2865,7 +2910,7 @@ async def _greet_check(text: str, name: str = "") -> str:
         return ""
     try:
         from anthropic import AsyncAnthropic
-        msg = await AsyncAnthropic(timeout=15.0, max_retries=0).messages.create(
+        msg = await _ai_create(AsyncAnthropic(timeout=15.0, max_retries=0), 
             model=MODEL, max_tokens=80, system=_CHECK_SYSTEM,
             messages=[{"role": "user", "content":
                        ((("この一言は『%sちゃん』へ向けて言うものです。"
@@ -2991,7 +3036,7 @@ async def _keep_topic(said: list) -> str:
         return ""
     try:
         from anthropic import AsyncAnthropic
-        msg = await AsyncAnthropic(timeout=20.0, max_retries=1).messages.create(
+        msg = await _ai_create(AsyncAnthropic(timeout=20.0, max_retries=1), 
             model=MODEL, max_tokens=60, system=_KEEP_SYSTEM,
             messages=[{"role": "user", "content":
                        "／".join("『%s』" % s for s in said[:6]) + "\nJSONで。"}])
@@ -3129,7 +3174,7 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
         from anthropic import AsyncAnthropic
         # 裏で走るので、待ちすぎないよう区切る（既定は10分×再試行2回）
         client = AsyncAnthropic(timeout=30.0, max_retries=1)
-        msg = await client.messages.create(
+        msg = await _ai_create(client, 
             model=MODEL, max_tokens=120,
             system=(persona or _DEFAULT_PERSONA) + "\n" + _GREET_SYSTEM,
             messages=[{"role": "user", "content": ask}])
@@ -4476,7 +4521,7 @@ async def _compare_images(a: bytes, b: bytes, focus: str = "") -> dict:
             ask = ("写真の中の「" + focus + "」のあたりだけを見比べてください。"
                    "そこを拡大したつもりで、隅から隅まで一つずつ照らし合わせる。"
                    "それ以外の場所の違いは無視する。" + ask)
-        msg = await client.messages.create(
+        msg = await _ai_create(client, 
             model=MODEL, max_tokens=700, system=_COMPARE_SYSTEM,
             messages=[{"role": "user", "content": [
                 {"type": "text", "text": "前:"}, img(a),
@@ -4582,7 +4627,13 @@ ZONE_CFG_DEFAULT = {
         # 切り出し：左60%だけ残す。右側にシンクが写り込み、**同じ出来事が2つの区画で
         # 二重に数えられる**ため（左70%ではまだシンクが写る・実測）。
         "id": "rack", "active": True, "app_zone": "", "pose": "-0.80_-0.90",
-        "aim": {"ref": "spirit/zoneref/rack.jpg", "band": [0.0, 1.0], "min_conf": 0.30},
+        # 線 0.08・ずれ60px（2026-09-27 実測。それまでの 0.30 は 9/24 に別の条件で決めた値で、
+        # **ずれ0pxの写真が確かさ 0.223〜0.258 で弾かれていた**）。
+        # 今日の実測：同じ向き 0.088〜0.28／違う向き 最大 0.062。**差は薄い。**
+        # そこで**2段にする**：確かさは「同じ景色か」、ずれは「離れすぎていないか」。
+        # 正しく撮れた1枚のずれは 0〜25px、違う向きは 176〜230px だったので、60px で切れる。
+        "aim": {"ref": "spirit/zoneref/rack.jpg", "band": [0.0, 1.0],
+                "min_conf": 0.08, "max_shift": 60},
         "crop": {"box": [0.35, 0.15, 0.82, 1.0], "rotate": 180, "hide_from": None},
         # 本人の決め（2026-09-25）：「包丁は見えるのが正しい。それ以外の物は元の居場所があるので、
         # 元の場所に戻してほしい。だから物がある判定でよい」。
@@ -4608,13 +4659,18 @@ ZONE_CFG_DEFAULT = {
         "rule": {"kind": "grace_next_day"},
         "decided": ("2026-09-26 本人。向き -0.80_-0.90 は本人が Tapo の画面で示した画角を実測で特定"
                     "（かごの8割が入る。-1.00_-1.00 では4割）。切り出しは左60%でシンクを落とす（実測）。"
-                    "線0.30は 9/26 の総当たり（自分1.000／他区画 最大0.060）"),
+                    "線0.30は 9/26 の総当たり（自分1.000／他区画 最大0.060）"
+                    "。2026-09-27、線を 0.30 → 0.08 に下げ、ずれの上限 60px を足した。"
+                    "根拠（当日の実測）：同じ向き 0.088〜0.28／違う向き 最大 0.062。"
+                    "0.30 のままでは**ずれ0pxの正しい1枚が 0.223〜0.258 で弾かれていた**。"
+                    "確かさだけでは差が薄いので2段にした（ずれは正しい1枚 0〜25px／違う向き 176〜230px）"),
     },
     "テーブル": {
         # 向き（2026-09-27 本人が写真4枚から選択）：-0.40 では**コンロが画面から外れていた**
         # （本人「コンロが映ってないね」）。-0.50 で、テーブルとコンロが1枚に収まる。
         "id": "table", "active": True, "app_zone": "", "pose": "-0.50_0.00",
-        "aim": {"ref": "spirit/zoneref/table.jpg", "band": [0.0, 0.5], "min_conf": 0.30},
+        "aim": {"ref": "spirit/zoneref/table.jpg", "band": [0.0, 0.5],
+                "min_conf": 0.08, "max_shift": 60},   # 線とずれの根拠は水切りと同じ（9/27 実測）
         # 帯は**上半分**。全体で測ると違う向きとの差が7倍しか開かないが、上半分なら86倍（9/24 実測）
         "crop": {"box": [0.38, 0.12, 0.80, 0.70], "rotate": 180, "hide_from": None},
         "ask": {"scene": "写真は共有キッチンの丸テーブルを天井近くから写したものです。",
@@ -4626,14 +4682,19 @@ ZONE_CFG_DEFAULT = {
         "decided": ("2026-09-27 本人が写真4枚から -0.50_0.00 を選択（-0.40 ではコンロが画面外）。"
                     "切り出しは同じ1枚から本人が案Aを選択（物が載る面ぜんぶ）。"
                     "見本は 9/27 12:18 に、**振ってから12秒待って撮った1枚**で登録し直した"
-                    "（それまでの見本は振り向く途中の景色と比べられていた）。帯は上半分・線0.30は 9/24 の実測"),
+                    "（それまでの見本は振り向く途中の景色と比べられていた）。帯は上半分・線0.30は 9/24 の実測"
+                    "。2026-09-27、線を 0.30 → 0.08 に下げ、ずれの上限 60px を足した。"
+                    "根拠（当日の実測）：同じ向き 0.088〜0.28／違う向き 最大 0.062。"
+                    "0.30 のままでは**ずれ0pxの正しい1枚が 0.223〜0.258 で弾かれていた**。"
+                    "確かさだけでは差が薄いので2段にした（ずれは正しい1枚 0〜25px／違う向き 176〜230px）"),
     },
     "コンロ": {
         # 本人の決め（2026-09-26）：テーブルとコンロは同じ向きに写るが、別々の場所なので分ける。
         # 一緒に見ていたとき、AI はガスコンロそのものを「電気コンロ」という**置かれた物**として
         # 数えていた。区画を分ければ、コンロは「備え付け」として除ける。
         "id": "stove", "active": True, "app_zone": "", "pose": "-0.50_0.00",
-        "aim": {"ref": "spirit/zoneref/table.jpg", "band": [0.0, 0.5], "min_conf": 0.30},
+        "aim": {"ref": "spirit/zoneref/table.jpg", "band": [0.0, 0.5],
+                "min_conf": 0.08, "max_shift": 60},   # 線とずれの根拠は水切りと同じ（9/27 実測）
         "crop": {"box": [0.70, 0.52, 1.0, 0.97], "rotate": 180, "hide_from": None},
         "ask": {"scene": "写真は共有キッチンのガスコンロを天井近くから写したものです。",
                 "fixtures": "コンロ本体・五徳（黒い金属の輪）・つまみ・受け皿は備え付けです。数えません。",
@@ -4642,11 +4703,16 @@ ZONE_CFG_DEFAULT = {
         "rule": {"kind": "change"},
         "decided": ("2026-09-26 本人「上下のテーブルとコンロで切り分けましょう」。向きはテーブルと同じ、"
                     "切り出しだけ別。見本もテーブルと同じ1枚。2026-09-27、向きを -0.50_0.00 に変え"
-                    "（-0.40 ではコンロが画面外）、切り出しは本人が案A（コンロ＋周りの台）を選択"),
+                    "（-0.40 ではコンロが画面外）、切り出しは本人が案A（コンロ＋周りの台）を選択"
+                    "。2026-09-27、線を 0.30 → 0.08 に下げ、ずれの上限 60px を足した。"
+                    "根拠（当日の実測）：同じ向き 0.088〜0.28／違う向き 最大 0.062。"
+                    "0.30 のままでは**ずれ0pxの正しい1枚が 0.223〜0.258 で弾かれていた**。"
+                    "確かさだけでは差が薄いので2段にした（ずれは正しい1枚 0〜25px／違う向き 176〜230px）"),
     },
     "IH": {
         "id": "ih", "active": True, "app_zone": "", "pose": "-0.10_-1.00",
-        "aim": {"ref": "spirit/zoneref/ih.jpg", "band": [0.0, 1.0], "min_conf": 0.30},
+        "aim": {"ref": "spirit/zoneref/ih.jpg", "band": [0.0, 1.0],
+                "min_conf": 0.08, "max_shift": 60},   # 線とずれの根拠は水切りと同じ（9/27 実測）
         # 上下も落とす。右は飲み物の棚、下は冷蔵庫と床（9/25 実測）
         "crop": {"box": [0.50, 0.40, 0.90, 0.90], "rotate": 180, "hide_from": None},
         "ask": {"scene": "写真は共有キッチンのIH調理器を天井近くから写したものです。",
@@ -4658,7 +4724,11 @@ ZONE_CFG_DEFAULT = {
         # IH の出どころが水切りの説明にすり替わっていたことになる。片方を消した。
         "decided": ("2026-09-26 本人が向きを指名。切り出し（横50〜90%・縦40〜90%）は 9/25 の実測。"
                     "線0.30は 9/26 の総当たり（自分1.000／他区画 最大0.040）。"
-                    "見本は 9/27 12:18 に、**振ってから12秒待って撮った1枚**で登録し直し、本人が目で確認済み"),
+                    "見本は 9/27 12:18 に、**振ってから12秒待って撮った1枚**で登録し直し、本人が目で確認済み"
+                    "。2026-09-27、線を 0.30 → 0.08 に下げ、ずれの上限 60px を足した。"
+                    "根拠（当日の実測）：同じ向き 0.088〜0.28／違う向き 最大 0.062。"
+                    "0.30 のままでは**ずれ0pxの正しい1枚が 0.223〜0.258 で弾かれていた**。"
+                    "確かさだけでは差が薄いので2段にした（ずれは正しい1枚 0〜25px／違う向き 176〜230px）"),
     },
 }
 
@@ -4691,7 +4761,7 @@ async def _ask_json(content: list, max_tokens: int = 150) -> dict:
     try:
         from anthropic import AsyncAnthropic
         client = AsyncAnthropic()
-        msg = await client.messages.create(model=MODEL, max_tokens=max_tokens,
+        msg = await _ai_create(client, model=MODEL, max_tokens=max_tokens,
                                            messages=[{"role": "user", "content": content}])
         text = "".join(x.text for x in msg.content if x.type == "text")
         i, j = text.find("{"), text.rfind("}")
@@ -4811,7 +4881,16 @@ def _view_ok(now: bytes, zone: str = "") -> tuple:
     dx, dy, resp = _frame_match(ref, now, band)
     if resp is None:
         return True, None, [dx, dy]
-    if resp >= min_conf:
+    # 区画は**2段**で守る（2026-09-27）。確かさは「同じ景色か」を答え、
+    # ずれは「離れすぎていないか」を答える。別々の問いなので、両方が要る。
+    # 確かさだけで見ていた頃（線0.30）は、**ずれ0pxの正しい1枚が弾かれていた。**
+    # ずれだけで見ていた頃（9/22）は、壁を写した1枚が「ずれ小さい＝使える」で通った。
+    # **ずれの門は、設定に `max_shift` がある区画にだけ効かせる。**
+    # シンクは「同じ景色が平行にずれただけなら通す」と 9/23 に決めてある
+    # （600px ずらしても確かさ 0.42 で、同じ景色だと分かる）。そこは変えない。
+    max_shift = aim.get("max_shift")
+    if resp >= min_conf and (max_shift is None
+                             or (abs(dx) <= max_shift and abs(dy) <= max_shift)):
         anchor["jpg"], anchor["ref_at"] = now, now_t
         return True, round(resp, 3), [dx, dy]
     prev = anchor["jpg"]
@@ -4939,7 +5018,7 @@ async def map_zones(request: Request, x_upload_key: str = Header(None)):
     try:
         from anthropic import AsyncAnthropic
         client = AsyncAnthropic()
-        msg = await client.messages.create(
+        msg = await _ai_create(client, 
             model=MODEL, max_tokens=900, system=_ZONE_SYSTEM,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64",
@@ -5057,7 +5136,7 @@ async def _derive_zones(data: bytes) -> list:
     try:
         from anthropic import AsyncAnthropic
         client = AsyncAnthropic()
-        msg = await client.messages.create(
+        msg = await _ai_create(client, 
             model=MODEL, max_tokens=500, system=_ZONE_SYSTEM,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64",
@@ -5140,7 +5219,7 @@ async def sink_check(request: Request, key: str = "", model: str = "",
                 im = ImageEnhance.Brightness(im).enhance(bright)
             b = _io.BytesIO(); im.save(b, "JPEG", quality=90); crop = b.getvalue()
         out["px"] = len(crop)
-        msg = await client.messages.create(
+        msg = await _ai_create(client, 
             model=model or MODEL, max_tokens=200,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
@@ -5717,7 +5796,7 @@ async def _sink_empty(data: bytes):
     try:
         from anthropic import AsyncAnthropic
         client = AsyncAnthropic()
-        msg = await client.messages.create(
+        msg = await _ai_create(client, 
             model=MODEL, max_tokens=80,
             messages=[{"role": "user", "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
@@ -5826,9 +5905,14 @@ async def _zone_cycle(st: dict, data: bytes, now: float, pose: str = "") -> dict
         # 「分かった」に見えるが、分からなかった滞在が記録されていないだけ）。
         # 顔が写っていた長さ（秒）。MIN_PRESENCE(30秒)未満なら「通り過ぎた」と読める。
         fspan = round(float(st.get("visit_face_last") or 0) - float(st.get("visit_face_first") or 0))
-        # 滞在の記録は**1滞在に1回**。1周で4枚撮るようになったので、素直に書くと
-        # 同じ滞在が4件並び、「通り過ぎ率」の分母が4倍になる（2026-09-26）。
-        vid = float(st.get("visit_start") or 0)
+        # 滞在の記録は**1周に1回**（2026-09-27 に直した）。
+        # 9/26 は「1滞在に1回」にした。1周で4枚撮るので、素直に書くと同じ滞在が
+        # 4件並び、通り過ぎ率の分母が4倍になるからである。**が、これは行き過ぎだった。**
+        # この家では滞在が切れない（誰かしらが通る）ので、**長い滞在では最初の1件しか
+        # 残らない。**9/27 の 13:04〜14:56 の滞在は、13:08 に書かれた
+        # 「まだ誰も紐づいていない」1件（who=[]・spans={}）だけになった。
+        # 1周ごとなら、4件並ぶのは防げて、長い滞在も取りこぼさない。
+        vid = float(st.get("sweep_at") or st.get("visit_start") or 0)
         if float(st.get("visit_logged") or 0) != vid or not vid:
             st["visit_logged"] = vid
             _log_event("visit", {"who": who, "sink_empty": empty, "spans": spans,
