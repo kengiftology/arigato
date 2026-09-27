@@ -38,6 +38,7 @@ router = APIRouter(prefix="/spirit", tags=["spirit"])
 logger = logging.getLogger("spirit")
 
 from server.keys import key_ok   # 目の認証はタイムラプスと同じ鍵（入れ替え中は新旧どちらも通す）
+from server.routers.zone_setup import PAGE as _SETUP   # 区画をブラウザから足す画面（2026-09-27）
 MODEL = "claude-haiku-4-5-20251001"                # 頻繁に呼ぶので軽く速く安く
 
 M_HI = 0.30            # このスコア以上が続くと放置度Nが育つ
@@ -4594,8 +4595,35 @@ async def _compare_images(a: bytes, b: bytes, focus: str = "") -> dict:
 # 見張る区画。**設定（ZONE_CFG_DEFAULT）で active になっているもの**を回す（2026-09-26）。
 # ここを別に持っていたせいで、9/26 に設定を5区画ぶん書いたのに、本番はシンク1つを
 # 回したままだった。**設定と、実際に回る一覧が食い違っていた。**
+def _zone_all() -> dict:
+    """区画の設定ぜんぶ（既定値に、画面から足した分を重ねたもの）。
+
+    2026-09-27：それまで一覧は `ZONE_CFG_DEFAULT`（コードに直に書いた分）だけを見ていた。
+    そのため**画面から新しい区画を足しても、見回りには現れなかった。**
+    「誰でも場所を足せる」ためには、一覧そのものが設定から来る必要がある。"""
+    out = {}
+    for n, c in ZONE_CFG_DEFAULT.items():
+        out[n] = dict(c)
+    try:
+        saved = _load().get("zone_cfg") or {}
+    except Exception as e:
+        _log_error("zone_cfg", e)
+        saved = {}
+    for n, c in saved.items():
+        if not isinstance(c, dict):
+            continue
+        base = dict(out.get(n) or {})
+        for k, v in c.items():
+            if isinstance(v, dict) and isinstance(base.get(k), dict):
+                d = dict(base[k]); d.update(v); base[k] = d
+            else:
+                base[k] = v
+        out[n] = base
+    return out
+
+
 def _zone_names() -> tuple:
-    names = [n for n, c in ZONE_CFG_DEFAULT.items() if c.get("active")]
+    names = [n for n, c in _zone_all().items() if c.get("active")]
     return tuple(names or ("シンク",))
 
 
@@ -4792,20 +4820,7 @@ def _zone_cfg(name: str) -> dict:
 
     既定値は「コードに直に書いてあった値」そのものなので、
     状態に何も入れなければ**動きは1つも変わらない**。"""
-    base = ZONE_CFG_DEFAULT.get(name) or {}
-    try:
-        saved = ((_load().get("zone_cfg") or {}).get(name)) or {}
-    except Exception as e:
-        # 設定が読めなければ既定値で動く。**動いてしまう**ので、落ちたことを残す
-        _log_error("zone_cfg", e, zone=name)
-        saved = {}
-    out = dict(base)
-    for k, v in saved.items():
-        if isinstance(v, dict) and isinstance(out.get(k), dict):
-            d = dict(out[k]); d.update(v); out[k] = d
-        else:
-            out[k] = v
-    return out
+    return _zone_all().get(name) or {}
 
 
 async def _ask_json(content: list, max_tokens: int = 150) -> dict:
@@ -6133,6 +6148,114 @@ async def zones_status():
             "aim": aim_now, "aim_warn_px": AIM_WARN_PX,
             "baseline_age": round(time.time() - st.get("baseline_at", 0))
             if st.get("baseline_at") else None}
+
+
+def _zone_cfg_check(c: dict) -> str:
+    """画面から来た区画の設定を確かめる。おかしければ、その理由を返す。
+
+    **`decided`（いつ・どうやって決めたか）は必須。**手で決めた数字は古くなり、
+    古くなったことは数字を見ても分からない（9/22 の向きの補正が古いまま 20時間50分の
+    停止を招き、9/24 に決めた線 0.30 が 9/27 まで残って正しい写真を弾いていた）。"""
+    if not str(c.get("decided") or "").strip():
+        return "decided（いつ・どうやって決めたか）を書いてください"
+    pose = str(c.get("pose") or "")
+    if pose:
+        try:
+            x, y = (float(v) for v in pose.split("_"))
+        except ValueError:
+            return "pose は「よこ_たて」の形で（例 -0.50_0.00）"
+        if not (-1.0 <= x <= 1.0 and -1.0 <= y <= 1.0):
+            return "pose は -1.00〜1.00 の範囲で"
+    aim = c.get("aim") or {}
+    if aim:
+        b = aim.get("band")
+        if b is not None and (len(b) != 2 or not 0 <= float(b[0]) < float(b[1]) <= 1):
+            return "band は [上, 下] で 0〜1（上 < 下）"
+        for k in ("min_conf", "max_shift"):
+            if aim.get(k) is not None:
+                try:
+                    float(aim[k])
+                except (TypeError, ValueError):
+                    return "%s は数字で" % k
+    crop = c.get("crop") or {}
+    box = crop.get("box")
+    if box is not None:
+        if len(box) != 4:
+            return "box は [左, 上, 右, 下] の4つで"
+        l, t, r, bo = (float(v) for v in box)
+        if not (0 <= l < r <= 1 and 0 <= t < bo <= 1):
+            return "box は 0〜1 の範囲で、左 < 右・上 < 下"
+    rule = c.get("rule") or {}
+    if rule.get("kind") and rule["kind"] not in ("change", "dwell"):
+        return "rule.kind は change か dwell"
+    return ""
+
+
+@router.get("/zones/cfg")
+async def zones_cfg():
+    """区画の設定を、そのまま読む（画面が使う）。"""
+    bucket = os.environ.get("GCS_BUCKET") or "arigato-photos"
+    return {"zones": _zone_all(), "names": list(_zone_names()),
+            "photo_base": "https://storage.googleapis.com/%s/" % bucket}
+
+
+@router.post("/zones/cfg")
+async def zones_cfg_set(request: Request, zone: str, key: str = ""):
+    """区画の設定を書き替える／新しい区画を足す（2026-09-27）。
+
+    **画面から場所を足せるようにするための口。**ここに書いた分は既定値に重なり、
+    `_zone_all()` が一覧を作るので、**見回りは次の1周から新しい区画を回る。**
+
+    消すのではなく `active: false` にする。消すと、その区画で取った記録が
+    「何の記録だったか」分からなくなる。"""
+    if not key_ok(key):
+        raise HTTPException(status_code=401, detail="bad key")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON で送ってください")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON の中身が違います")
+    merged = dict(_zone_cfg(zone) or {})
+    for k, v in body.items():
+        if isinstance(v, dict) and isinstance(merged.get(k), dict):
+            d = dict(merged[k]); d.update(v); merged[k] = d
+        else:
+            merged[k] = v
+    why = _zone_cfg_check(merged)
+    if why:
+        raise HTTPException(status_code=400, detail=why)
+    st = _load()
+    cfg = dict(st.get("zone_cfg") or {})
+    cur = dict(cfg.get(zone) or {})
+    for k, v in body.items():
+        if isinstance(v, dict) and isinstance(cur.get(k), dict):
+            d = dict(cur[k]); d.update(v); cur[k] = d
+        else:
+            cur[k] = v
+    cfg[zone] = cur
+    st["zone_cfg"] = cfg
+    st["zones"] = []                      # 一覧が変わったので立て直す
+    _save(st)
+    _log_event("zone_cfg_set", {"zone": zone, "keys": sorted(body),
+                                "decided": str(merged.get("decided"))[:120],
+                                "active": bool(merged.get("active"))})
+    return {"ok": True, "zone": zone, "cfg": merged, "names": list(_zone_names())}
+
+
+@router.get("/setup", response_class=HTMLResponse)
+async def setup_page():
+    """区画をブラウザから足す・直す画面（2026-09-27・本人「誰でも足せるように」）。
+
+    それまで区画はコードの中にしかなく、**足すにはコードを直す必要があった。**
+    ここで直した分は状態に入り、`_zone_all()` が一覧を作るので、
+    **次の1周から見回りに効く。**
+
+    **見本の写真だけは、この画面からは撮れない**（カメラを振る必要がある）。
+    `scripts/zone_shoot.py` で撮り、**人が目で見て確かめてから**登録する。
+    この順番は変えない ── **その場所が写っているかを決められるのは人だけ**で、
+    間違った見本を登録すると、**そこから先ずっと「合っている」と出続ける。**"""
+    return _SETUP
 
 
 @router.post("/zone/ref")

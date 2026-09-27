@@ -207,3 +207,44 @@ def test_AIの窓口が自分を呼んでいない():
             assert inner, "_ai_create の中から本物の呼び出しが消えている"
             return
     raise AssertionError("_ai_create が見つからない")
+
+
+# ── 画面から区画を足せるか（2026-09-27・本人「誰でも、どこにでも足せるように」） ──
+
+def test_画面から足した区画が見回りに現れる(monkeypatch):
+    """9/27 まで、一覧は**コードに直に書いた分だけ**を見ていた。
+
+    そのため設定に新しい区画を足しても、**見回りには一生現れない。**
+    「誰でも足せる」ためには、一覧そのものが設定から来る必要がある。"""
+    st = {"zone_cfg": {"まな板の棚": {"id": "board", "active": True, "pose": "-0.20_-0.50",
+                                    "decided": "2026-09-27 試験"}}}
+    monkeypatch.setattr(sp, "_load", lambda *a, **k: st)
+    assert "まな板の棚" in sp._zone_names()
+    assert sp._zone_cfg("まな板の棚").get("pose") == "-0.20_-0.50"
+    # 既定値の区画も残っている
+    assert "シンク" in sp._zone_names()
+
+
+def test_設定で区画を止められる(monkeypatch):
+    """消すのではなく止める。消すと、その区画で取った記録が何だったか分からなくなる。"""
+    monkeypatch.setattr(sp, "_load", lambda *a, **k: {"zone_cfg": {"IH": {"active": False}}})
+    assert "IH" not in sp._zone_names()
+    assert "シンク" in sp._zone_names()
+
+
+def test_いつどう決めたかを書かないと通らない():
+    """`decided` は必須。手で決めた数字は古くなり、古くなったことは数字を見ても分からない。"""
+    assert "decided" in sp._zone_cfg_check({"pose": "-0.5_0.0"})
+    assert sp._zone_cfg_check({"pose": "-0.50_0.00", "decided": "2026-09-27 実測"}) == ""
+
+
+def test_おかしな設定を止める():
+    ok = {"decided": "2026-09-27 実測"}
+    assert "pose" in sp._zone_cfg_check(dict(ok, pose="まんなか"))
+    assert "-1.00" in sp._zone_cfg_check(dict(ok, pose="-2.00_0.00"))
+    assert "band" in sp._zone_cfg_check(dict(ok, aim={"band": [0.8, 0.2]}))
+    assert "box" in sp._zone_cfg_check(dict(ok, crop={"box": [0.8, 0.1, 0.2, 0.9]}))
+    assert "box" in sp._zone_cfg_check(dict(ok, crop={"box": [0.1, 0.1, 0.9]}))
+    assert "rule" in sp._zone_cfg_check(dict(ok, rule={"kind": "てきとう"}))
+    assert sp._zone_cfg_check(dict(ok, pose="-0.50_0.00", aim={"band": [0.0, 0.5], "min_conf": 0.08},
+                                   crop={"box": [0.1, 0.1, 0.9, 0.9]}, rule={"kind": "dwell"})) == ""
