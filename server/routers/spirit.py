@@ -2867,8 +2867,7 @@ async def _greet_check(text: str, name: str = "") -> str:
         d = json.loads(out[i:j + 1]) if 0 <= i < j else {}
     except Exception as e:
         logger.warning("greet check failed: %s", e)
-        _log_event("greet_error", {"err": ("%s: %s" % (type(e).__name__, e))[:160],
-                                   "step": "見直し"})
+        _log_error("greet_check", e)
         return ""
     if d.get("ok") is False:
         return str(d.get("why") or "決まりに合わない")
@@ -2991,8 +2990,7 @@ async def _keep_topic(said: list) -> str:
         what = json.loads(out[i:j + 1]).get("what") if 0 <= i < j else None
     except Exception as e:
         logger.warning("keep topic failed: %s", e)
-        _log_event("greet_error", {"err": ("%s: %s" % (type(e).__name__, e))[:160],
-                                   "step": "前に聞いたことの取り出し"})
+        _log_error("keep_topic", e)
         return ""
     if not isinstance(what, str):
         return ""
@@ -3159,8 +3157,7 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
         # `+` の二重で全部落ちていたのに、外からは「一言が作られない」としか
         # 見えなかった。空を返すのはそのまま、落ちたことだけ残す。
         logger.warning("greet failed: %s", e)
-        _log_event("greet_error", {"err": ("%s: %s" % (type(e).__name__, e))[:160],
-                                   "had_memory": bool(memory), "had_kept": bool(kept)})
+        _log_error("greet_write", e, had_memory=bool(memory), had_kept=bool(kept))
         return ""
 
 
@@ -3180,7 +3177,7 @@ async def greet():
     try:
         doc = get_db().collection("faces").document(pid).get().to_dict() or {}
     except Exception as e:
-        _log_error("字幕のための覚えの読み出し", e)
+        _log_error("greet_doc_read", e)
         doc = {}
     alone = len(st.get("visit_people") or []) <= 1
     thanks = _own_care(pid)               # 本人が片づけていたときだけ、ありがとう
@@ -4010,7 +4007,7 @@ async def _prepare_greetings(st: dict, now: float) -> int:
             n += 1
     except Exception as e:
         logger.warning("prepare greetings failed: %s", e)
-        _log_error("一言の作り置き", e, made=n)
+        _log_error("prepare_lines", e, made=n)
     if n:
         _log_event("prepared", {"lines": n})
     return n
@@ -4247,7 +4244,7 @@ async def voice_pcm():
             b = read_object(LINES_PREFIX + nm + ".pcm")
         except Exception as e:
             logger.warning("line read failed (%s): %s", nm, e)
-            _log_error("声の読み出し", e, line=nm)
+            _log_error("voice_read", e, line=nm)
             b = None
         if b:
             pcms.append((nm, b))
@@ -5448,8 +5445,7 @@ def _recent_change(window: float) -> dict | None:
             break
     except Exception as e:
         logger.warning("recent change lookup failed: %s", e)
-        _log_event("greet_error", {"err": ("%s: %s" % (type(e).__name__, e))[:160],
-                                   "step": "思い出のさがし"})
+        _log_error("memory_lookup", e)
         return None                              # 調べ損ねたときは控えを作らない
     _LAST_CHANGE[window] = (time.time(), out)
     return out
