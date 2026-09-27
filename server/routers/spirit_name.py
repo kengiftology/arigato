@@ -207,7 +207,7 @@ async def maybe_ask_async(st: dict, pid: str, doc: dict, now: float, alone: bool
     if not look:
         return maybe_ask(st, pid, doc, now, alone)
     text = "%s ひと、なんて よんだらいい？" % look
-    line = "talk_%s_0" % pid
+    line = _talk_line(pid)                 # 4本を順に使う（古い音が鳴らないように）
     try:
         pcm = await _voice(text)
         upload_to(sp.LINES_PREFIX + line + ".pcm", pcm, "application/octet-stream")
@@ -361,6 +361,18 @@ async def _pick_name(text: str) -> str | None:
 
 # ---- 3. 覚えたと返す ----
 
+# 返しの置き場は4つを順に使う（2026-09-28）。同じ名前に上書きし続けると、
+# 古い指し先が残ったときに前の音が鳴る。回せば、新しい指し先は必ず新しい音を指す。
+TALK_SLOTS = 4
+_talk_turn_no: dict = {}
+
+
+def _talk_line(pid: str) -> str:
+    n = (_talk_turn_no.get(pid, -1) + 1) % TALK_SLOTS
+    _talk_turn_no[pid] = n
+    return "talk_%s_%d" % (pid, n)
+
+
 async def _voice(text: str) -> bytes:
     """クラウドの VOICEVOX で、16kHz・16bit・モノラルの生PCMにする。"""
     import google.auth.transport.requests
@@ -433,7 +445,7 @@ _said_sec = [0.0]                    # 直前に _say で置いた声の長さ�
 
 async def _say(st: dict, person: str, text: str) -> bool:
     """その場で声にして、次に鳴らす声に置く。置けたら True。"""
-    line = "talk_%s_0" % person            # 持ち歌と同じ置き場。1人1本を上書きして使う
+    line = _talk_line(person)              # 持ち歌と同じ置き場。4本を順に使う
     try:
         pcm = await _voice(text)
         upload_to(sp.LINES_PREFIX + line + ".pcm", pcm, "application/octet-stream")
@@ -443,6 +455,12 @@ async def _say(st: dict, person: str, text: str) -> bool:
     st["speak_line"] = line
     st["speak_at"] = time.time() + sp.SPEAK_MIN
     _said_sec[0] = len(pcm) / 32000.0      # 16kHz・16bit・モノラル
+    # 2026-09-28：**作った音の大きさ**を残す。9/27 23:39、返しを4回作ったのに、
+    # 鳴った音は4回とも同じ大きさ（61,098＝最初の質問と同じ）だった。本人の体験も
+    # 「何回も聞かれた・返事がなかった」。作った側と鳴った側を突き合わせられないと、
+    # どちらが悪いのか分からない。ここに残せば、`voice` の bytes と比べられる。
+    sp._log_event("said_made", {"person": person, "line": line, "bytes": len(pcm),
+                                "chars": len(text), "text": text[:30]})
     return True
 
 
@@ -595,7 +613,7 @@ async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
         return False
     import random
     q = random.choice([x for x in TALK_QUESTIONS if x != doc.get("last_q")] or TALK_QUESTIONS)
-    line = "talk_%s_0" % pid
+    line = _talk_line(pid)                 # 4本を順に使う（古い音が鳴らないように）
     try:
         pcm = await _voice(q)
         upload_to(sp.LINES_PREFIX + line + ".pcm", pcm, "application/octet-stream")
