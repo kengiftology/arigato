@@ -186,3 +186,24 @@ def test_AIの呼び出しが窓口を通っている():
     direct = [l.strip() for l in src.splitlines()
               if ".messages.create(" in l and "_ai_create" not in l and "**kw" not in l]
     assert not direct, "窓口を通していない呼び出しがある: %s" % direct
+
+
+def test_AIの窓口が自分を呼んでいない():
+    """9/27 16:22：窓口を作る一括置換が、**窓口の中身まで書き換えた。**
+
+    `_ai_create` が `_ai_create` を呼ぶ形になり、AI の呼び出しが4分間すべて
+    RecursionError で落ちた。**道具が道具自身を壊した。**置換のあと実物を読めば
+    すぐ分かったが、テストが無いと次も同じことが起きる。"""
+    import ast, io, os
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "server", "routers", "spirit.py")
+    tree = ast.parse(io.open(p, encoding="utf-8").read())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "_ai_create":
+            calls = [n for n in ast.walk(node)
+                     if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_ai_create"]
+            assert not calls, "_ai_create が自分自身を呼んでいる"
+            inner = [n for n in ast.walk(node) if isinstance(n, ast.Attribute) and n.attr == "create"]
+            assert inner, "_ai_create の中から本物の呼び出しが消えている"
+            return
+    raise AssertionError("_ai_create が見つからない")

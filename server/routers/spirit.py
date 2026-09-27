@@ -337,9 +337,13 @@ async def _ai_create(client, **kw):
     """AI に聞く。**答えた／断られたを、ここで必ず控える。**
 
     呼び出しが10か所に散っているので、1か所ずつ控えると必ず抜ける。
-    窓口を1つにして、そこを通す。"""
+    窓口を1つにして、そこを通す。
+
+    2026-09-27：**この中の呼び出しまで一括置換して、自分自身を呼んでいた**（無限再帰）。
+    16:22〜16:26 のあいだ、AI の呼び出しがすべて RecursionError で落ちた。
+    道具（一括置換）が、道具自身の中身まで書き換えた形。**置換したあとに必ず実物を読む。**"""
     try:
-        msg = await _ai_create(client, **kw)
+        msg = await client.messages.create(**kw)
     except Exception as e:
         _ai_ping(False, e)
         raise
