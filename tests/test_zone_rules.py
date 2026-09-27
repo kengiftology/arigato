@@ -103,3 +103,42 @@ def test_一周が基準写真の寿命より短い():
         "区画%d個で1周%.1f時間、基準の寿命は%.1f時間。"
         "このままでは比較が成立しない。寿命を延ばすか、点検の間隔を縮めること"
         % (zones, round_sec / 3600, sp.BASELINE_MAX_AGE / 3600))
+
+
+def test_同じ鍵が2つ並んだ設定が無い():
+    """9/27：IH の設定に `decided` が2つ並び、**2つ目（水切りの文面）が勝っていた。**
+
+    「いつ・どうやって決めたか」を必ず書く決まりは守られているのに、
+    **中身が別の区画の説明にすり替わっていた。**書いてあるので誰も疑わない。
+    Python は黙って後ろを採るので、読んでも気づけない。ここで落とす。"""
+    import ast, io, collections, os
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "server", "routers", "spirit.py")
+    tree = ast.parse(io.open(p, encoding="utf-8").read())
+    dups = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Dict):
+            keys = [k.value for k in node.keys
+                    if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+            for k, n in collections.Counter(keys).items():
+                if n > 1:
+                    dups.append("%d行目: %s が %d回" % (node.lineno, k, n))
+    assert not dups, "同じ鍵が2つ並んでいる: " + " / ".join(dups)
+
+
+def test_記録が書けなくなったら健康診断に出る(monkeypatch):
+    """9/27：記録を書く処理が黙って落ちると、**全部の数字が静かに減る。**
+
+    「世話が少ない」のか「記録できていない」のかを外から見分けられないのが怖い。
+    `_log_event` の失敗を `_log_event` で書くと無限に回るので、health に出す。
+    見張りは10分おきに health を叩いているので、そのまま拾える。"""
+    import time as _t
+    now = _t.time()
+    monkeypatch.setattr(sp, "_log_ok", [now - 300, now - 10, "ServiceUnavailable: 503"])
+    h = sp._health()
+    assert h["ok"] is False
+    assert "記録が書けていない" in h["stopped"]
+    # 書けているときは止めない
+    monkeypatch.setattr(sp, "_log_ok", [now - 5, 0.0, ""])
+    h = sp._health()
+    assert "記録が書けていない" not in h["stopped"]

@@ -314,12 +314,24 @@ def _log_error(step: str, e: Exception, **extra):
                                   err=("%s: %s" % (type(e).__name__, e))[:160]))
 
 
+# 記録が書けているか（2026-09-27）。**ここが黙って落ちると、全部の数字が静かに減る。**
+# 「世話が少ない」「対話が起きていない」が、**起きていないのか記録されていないのか
+# 区別できなくなる。**今日いちばん怖い壊れ方はこれ。
+# ただし `_log_event` の失敗を `_log_event` で書くと無限に回るので、**記録には書かない。**
+# 代わりに「最後に書けた時刻」「最後に落ちた時刻」を持ち、`/spirit/health` に出す。
+# 見張りは10分おきに health を叩いているので、**新しい見張りを作らずに拾える。**
+_log_ok = [0.0, 0.0, ""]        # 最後に書けた時刻／最後に落ちた時刻／落ちた理由
+LOG_FAIL_LIMIT = 600.0          # 直近これだけの間に落ちていれば「止まっている」扱い
+
+
 def _log_event(kind: str, data: dict):
     """研究用の時系列ログ（spirit_log）。失敗しても本体を止めない。"""
     now = time.time()
     try:
         get_db().collection("spirit_log").add({"t": now, "kind": kind, **data})
+        _log_ok[0] = now
     except Exception as e:
+        _log_ok[1], _log_ok[2] = now, ("%s: %s" % (type(e).__name__, e))[:120]
         logger.warning("spirit log failed: %s", e)
     _note_change(kind, data, now)
 
@@ -816,6 +828,8 @@ def _refresh_memory(vecs: list, vec: list):
         out = [x for i, x in enumerate(vecs) if i != drop]
         return out + [{"v": vec}]
     except Exception as e:
+        # 思い出が出てこないのと、思い出を取りに行けなかったのは別物（2026-09-27）
+        _log_error("思い出の読み直し", e)
         logger.warning("memory refresh failed: %s", e)
         return None
 
@@ -2432,7 +2446,23 @@ def _health() -> dict:
                       "ago": round(now - cam), "limit": BUSY_CAMERA_LIMIT,
                       "ok": False, "unknown": False})
         bad = bad + ["人が居るのに写真が来ない"]
+    # 記録が書けているか（2026-09-27）。**ここが落ちると数字が静かに減る。**
+    # 「世話が無かった」のか「記録できなかった」のかを、外から見分けるための欄。
+    # 注意：これは**この1つのインスタンスの話**。クラウドは同時に何台も動いていて、
+    # この返事を書いた台が一度も書いていなければ「まだ分からない」になる。
+    # Firestore が本当に落ちていれば、どの台でも落ちるので、続けて叩けば必ず出る。
+    ok_at, fail_at, why = _log_ok[0], _log_ok[1], _log_ok[2]
+    if fail_at > ok_at and now - fail_at < LOG_FAIL_LIMIT:
+        items.append({"id": "log", "name": "記録が書けていない", "ago": round(now - fail_at),
+                      "limit": LOG_FAIL_LIMIT, "ok": False, "unknown": False, "why": why})
+        bad = bad + ["記録が書けていない"]
+    else:
+        items.append({"id": "log", "name": "記録が書けている",
+                      "ago": round(now - ok_at) if ok_at else None,
+                      "limit": LOG_FAIL_LIMIT, "ok": True, "unknown": not ok_at})
     return {"ok": not bad, "stopped": bad, "items": items,
+            "log_ok_ago": round(now - ok_at) if ok_at else None,
+            "log_fail_ago": round(now - fail_at) if fail_at else None,
             # いま本番で動いているのはどの版か（2026-09-25）。
             # 9/25、入れ替えが5時間止まっていたのに誰も気づかなかった。
             # 橋渡しが 9/23 の写しのまま2日ぶら下がっていたのも同じ形。
@@ -4613,7 +4643,9 @@ def _zone_cfg(name: str) -> dict:
     base = ZONE_CFG_DEFAULT.get(name) or {}
     try:
         saved = ((_load().get("zone_cfg") or {}).get(name)) or {}
-    except Exception:
+    except Exception as e:
+        # 設定が読めなければ既定値で動く。**動いてしまう**ので、落ちたことを残す
+        _log_error("区画の設定", e, zone=name)
         saved = {}
     out = dict(base)
     for k, v in saved.items():
@@ -5018,6 +5050,7 @@ async def _derive_zones(data: bytes) -> list:
                             "false": 0, "state": "試用中"})
         return out
     except Exception as e:
+        _log_error("区画の立て直し", e)
         logger.warning("derive zones failed: %s", e)
         return []
 
@@ -5578,6 +5611,9 @@ def _zone_crop(data: bytes, zone: str = "シンク") -> bytes:
         c.save(buf, "JPEG", quality=85)
         return buf.getvalue()
     except Exception as e:
+        # ここが落ちると**写真まるごと**をその区画として見ることになる。
+        # 床や冷蔵庫を見て「物は無い」と答えるのは、この道から来る（2026-09-27）。
+        _log_error("区画の切り出し", e, zone=zone)
         logger.warning("zone crop failed (%s): %s", zone, e)
         return data
 
@@ -5917,6 +5953,7 @@ async def zones_status():
             aim_now = {"dx": dx, "dy": dy, "off": max(abs(dx), abs(dy)),
                        "resp": round(resp, 3) if resp is not None else None}
     except Exception as e:
+        _log_error("向きの確かめ", e)
         logger.warning("aim check failed: %s", e)
     return {"zones": out, "home": st.get("home_pose") or "",
             "paused": bool(st.get("sweep_paused")),
