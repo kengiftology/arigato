@@ -317,15 +317,20 @@ def _note_change(kind: str, data: dict, t: float):
     # 状態がまだ読まれていないときは触らない（ここから _load を呼ぶと記録が入れ子になる）
     if not good or _state_cache is None:
         return
+    # どの区画が変わったか（2026-09-27）。記録に入るようになったので、名前で言える
+    zone = str(data.get("zone") or "")
+    if not zone:
+        zone = next((str(c.get("where") or "") for c in (data.get("changes") or [])
+                     if c.get("where")), "")
     if kind == "zone":
         what = "、".join((c.get("what") or "") for c in (data.get("changes") or []) if c.get("what"))
     else:
-        what = "シンクが きれいに なっていた"
+        what = "%sが きれいに なっていた" % (zone or "シンク")
     if not what:
         return
     try:
         _state_cache["last_change"] = {
-            "what": what[:60], "t": t,
+            "what": what[:60], "t": t, "zone": zone,
             "who": [w for w in (data.get("who") or []) if w]}
         _save(_state_cache)
     except Exception as e:
@@ -2967,7 +2972,11 @@ async def _greet_line(persona: str, manner: str, thanks: bool = False,
                  "この人のしたこととして言ってよい。ありがとうの気持ちで。"
                  if memory.get("mine") else
                  "誰がやったかは言わない。場所の様子として『%s、〜なってたなあ』と言う。" % when) +
-                "\n思い出は1つだけ、短く。**英語やかたい言い方は使わず、子どもの短いひらがなに言い直す**。"
+                # 2026-09-27：区画が5つになった。どこのことかを言わないと、
+                # 「きれいになってた」がどこの話か分からない（掟その二）。
+                + ("\n**どこが変わったのか（『%s』）を、そのことばのまま文の中に出す。**"
+                   "『ここ』『あそこ』で済ませない。" % memory["zone"] if memory.get("zone") else "")
+                + "\n思い出は1つだけ、短く。**英語やかたい言い方は使わず、子どもの短いひらがなに言い直す**。"
                 # 2026-09-25：さかのぼる範囲を7日にしたので、日数に触れる文が出やすくなる。
                 "回数（◯回目）・日数（なん日ぶり・3日まえ・先週）・『ひさしぶり』・『しばらく』・"
                 "『また来た』のような、**来かたや空いた時間に触れることばは一切言わない**。"
@@ -3070,13 +3079,20 @@ async def greet():
         doc = {}
     alone = len(st.get("visit_people") or []) <= 1
     thanks = _own_care(pid)               # 本人が片づけていたときだけ、ありがとう
-    news = (not thanks) and _recent_care()   # そうでなければ、場所の様子として
-    line = await _greet_line(st.get("persona", ""), _manner(doc, alone), thanks, news)
+    # 2026-09-27：ここは news（「シンクがきれいになっていた」の決め打ち）だけで、
+    # 区画が5つになっても「シンク」としか言えなかった。思い出の側は区画の名前を持って
+    # いるので、そちらを使う。ただし**相手を確かめられないときは区画に触れない**
+    # （他人の手柄を別人に返さないため・関門②）。
+    confirmed = _confirmed_for(st, pid, time.time())
+    mem = _recent_memory(pid) if (MEMORY_ON and confirmed) else None
+    line = await _greet_line(st.get("persona", ""), _manner(doc, alone), thanks,
+                             False, memory=mem)
     if not line:
         return ""
     st["greet_for"], st["greet_line"] = pid, line
     _save(st)
-    _log_event("greet", {"person": pid, "alone": alone, "thanks": thanks})
+    _log_event("greet", {"person": pid, "alone": alone, "thanks": thanks,
+                         "zone": (mem or {}).get("zone") or "", "confirmed": confirmed})
     return line + "\n"
 
 
@@ -3761,6 +3777,48 @@ def _todo_name(pid: str, i: int = 0) -> str:
     return "for_%s_%d" % (pid, i)
 
 
+# ---- 区画に触れてよいかを確かめる（2026-09-27・関門②）----
+# 区画の思い出は「どこが片づいていた」という、誰かの手柄に触れる話になる。
+# 相手を取り違えたまま言うと、**他人の手柄を別人に返す**ことになる。
+# 数えてから止めるのでは遅い（止める判断をする前に、もう言ってしまっている）。
+# 確かめられないときは、そもそも区画に触れる一言を鳴らさない。
+CONFIRM_SEC = 120.0              # 顔が見えていたと認める長さ
+
+
+def _line_person_zone(name: str) -> tuple:
+    """作り置きの名前から、宛先と、その一言が触れた区画を引く。"""
+    if not name.startswith("for_"):
+        return "", ""
+    body = name[4:]
+    pid, _, idx = body.rpartition("_")
+    if not pid or not idx.isdigit():
+        return "", ""
+    try:
+        doc = get_db().collection("faces").document(pid).get().to_dict() or {}
+        ls = _slots(doc)
+        return pid, str(ls[int(idx)].get("zone") or "") if int(idx) < len(ls) else ""
+    except Exception as e:
+        logger.warning("line zone lookup failed: %s", e)
+        return pid, ""
+
+
+def _confirmed_for(st: dict, pid: str, now: float) -> bool:
+    """その一言を、その人に向けて言ってよいと確かめられるか。
+
+    ① いま居ると判断している人が、その一言の宛先と同じ
+    ② その人の顔が CONFIRM_SEC 以内に見えている
+    ③ そのあいだに別の人の顔が見えていない
+       （120秒は長い。間に別の人が入れば、宛先が合っていても別人に返す）"""
+    if not pid or (st.get("cur_person") or "") != pid:
+        return False
+    seen = st.get("seen_at") or {}
+    mine = float(seen.get(pid) or 0)
+    if not mine or now - mine > CONFIRM_SEC:
+        return False
+    return not any(other != pid and now - float(t or 0) <= CONFIRM_SEC
+                   for other, t in seen.items())
+
+
 def _slots(doc: dict) -> list:
     """その人の一言の枠。[{"t": 文, "m": 声にした文, "at": 時刻}, ...]"""
     ls = doc.get("lines")
@@ -3772,16 +3830,19 @@ def _slots(doc: dict) -> list:
     return []
 
 
-def _put_line(ls: list, text: str, now: float) -> list | None:
-    """新しい一言を枠に入れる。同じ文を既に持っていれば何もしない。"""
+def _put_line(ls: list, text: str, now: float, zone: str = "") -> list | None:
+    """新しい一言を枠に入れる。同じ文を既に持っていれば何もしない。
+
+    zone＝その一言が触れた区画（2026-09-27）。鳴ったときの記録に残すために持つ。"""
     if any((x.get("t") or "") == text for x in ls):
         return None
     ls = list(ls)
+    item = {"t": text, "m": "", "at": now, "zone": zone}
     if len(ls) < LINES_PER_PERSON:
-        ls.append({"t": text, "m": "", "at": now})
+        ls.append(item)
     else:
         ls.sort(key=lambda x: x.get("at") or 0)
-        ls[0] = {"t": text, "m": "", "at": now}        # 一番古いものと入れ替え
+        ls[0] = item                                   # 一番古いものと入れ替え
     return ls
 
 
@@ -3819,7 +3880,8 @@ async def _prepare_greetings(st: dict, now: float) -> int:
                                      opening=(KEEP_OPENING if use_kept else
                                               MEMORY_OPENING if mem else _pick_openings(nm)[0]))
             if text:
-                ls = _put_line(_slots(doc), text, now)
+                ls = _put_line(_slots(doc), text, now,
+                               (mem or {}).get("zone") or "")
                 if ls is not None:
                     upd = {"lines": ls}
                     if mem:
@@ -3908,7 +3970,12 @@ async def remake_lines(pid: str, n: int = LINES_PER_PERSON, save: bool = True,
         if len(texts) < n:
             old = [x.get("t") for x in _slots(doc) if x.get("t")]
             texts = texts + [t for t in old if t not in texts][:n - len(texts)]
-        upd = {"lines": [{"t": t, "m": "", "at": now} for t in texts]}
+        # どの一言がどの区画に触れたかを、一言と一緒に覚える（2026-09-27・関門①）
+        zone_of = {}
+        if got_mem and mem and mem.get("zone") and texts:
+            zone_of[texts[min(mem_at, len(texts) - 1)]] = mem["zone"]
+        upd = {"lines": [{"t": t, "m": "", "at": now, "zone": zone_of.get(t, "")}
+                         for t in texts]}
         if got_mem:
             upd["told_change"] = mem["t"]
         if got_kept:
@@ -4087,9 +4154,19 @@ async def voice_pcm():
         # 「一回聞き逃しても、3分待たなくていいように」。
         # 独り言をくり返すのは、子どもらしさとしても不自然ではない。
         pcm = pcm + PAUSE + pcm
+    # 誰に向けた一言で、どの区画に触れていて、相手を確かめられているか（2026-09-27）
+    pid, zone = _line_person_zone(pcms[0][0])
+    confirmed = _confirmed_for(st, pid, now) if pid else False
+    if zone and not confirmed:
+        # 確かめられないときは、区画に触れる一言をそもそも鳴らさない。
+        # 他人の手柄を別人に返さないため。次の機会に別の一言が鳴る。
+        _log_event("voice_held", {"line": pcms[0][0], "person": pid, "zone": zone,
+                                  "confirmed": False, "why": "相手を確かめられない"})
+        return _quiet()
     st["voiced_at"] = now                          # 次の声は VOICE_GAP 後
     _save(st)
-    _log_event("voice", {"line": "＋".join(nm for nm, _ in pcms), "bytes": len(pcm)})
+    _log_event("voice", {"line": "＋".join(nm for nm, _ in pcms), "bytes": len(pcm),
+                         "person": pid, "zone": zone, "confirmed": confirmed})
     return Response(content=_scale_pcm(pcm, VOICE_GAIN), media_type="application/octet-stream")
 
 
@@ -5203,7 +5280,8 @@ def _recent_change(window: float) -> dict | None:
     note = (_load() or {}).get("last_change") or {}
     if note.get("what") and 0 < now - float(note.get("t") or 0) <= window:
         out = {"what": note["what"], "hours": int((now - float(note["t"])) // 3600),
-               "who": note.get("who") or [], "t": float(note["t"])}
+               "who": note.get("who") or [], "t": float(note["t"]),
+               "zone": str(note.get("zone") or "")}
         _LAST_CHANGE[window] = (now, out)
         return out
     out = None
@@ -5226,13 +5304,15 @@ def _recent_change(window: float) -> dict | None:
             if now - t > window:
                 break
             what = ""
+            zone = str(e.get("zone") or "") or next(
+                (str(c.get("where") or "") for c in (e.get("changes") or []) if c.get("where")), "")
             if e.get("kind") == "zone" and e.get("better"):
                 what = "、".join((c.get("what") or "") for c in (e.get("changes") or []) if c.get("what"))
             elif e.get("kind") == "care" or (e.get("kind") == "visit" and e.get("sink_empty")):
-                what = "シンクが きれいに なっていた"
+                what = "%sが きれいに なっていた" % (zone or "シンク")
             if not what:
                 continue
-            out = {"what": what[:60], "hours": int((now - t) // 3600),
+            out = {"what": what[:60], "hours": int((now - t) // 3600), "zone": zone,
                    "who": [w for w in (e.get("who") or []) if w], "t": t}
             break
     except Exception as e:
@@ -5256,7 +5336,7 @@ def _recent_memory(pid: str, window: float = 0.0, after: float = 0.0) -> dict | 
     if not got or got["t"] <= after:
         return None                              # もうこの人に話した思い出は、持ち出さない
     return {"what": got["what"], "hours": got["hours"], "t": got["t"],
-            "mine": got["who"] == [pid]}
+            "zone": got.get("zone") or "", "mine": got["who"] == [pid]}
 
 
 def _recent_care() -> bool:
