@@ -18,6 +18,19 @@
 import collections, json, sys, time, urllib.request
 
 SRV = "https://arigato-3ipecjbnha-an.a.run.app"
+
+# 欄が生まれた時刻（2026-09-27・A の調べ）。**欄が無いものを False と読まない。**
+# 9/27、私は `seen` の無い古い記録を「人が居なかった」と読み、
+# 「顔で誰か分かったのに人が居ない」という11件の矛盾を作って、穴を疑いかけた。
+# 矛盾は記録ではなく**読み方**にあった。3つとも生まれた時刻が違うので、
+# まとめて「9/24 以降」とすると1日半ぶんずれる。
+BORN = {"seen": "2026-09-24 16:07",            # 人が居たか（顔が取れなくても）
+        "face_span": "2026-09-26 00:53",       # 顔が写っていた長さ
+        "passed_by": "2026-09-26 00:53"}
+
+
+def born(field: str) -> float:
+    return time.mktime(time.strptime(BORN[field], "%Y-%m-%d %H:%M"))
 LINE = 30.0          # 通り過ぎの線。3秒〜30秒は分布がほぼ空なので、この範囲ならどこでも同じ
 MERGE = 1800.0       # その人が30分来なければ、その人の滞在はおわり（VISIT_MERGE_GAP）
 
@@ -73,13 +86,20 @@ def main() -> None:
     near = [s for s in both if s[2] - s[1] >= LINE]
     pass_ = [s for s in both if s[2] - s[1] < LINE]
     # 不明：人が居たのは確かだが、顔が1枚も取れていない滞在
-    unknown = [e for e in ev if e["kind"] == "visit" and e.get("seen") and not (e.get("who") or e.get("spans"))]
+    # `seen` が生まれる前の滞在は、「人が居なかった」ではなく**分からない**。数えない。
+    vis = [e for e in ev if e["kind"] == "visit"]
+    old_vis = [e for e in vis if e["t"] < born("seen")]
+    unknown = [e for e in vis if e["t"] >= born("seen") and e.get("seen")
+               and not (e.get("who") or e.get("spans"))]
     n_near, n_pass, n_unk = len(near), len(pass_), len(unknown) + len(one)
     print("直近 %.0f日（%s 以降）" % (days, time.strftime("%m/%d %H:%M", time.localtime(since))))
     print("  立ち寄り（%.0f秒以上） %3d" % (LINE, n_near))
     print("  通り過ぎ（%.0f秒未満） %3d" % (LINE, n_pass))
     print("  測れていない            %3d  （顔が1枚だけ %d ＋ 顔が1枚も無い滞在 %d）"
           % (n_unk, len(one), len(unknown)))
+    if old_vis:
+        print("  ※ %s より前の滞在 %d件は、『人が居たか』の欄が無いので数えていません"
+              % (BORN["seen"], len(old_vis)))
     if n_near + n_pass:
         lo = 100.0 * n_pass / (n_near + n_pass + n_unk) if (n_near + n_pass + n_unk) else 0
         hi = 100.0 * (n_pass + n_unk) / (n_near + n_pass + n_unk) if (n_near + n_pass + n_unk) else 0
