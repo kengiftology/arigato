@@ -733,9 +733,10 @@ static String processCmd(String cmd) {
     else if (cmd == "mur")    { ctlMurmur = true; voiceOnce = true; }
     else if (cmd.startsWith("item")) {                      // item 0〜6／item -1（持たない）
         // その日の持ち物（2026-09-27）。C3 は日付を知らないので、決めるのはクラウド側。
-        int v = -1;
-        sscanf(cmd.c_str(), "item %d", &v);
-        setItem(v);
+        // 数字が無いときは**問い合わせ**（変えない）。2026-09-28：数字なしを -1 と
+        // みなして持ち物を外していた。問い合わせのつもりが、消す命令になっていた。
+        int v;
+        if (sscanf(cmd.c_str(), "item %d", &v) == 1) setItem(v);
         // ここで out += して返すと二重になる（D の申し送り・9/23 に同じ所を踏んでいる）。
         // 最後にまとめて "OK <命令>" が付くので、ここでは何も足さない。
     }
@@ -811,6 +812,8 @@ static String processCmd(String cmd) {
         out += String("HIDE ") + String(g_hide)
              + (g_hide == 0 ? " （ふつう）" : g_hide == 1 ? " （画面だけ消す）" : " （画面と声を消す）")
              + String("  MOOD ") + (faceSad ? "しょんぼり" : "ふだん") + "\n";
+        // 持ち物も出す（2026-09-28）。出ていないと、焼けたかも・戻ったかも確かめられない
+        out += String("ITEM ") + String(itemToday) + "\n";
         out += String("LISTEN ") + (listening() ? "on" : "off")
              + (listening() ? " " + String((listenUntil - millis()) / 1000) + "s left" : "") + "\n";
         // 人感の生死を無線から見る（2026-09-10：手を振っても「!」が出ないと報告あり）

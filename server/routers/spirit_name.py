@@ -580,6 +580,14 @@ async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
     since = max(visit, back)
     if since and float((st.get("talked") or {}).get(pid) or 0) >= since:
         return False                         # この来訪ではもう話しかけた
+    # 2026-09-28 未明：**ID が割れるたびに話しかけていた。**
+    # 9/27 21:33 に始まった1つの滞在で、ひとりしか居ないのに
+    # p01（23:18）・p06（23:24）・p10（00:19）と3回。上の歯止めは全部 ID ごとなので、
+    # 新しい ID には効かない。**人ではなく滞在に紐づける。**
+    # 10分あけば「また来た」として、もう一度話しかけてよい（TALK_BACK_GAP と同じ線）。
+    last = float(st.get("talked_at") or 0)
+    if last and now - last < sp.TALK_BACK_GAP:
+        return False
     # 呼び名をたずねた来訪では、続けて話しかけない（2026-09-26）。
     # 9/26 18:40、呼び名を3回たずねて諦めた7秒後に別の問いかけを始めていた。
     # 聞かれ続ける形になり、本人が「連続で同じ質問」と感じた原因のひとつ。
@@ -598,6 +606,7 @@ async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
     st["speak_line"] = line
     st["speak_at"] = now2 + sp.SPEAK_MIN
     st["talked"] = dict(st.get("talked") or {}, **{pid: since or now2})
+    st["talked_at"] = now2                   # この滞在ではもう話しかけた（ID が割れても数える）
     st["name_ask"] = {"person": pid, "at": now2, "sec": len(pcm) / 32000.0,
                       "phase": "talk", "round": 1, "start": now2}
     st["listen_until"] = now2 + ASK_TTL
