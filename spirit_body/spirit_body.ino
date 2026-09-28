@@ -501,21 +501,10 @@ static uint32_t lastMrecv = 0;   // 最後にM値を取れた時刻
 // 目(WROVER 192.168.0.202:80)か、クラウドの脳(443=HTTPS・パスに/spiritが付く)。シリアルsrcで切替。
 static String srcIP = "192.168.0.202";   // 既定は目。クラウド脳なら `src arigato-3ipecjbnha-an.a.run.app 443`
 static uint16_t srcPort = 80;
-static String eyeIP = "192.168.0.202";   // 目のLANアドレス（在室を直接伝える相手・`eye <ip>`で変更可）
+// 在室を目へLANで直接伝える口（eyeNotify・`eye <ip>`）は 2026-09-28 に外した。
+// 宛先は昔の ESP32 の目で、いまの橋渡し（Tapo）には受ける口が無い。
+// 橋渡しはクラウドの /spirit/presence を3秒おきに覗いて在室を知る。
 WiFiUDP mUdp;                            // 無線コマンド口（UDP 5006・netCmdで使用）
-
-// 目へLAN直で在室/不在を伝える（0.3秒級・クラウドを待たない）。失敗しても本体を止めない
-static void eyeNotify(bool occ) {
-    if (WiFi.status() != WL_CONNECTED) return;
-    WiFiClient c;
-    c.setTimeout(800);
-    if (!c.connect(eyeIP.c_str(), 80, 300)) return;   // 接続300msで諦める（目が不在でも本体を待たせない）
-    c.print(String("GET /presence?state=") + (occ ? "occupied" : "empty") +
-            " HTTP/1.0\r\nHost: eye\r\nConnection: close\r\n\r\n");
-    uint32_t t0 = millis();
-    while (c.connected() && millis() - t0 < 800) { while (c.available()) c.read(); delay(2); }
-    c.stop();
-}
 // 情報源へHTTP(S) GET。443ならTLSで接続しパスに/spiritを前置。短いタイムアウトで本体を止めない。
 static bool httpGet(const char *path, char *body, int bodysz) {
     body[0] = 0;
@@ -775,14 +764,6 @@ static String processCmd(String cmd) {
     }
     else if (cmd == "quiet on")  QUIET = true;
     else if (cmd == "quiet off") QUIET = false;
-    else if (cmd.startsWith("eye ")) {                     // eye 192.168.0.202 … 目のLANアドレス変更
-        char ip[40] = {0};
-        if (sscanf(cmd.c_str(), "eye %39s", ip) == 1) {
-            eyeIP = ip;
-            prefs.putString("eyeIP", eyeIP);
-            out += "EYE " + eyeIP + "\n";
-        }
-    }
     else if (cmd.startsWith("src ")) {                     // src <host> <port> … 情報源を切替（目/クラウド脳）
         char ip[64] = {0}; int port = 80;
         if (sscanf(cmd.c_str(), "src %63s %d", ip, &port) >= 1) {
@@ -889,7 +870,6 @@ static void netCmd() {
 
 // ---------------- 肌感覚（SR-602）と状態 ----------------
 static const uint32_t PIR_WARMUP_MS   = 30000;
-static const uint32_t PIR_COOLDOWN_MS = 8000;
 static const uint32_t SLEEP_AFTER_MS  = 10UL * 60UL * 1000UL;   // 10分気配なしで眠る
 static int pendingScene = 0;                   // 0=なし 1=notice 2=happy
 // うるさい対策: 通過（すぐ去る）は音なし・顔だけ／滞在（居続ける）だけ声を出す・回数に上限
@@ -1000,7 +980,6 @@ void setup() {
     careCount = prefs.getUInt("care", 0);
     srcIP = prefs.getString("srcIP", srcIP);          // 情報源(目/脳)を記憶から復元
     srcPort = prefs.getUShort("srcPort", srcPort);
-    eyeIP = prefs.getString("eyeIP", eyeIP);          // 目のLANアドレスも復元
     // 情報源(目/クラウド脳)との接続: WiFiに参加。繋がらなくても本体は動く
     WiFi.mode(WIFI_STA);
     WiFi.setHostname("spirit-c3");
@@ -1108,19 +1087,17 @@ void loop() {
         nextMurmur = millis() + 60000;
     }
 
-    // 来訪の瞬間は定期を待たず即報告（目へLAN直0.3秒級＋クラウドへ1〜2秒）
+    // 来訪の瞬間は定期を待たず即報告（クラウドへ1〜2秒）
     if (announceArrival) {
         announceArrival = false;
-        eyeNotify(true);                         // まず目（撮影を即止める）
         char t[8];
-        httpGet("/presence?state=occupied", t, sizeof t);   // 記録用にクラウドへも
+        httpGet("/presence?state=occupied", t, sizeof t);
         nextBeat = now + 8000;
     }
-    // 在室/不在の定期報告（8秒ごと・目とクラウド両方へ）
+    // 在室/不在の定期報告（8秒ごと・クラウドへ）
     if (now >= nextBeat) {
         nextBeat = now + 8000;
         bool occ = (now - lastMotion) < 90000;   // 死角で途切れても90秒は在室扱い（撮影の誤発火防止）
-        eyeNotify(occ);
         char t[8];
         httpGet(occ ? "/presence?state=occupied" : "/presence?state=empty", t, sizeof t);
     }
