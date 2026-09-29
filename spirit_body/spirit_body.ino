@@ -678,6 +678,12 @@ static uint32_t careCount = 0;
 static float peakM = 0.0f;
 static uint32_t lastCareAt = 0;
 static uint32_t lastMotion = 0, lastNotice = 0;
+// 一度でも人の気配を見たか（2026-09-29）。**起き直した直後を「人が居る」にしないため。**
+// それまでは setup() で lastMotion に起動時刻を入れていたので、誰も居なくても
+// 起動から90秒は「居る」と送っていた（9/20以降、12回の起き直しのうち7回で
+// 80〜152秒の偽の在室が記録に残った。その間、顔は1件も写っていない）。
+// 偽の在室はクラウドで滞在の始まりにもなり、見回りの引き金と通り過ぎ率の分母を汚す。
+static bool seenAny = false;
 static bool sleeping = false;
 static void onM(float mv);
 // ---- 名前を聞いている間（2026-09-23 本人の決定）----
@@ -799,7 +805,8 @@ static String processCmd(String cmd) {
              + (listening() ? " " + String((listenUntil - millis()) / 1000) + "s left" : "") + "\n";
         // 人感の生死を無線から見る（2026-09-10：手を振っても「!」が出ないと報告あり）
         out += String("PIR ") + (pirNow() ? "HIGH" : "LOW")
-             + " lastMotion " + String((millis() - lastMotion) / 1000) + "s ago\n";
+             + (seenAny ? (" lastMotion " + String((millis() - lastMotion) / 1000) + "s ago\n")
+                          : String(" lastMotion never\n"));   // まだ一度も見ていない（2026-09-29）
     }
     else if (cmd.startsWith("voice ")) {                    // voice 550 85 （高さHz・1文字ms）
         float b; int p;
@@ -831,6 +838,7 @@ static void serialPcm() {
     String cmd = Serial.readStringUntil(10);
     cmd.trim();
     lastMotion = millis();                       // シリアル操作＝目の前に人がいる（机上テスト時）
+    seenAny = true;
     sleeping = false;
     long nbytes = 0;
     if (sscanf(cmd.c_str(), "pcm %ld", &nbytes) == 1 && nbytes > 0) {
@@ -891,7 +899,8 @@ static void onM(float mv) {
     g_M = mv;
     lastMrecv = millis();
     if (mv > peakM) peakM = mv;
-    bool recentPerson = (millis() - lastMotion) < 10UL * 60UL * 1000UL;  // 10分以内に気配
+    // 起き直した直後を「人が居た」にしない（2026-09-29）。ここは世話の判定に使う。
+    bool recentPerson = seenAny && (millis() - lastMotion) < 10UL * 60UL * 1000UL;  // 10分以内に気配
     bool bigDrop = (peakM >= 0.35f) && (peakM - mv >= 0.15f);            // 散らかりが大きく減った
     bool cooled = (millis() - lastCareAt) > 10UL * 60UL * 1000UL;        // 連続カウント防止
     if (recentPerson && bigDrop && cooled) {
@@ -925,6 +934,7 @@ static void updatePresence(uint32_t now) {
             announceArrival = true;           // 8秒の定期を待たず即「occupied」を届ける
         }
         lastMotion = now;
+        seenAny = true;                       // ここで初めて「見た」ことになる
     } else if (inEpisode && now - lastMotion > PRESENCE_GAP_MS) {
         inEpisode = false;                    // 立ち去った → 滞在おわり
     }
@@ -975,7 +985,9 @@ void setup() {
         playAnim(anim_hatch, 1);               // 誕生（絵はいつも通り）
         if (!hush) melodyHatch();
     }
-    lastMotion = millis();
+    // ここで lastMotion に起動時刻を入れていたのをやめた（2026-09-29）。
+    // 最初の30秒（PIR_WARMUP_MS）はセンサーを読んですらいないのに、
+    // 「90秒以内に気配があった＝居る」の判定が成り立ってしまっていた。
     nextMurmur = millis() + 3000;
     careCount = prefs.getUInt("care", 0);
     srcIP = prefs.getString("srcIP", srcIP);          // 情報源(目/脳)を記憶から復元
@@ -1092,12 +1104,14 @@ void loop() {
         announceArrival = false;
         char t[8];
         httpGet("/presence?state=occupied", t, sizeof t);
-        nextBeat = now + 8000;
+        nextBeat = now + 10000;
     }
     // 在室/不在の定期報告（8秒ごと・クラウドへ）
     if (now >= nextBeat) {
-        nextBeat = now + 8000;
-        bool occ = (now - lastMotion) < 90000;   // 死角で途切れても90秒は在室扱い（撮影の誤発火防止）
+        nextBeat = now + 10000;
+        // **一度も気配を見ていなければ、90秒の猶予は使わない**（2026-09-29）。
+        // 猶予は「見えていた人が死角に入った」ための仕組みで、起き直し直後には当てはまらない。
+        bool occ = seenAny && (now - lastMotion) < 90000;   // 死角で途切れても90秒は在室扱い
         char t[8];
         httpGet(occ ? "/presence?state=occupied" : "/presence?state=empty", t, sizeof t);
     }
