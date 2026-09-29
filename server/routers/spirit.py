@@ -336,6 +336,56 @@ def _log_error(step: str, e: Exception, **extra):
 _log_ok = [0.0, 0.0, ""]        # 最後に書けた時刻／最後に落ちた時刻／落ちた理由
 LOG_FAIL_LIMIT = 600.0          # 直近これだけの間に落ちていれば「止まっている」扱い
 
+# 書けなかった記録を、捨てずにためておく（2026-09-29・本人の決め）。
+# それまでは書き込みに失敗すると**その1件を捨てていた**。在室の記録は「切り替わった時だけ」
+# 書くので、1件落ちると**その来訪が記録の上でまるごと消える**。
+# 消えた記録は「起きなかった」と読めてしまい、**外から見分けられない。**
+# ためた分は台ごとに持つ（クラウドは何台も動く）。**台が入れ替わると消える**（本人了承済み）。
+_log_queue = []                 # 書けなかった分（古い順）
+LOG_QUEUE_MAX = 500             # ためる上限。長く書けない時にメモリを食い尽くさないため
+_log_dropped = [0]              # 上限を超えて捨てた数（health に出す）
+LOG_RETRY_GAP = 30.0            # 書けない間、毎回ためし直さない（遅くしないため）
+
+
+def _log_flush(rows: list) -> None:
+    """ためた分と今回の分を、**古い順に**書く。
+
+    **1件書けるたびに列から外す。**途中で失敗したときに、書けた分を二度書かないため。
+    失敗したらその場で**1回だけ**やり直し、それでも駄目なら残りをためる。
+    時刻（`t`）は**最初に起きた時刻のまま**にする。あとで書いても、起きた時刻は動かさない。"""
+    now = time.time()
+    pending = _log_queue + list(rows)
+    del _log_queue[:]
+    # 続けて失敗している間は、毎回ためし直さない（1件ごとに数秒待たされると本体が遅くなる）
+    if pending and _log_ok[1] > _log_ok[0] and now - _log_ok[1] < LOG_RETRY_GAP:
+        _log_keep(pending)
+        return
+    for attempt in (1, 2):                      # 失敗したら1回だけやり直す
+        try:
+            col = get_db().collection("spirit_log")
+            while pending:
+                col.add(pending[0])
+                pending.pop(0)                  # 書けた分だけ外す（二重に書かない）
+            _log_ok[0] = time.time()
+            return
+        except Exception as e:
+            if attempt == 2:
+                _log_ok[1], _log_ok[2] = time.time(), ("%s: %s" % (type(e).__name__, e))[:120]
+                logger.warning("spirit log failed (%d件ためる): %s", len(pending), e)
+                _log_keep(pending)
+
+
+def _log_keep(rows: list) -> None:
+    """書けなかった分をためる。あふれたら**古い方から捨てる**（本人 2026-09-29 の決め）。
+
+    直近の出来事を確実に残す側を採った。捨てた数は数えて health に出す
+    （**黙って減らさない**。数が合わないことに、あとから気づけるように）。"""
+    _log_queue.extend(rows)
+    over = len(_log_queue) - LOG_QUEUE_MAX
+    if over > 0:
+        del _log_queue[:over]
+        _log_dropped[0] += over
+
 # AI が答えているか（2026-09-27）。**観察期でいちばん危ない壊れ方はここ。**
 # 9/27 14:00、Anthropic の残高が切れて AI が断られ始めた。**顔も記録も動き続けるので、
 # 区画の判定と一言だけが静かに止まる。**見張りには一切かからず（health は ok のまま）、
@@ -374,14 +424,11 @@ def _ai_ping(ok: bool, e: Exception = None) -> None:
 
 
 def _log_event(kind: str, data: dict):
-    """研究用の時系列ログ（spirit_log）。失敗しても本体を止めない。"""
+    """研究用の時系列ログ（spirit_log）。失敗しても本体を止めない。
+
+    2026-09-29：書けなかったら**ためておいて、次に書けた時に一緒に出す**。"""
     now = time.time()
-    try:
-        get_db().collection("spirit_log").add({"t": now, "kind": kind, **data})
-        _log_ok[0] = now
-    except Exception as e:
-        _log_ok[1], _log_ok[2] = now, ("%s: %s" % (type(e).__name__, e))[:120]
-        logger.warning("spirit log failed: %s", e)
+    _log_flush([{"t": now, "kind": kind, **data}])
     _note_change(kind, data, now)
 
 
@@ -2613,16 +2660,20 @@ def _health() -> dict:
     ok_at, fail_at, why = _log_ok[0], _log_ok[1], _log_ok[2]
     if fail_at > ok_at and now - fail_at < LOG_FAIL_LIMIT:
         items.append({"id": "log", "name": "記録が書けていない", "ago": round(now - fail_at),
-                      "limit": LOG_FAIL_LIMIT, "ok": False, "unknown": False, "why": why})
+                      "limit": LOG_FAIL_LIMIT, "ok": False, "unknown": False, "why": why,
+                      "pending": len(_log_queue), "dropped": _log_dropped[0]})
         bad = bad + ["記録が書けていない"]
     else:
         items.append({"id": "log", "name": "記録が書けている",
                       "ago": round(now - ok_at) if ok_at else None,
-                      "limit": LOG_FAIL_LIMIT, "ok": True, "unknown": not ok_at})
+                      "limit": LOG_FAIL_LIMIT, "ok": True, "unknown": not ok_at,
+                      "pending": len(_log_queue), "dropped": _log_dropped[0]})
     return {"ok": not bad, "stopped": bad, "items": items,
             "ai_ok_ago": round(now - a_ok) if a_ok else None,
             "ai_fail_ago": round(now - a_fail) if a_fail else None,
             "log_ok_ago": round(now - ok_at) if ok_at else None,
+            "log_pending": len(_log_queue),     # まだ書けずにためている数
+            "log_dropped": _log_dropped[0],     # 上限を超えて捨てた数（**取りこぼし**）
             "log_fail_ago": round(now - fail_at) if fail_at else None,
             # いま本番で動いているのはどの版か（2026-09-25）。
             # 9/25、入れ替えが5時間止まっていたのに誰も気づかなかった。

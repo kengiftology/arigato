@@ -248,3 +248,109 @@ def test_おかしな設定を止める():
     assert "rule" in sp._zone_cfg_check(dict(ok, rule={"kind": "てきとう"}))
     assert sp._zone_cfg_check(dict(ok, pose="-0.50_0.00", aim={"band": [0.0, 0.5], "min_conf": 0.08},
                                    crop={"box": [0.1, 0.1, 0.9, 0.9]}, rule={"kind": "dwell"})) == ""
+
+
+# ── 書けなかった記録を、捨てずにためる（2026-09-29・本人の決め） ──
+#
+# それまでは書き込みに失敗すると**その1件を捨てていた**。在室の記録は「切り替わった時だけ」
+# 書くので、1件落ちると**その来訪が記録の上でまるごと消える**。
+# 消えた記録は「起きなかった」と読めてしまい、**外から見分けられない。**
+
+class _FakeCol:
+    """Firestore のふり。`fail` 回だけ失敗してから成功する。"""
+
+    def __init__(self, fail=0):
+        self.fail, self.rows = fail, []
+
+    def add(self, row):
+        if self.fail > 0:
+            self.fail -= 1
+            raise RuntimeError("書けません")
+        self.rows.append(row)
+
+
+class _FakeDB:
+    def __init__(self, col):
+        self.col = col
+
+    def collection(self, name):
+        return self.col
+
+
+def _fresh(monkeypatch, col):
+    """ためた列と時計を初期化して、偽のDBをつなぐ。"""
+    del sp._log_queue[:]
+    sp._log_dropped[0] = 0
+    sp._log_ok[0] = sp._log_ok[1] = 0.0
+    monkeypatch.setattr(sp, "get_db", lambda: _FakeDB(col))
+    monkeypatch.setattr(sp, "_note_change", lambda *a, **k: None)
+
+
+def test_書けなかった記録は次に書けた時に出る(monkeypatch):
+    col = _FakeCol(fail=4)          # 2件ぶん（1件につき やり直し1回）失敗させる
+    _fresh(monkeypatch, col)
+    sp._log_event("presence", {"empty": False})
+    sp._log_ok[1] = 0.0             # 「続けて失敗中は試さない」を外して、次をすぐ試させる
+    sp._log_event("presence", {"empty": True})
+    assert len(sp._log_queue) == 2 and col.rows == []
+    sp._log_ok[1] = 0.0
+    sp._log_event("visit", {"who": ["p01"]})        # ここで書けるようになる
+    kinds = [r["kind"] for r in col.rows]
+    assert kinds == ["presence", "presence", "visit"], kinds   # **古い順に出る**
+    assert sp._log_queue == []
+
+
+def test_時刻は起きた時のまま(monkeypatch):
+    col = _FakeCol(fail=2)
+    _fresh(monkeypatch, col)
+    monkeypatch.setattr(sp.time, "time", lambda: 1000.0)
+    sp._log_event("presence", {"empty": False})     # 1000秒に起きた出来事
+    assert sp._log_queue and sp._log_queue[0]["t"] == 1000.0
+    monkeypatch.setattr(sp.time, "time", lambda: 5000.0)
+    sp._log_ok[1] = 0.0
+    sp._log_event("visit", {})                       # 5000秒に、ためた分ごと書けた
+    assert col.rows[0]["t"] == 1000.0, "あとで書いたら時刻が動いてしまった"
+    assert col.rows[1]["t"] == 5000.0
+
+
+def test_二度書きしない(monkeypatch):
+    """1件目は書けて2件目で失敗したとき、**書けた1件目を二度書かない**。"""
+    col = _FakeCol()
+    _fresh(monkeypatch, col)
+    sp._log_queue.extend([{"t": 1.0, "kind": "a"}, {"t": 2.0, "kind": "b"}])
+    calls = {"n": 0}
+
+    def flaky(row):
+        calls["n"] += 1
+        if calls["n"] >= 2:          # 1件目だけ書けて、2件目はやり直しても失敗
+            raise RuntimeError("途中で切れた")
+        col.rows.append(row)
+    monkeypatch.setattr(col, "add", flaky)
+    sp._log_flush([])
+    # 書けた1件目は**列から外れている**（次に書ける時、二度書かれない）
+    assert [r["kind"] for r in col.rows] == ["a"]
+    assert [r["kind"] for r in sp._log_queue] == ["b"], "書けた分が列に残っている"
+    # そのあと書けるようになったら、残りの1件だけが出る
+    monkeypatch.setattr(col, "add", col.rows.append)
+    sp._log_ok[1] = 0.0
+    sp._log_flush([])
+    assert [r["kind"] for r in col.rows] == ["a", "b"], "同じ記録が二度書かれた"
+
+
+def test_あふれたら古い方から捨てて数える(monkeypatch):
+    col = _FakeCol(fail=10 ** 6)
+    _fresh(monkeypatch, col)
+    sp._log_keep([{"t": float(i), "kind": "x%d" % i} for i in range(sp.LOG_QUEUE_MAX + 7)])
+    assert len(sp._log_queue) == sp.LOG_QUEUE_MAX
+    assert sp._log_dropped[0] == 7
+    assert sp._log_queue[0]["kind"] == "x7", "捨てたのが古い方ではない"
+
+
+def test_ためている数と捨てた数が健康診断に出る(monkeypatch):
+    col = _FakeCol(fail=10 ** 6)
+    _fresh(monkeypatch, col)
+    sp._log_keep([{"t": 1.0, "kind": "x"}])
+    sp._log_dropped[0] = 3
+    h = sp._health()
+    assert h["log_pending"] == 1
+    assert h["log_dropped"] == 3
