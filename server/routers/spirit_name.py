@@ -67,6 +67,9 @@ VOICEVOX_SPEAKER = 3             # ずんだもん（作り置きと同じ声）
 def _may_ask(st: dict, pid: str, doc: dict, now: float, alone: bool) -> bool:
     if not ASK_ON or (ASK_ONLY_ALONE and not alone) or not pid or pid == "unknown" or doc.get("name"):
         return False
+    if sp.resting(st):                       # お休み中（2026-10-01 本人の決定）
+        sp._log_event("rest_held", {"step": "呼び名を聞く", "person": pid})
+        return False
     # いま誰かと話している間は、別の問いかけを始めない（2026-09-26）。
     # 顔の照合は、同じ人がカメラに近づくと見失うことがある（18:19:48：296px で
     # 本人との近さ 0.160 → unknown。9/20 には 328px で 0.06 になり、別人として
@@ -581,6 +584,9 @@ async def maybe_talk(st: dict, pid: str, doc: dict | None, now: float) -> bool:
     """来訪ごとに1回、こちらから話しかける。始めたら True。"""
     if not TALK_ON or not pid or pid == "unknown":
         return False
+    if sp.resting(st):                       # お休み中（2026-10-01）
+        sp._log_event("rest_held", {"step": "話しかける", "person": pid})
+        return False
     if asking(st, now):
         return False                         # 話している間は、別の話しかけを始めない
     if doc is None:
@@ -656,6 +662,11 @@ EAR_MIN_STAY = 5.0               # すぐ通り過ぎる人には開かない
 def may_open_ear(st: dict, pid: str, doc: dict, now: float) -> float:
     """待つ窓を開くなら秒数、開かないなら 0。"""
     if not EAR_ON or not pid or pid == "unknown":
+        return 0.0
+    if sp.resting(st):
+        # お休み中は耳も閉じる（2026-10-01）。キャラが黙っているのに耳だけ開いていると、
+        # 掲示の説明（話しかけると返すことがあります）と合わない。
+        sp._log_event("rest_held", {"step": "話しかけられるのを待つ", "person": pid})
         return 0.0
     if asking(st, now):
         return 0.0                           # 会話中・問いかけ中は開かない

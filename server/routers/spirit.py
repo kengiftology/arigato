@@ -313,6 +313,17 @@ _err_seen: dict = {}              # 同じ落ち方を、何度も記録に書�
 ERR_GAP = 60.0                   # 同じ種類は、この間隔でしか書かない
 
 
+def resting(st: dict) -> bool:
+    """キャラがお休み中か（2026-10-01 本人の決定）。
+
+    撤去期の段階2（`/spirit/hide` の level 2）＝画面と声を消す、をそのまま使う。
+    お休み中は、クラウドからは**話しかけない**：呼び名を聞かない・話しかけない・
+    待つ窓を開けない・迎えの一言を予約しない・作り置きもしない。
+    **続けるもの**：顔の照合・在室・見回りと前後比較・世話・なつき度・Notion。
+    場所の維持の記録は、お休み中もいつも通り残す。"""
+    return int(st.get("hide") or 0) >= 2
+
+
 def _log_error(step: str, e: Exception, **extra):
     """落ちたことを1行残す。中身（一言の本文・顔の数値・写真）は出さない。
 
@@ -1585,12 +1596,14 @@ async def receive_frame(request: Request, pose: str = "", raw: str = "", big: in
                         "people": res.get("all") or [res["person"]],
                         "judged": False, "why": "person_seen", "ms": _ms,
                         # 呼び名を聞いている相手。ラズパイはこれを見て C3 に鳴らさせ、答えを取りに行く
-                        "ask_name": spirit_name.asking(st, now),
+                        # お休み中は、聞く番も待つ窓も知らせない（2026-10-01）
+                        "ask_name": None if resting(st) else spirit_name.asking(st, now),
                         "ask_sec": spirit_name.asking_sec(st),
                         # 鳴らさずに待つだけの窓（2026-09-27）。橋渡しはこれを見て、
                         # **問いかけずに録る**。開いていないときは 0。
-                        "ear_sec": (spirit_name.EAR_SEC
-                                    if (st.get("name_ask") or {}).get("phase") == "open" else 0)}
+                        "ear_sec": (0 if resting(st) else
+                                    (spirit_name.EAR_SEC
+                                     if (st.get("name_ask") or {}).get("phase") == "open" else 0))}
         except Exception as e:
             logger.warning("identify failed: %s", e)
             _identify_err[0] = "%s: %s" % (type(e).__name__, str(e)[:200])
@@ -3912,6 +3925,8 @@ def _pick_line(kind: str) -> str | None:
 
 
 def _plan_speech(st: dict, kind: str, slow: bool = False) -> None:
+    if resting(st):
+        return                               # お休み中は鳴らさない（2026-10-01）
     """何を、いつ鳴らすかを決める。
 
     すぐ返すと、聞いていたのではなく反射したように見える。
@@ -4149,6 +4164,8 @@ async def _prepare_greetings(st: dict, now: float) -> int:
     """知っている人ぜんぶと「初めての人」向けに、次の一言の文を作って覚えておく。"""
     persona = st.get("persona", "")
     n = 0
+    if resting(st):
+        return 0                             # お休み中は作らない（声係の仕事も増やさない）
     try:
         db = get_db()
         news = _recent_care()                  # 場所の様子。誰がやったかは言わない
