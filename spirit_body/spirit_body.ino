@@ -1178,6 +1178,13 @@ void loop() {
     if (hideFace()) {
         static const uint8_t BLACK[2] = {0x00, 0x00};
         if (havePrev || !blanked) { fillRect(0, 240, BLACK); havePrev = false; blanked = true; }
+        // **お休み中も人感は読む**（2026-10-01・本人の決定「場所の維持の記録は続ける」）。
+        // 人感を読むのは本来アニメの合間（checkInterrupt）だけで、ここはアニメを出さずに
+        // 周を終えるため、**お休みにした瞬間から人感が一度も読まれなくなっていた。**
+        // そうなると、起動から90秒を過ぎた時点でクラウドへはずっと「無人」、
+        // 世話の判定（10分以内に気配）も成り立たず、**記録が止まる。**
+        // 見え方と聞こえ方だけを消し、数えるのは止めない（撤去の設計・2節②）。
+        updatePresence(millis());
         delay(20);
         return;
     }
@@ -1188,6 +1195,7 @@ void loop() {
     // 眠りより先に見る（聞いている最中に眠った顔にならないように）。
     if (listening()) {
         uint32_t t = millis();
+        updatePresence(t);                         // 聞いている間も人感を読む（2026-10-01）
         // 喋っている最中は描き直さない（口の動きと取り合って、ちらつくため）
         if (!mouthOn && (!listenDrawn || (int32_t)(t - nextQBob) >= 0)) {
             const uint8_t *p = anim_idle + 1;          // 待ち受けのコマ0
